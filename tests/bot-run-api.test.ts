@@ -92,15 +92,12 @@ describe("create", () => {
 		assert.equal(chatStore.getChat(first.body.id)!.messages.length, 1);
 	});
 
-	it("a rerun finishes a create whose prompt never landed", async () => {
+	it("a same-key rerun with a prompt saves nothing on a lesson created without one", async () => {
 		const key = newKey();
-		const half = chatStore.createChat("Half", undefined, { driver: "external", externalKey: key });
-		const { body } = await create({ title: "Half", key, prompt: "Teach me sets" });
-		const record = chatStore.getChat(half.id)!;
-		assert.equal(body.id, half.id);
-		assert.equal(body.existing, true);
-		assert.deepEqual(record.messages.map((m) => (m as { content: unknown }).content), ["Teach me sets"]);
-		assert.equal(body.cursor, record.messages[0]!.id);
+		const first = await create({ title: "Bare", key });
+		const second = await create({ title: "Bare", key, prompt: "now a prompt" });
+		assert.deepEqual(second.body, { ok: true, id: first.body.id, title: "Bare", existing: true, cursor: first.body.id });
+		assert.equal(chatStore.getChat(first.body.id)!.messages.length, 0);
 	});
 
 	it("refuses a create with no key", async () => {
@@ -146,7 +143,7 @@ describe("say", () => {
 		const first = await turn(id, { kind: "say", after: lesson.body.cursor, text: "Step one." });
 		await learnerTypes(id, "ok, and then?");
 		const count = chatStore.getChat(id)!.messages.length;
-		const rerun = await turn(id, { kind: "say", after: lesson.body.cursor, text: "Step one." });
+		const rerun = await turn(id, { kind: "say", after: lesson.body.cursor, text: "Step one.\n" });
 		assert.equal(rerun.status, 200);
 		assert.equal(rerun.body.repeat, true);
 		assert.notEqual(rerun.body.cursor, first.body.cursor, "the cursor is the newest message, the learner's");
@@ -179,6 +176,8 @@ describe("say", () => {
 			assert.equal(status, 400);
 			assert.deepEqual(body, { ok: false, code: "bad_after", cursor: lesson.body.cursor });
 		}
+		const notObject = await json(await turnRoute.POST(new Request(`http://test/api/external/chats/${lesson.body.id}/turn`, { method: "POST", body: "[1]" }), ctx(lesson.body.id)));
+		assert.deepEqual(notObject, { status: 400, body: { ok: false, code: "bad_after", cursor: lesson.body.cursor } });
 		assert.equal(chatStore.getChat(lesson.body.id)!.messages.length, 1);
 	});
 
@@ -195,6 +194,22 @@ describe("say", () => {
 			assert.equal(res.body.code, "invalid");
 			assert.equal(res.body.cursor, lesson.body.cursor);
 			assert.ok(res.body.problems.length > 0 && res.body.problems.every((p: unknown) => typeof p === "string" && p.length > 0));
+		}
+		assert.equal(chatStore.getChat(lesson.body.id)!.messages.length, 1);
+	});
+});
+
+describe("save failures", () => {
+	it("a turn whose save fails is a JSON 500 with the cursor, and nothing changes", async () => {
+		const lesson = await create({ title: "Locked", key: newKey(), prompt: "Teach me" });
+		const file = path.join(TMP_DATA, "chats", `${lesson.body.id}.json`);
+		fs.chmodSync(file, 0o444);
+		try {
+			const { status, body } = await turn(lesson.body.id, { kind: "say", after: lesson.body.cursor, text: "Lost?" });
+			assert.equal(status, 500);
+			assert.deepEqual(body, { ok: false, code: "save_failed", cursor: lesson.body.cursor });
+		} finally {
+			fs.chmodSync(file, 0o644);
 		}
 		assert.equal(chatStore.getChat(lesson.body.id)!.messages.length, 1);
 	});

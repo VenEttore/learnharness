@@ -141,19 +141,20 @@ export function createBotLesson(body: unknown): Response {
 	const b = (typeof body === "object" && body !== null ? body : {}) as { title?: unknown; key?: unknown; prompt?: unknown };
 	if (typeof b.key !== "string" || b.key.trim() === "") return fail(400, "key_required");
 	const key = b.key;
-	const prompt = typeof b.prompt === "string" && b.prompt.trim() !== "" ? [newUserMessage(b.prompt)] : [];
 	const found = stores.chatStore.listChats().find((c) => c.driver !== undefined && c.externalKey === key);
 	const existing = found ? stores.chatStore.getChat(found.id) : null;
-	const record =
-		existing ?? stores.chatStore.createChat(titleFromPrompt(typeof b.title === "string" && b.title ? b.title : "Untitled session"), undefined, { driver: "external", externalKey: key });
-	// A rerun saves nothing, unless the first create's prompt write never
-	// landed: then the rerun finishes it.
-	if (record.messages.length === 0 && prompt.length > 0) {
-		const failed = commitOrFail(record, prompt);
+	if (existing) return Response.json({ ok: true, id: existing.id, title: existing.title, existing: true, cursor: cursorOf(existing) });
+	const title = typeof b.title === "string" && b.title ? b.title : "Untitled session";
+	const chat = stores.chatStore.createChat(titleFromPrompt(title), undefined, { driver: "external", externalKey: key });
+	// Two saves, so a crash between them leaves the lesson without its
+	// prompt, and a rerun then saves nothing (crash-safe saves are out of
+	// the spec's scope); `show` reveals it.
+	const prompt = typeof b.prompt === "string" && b.prompt.trim() !== "" ? [newUserMessage(b.prompt)] : [];
+	if (prompt.length > 0) {
+		const failed = commitOrFail(chat, prompt);
 		if (failed) return failed;
 	}
-	const messages = record.messages.length === 0 ? prompt : record.messages;
-	return Response.json({ ok: true, id: record.id, title: record.title, existing: existing !== null, cursor: cursorOf({ ...record, messages }) });
+	return Response.json({ ok: true, id: chat.id, title: chat.title, existing: false, cursor: prompt[0]?.id ?? chat.id });
 }
 
 /** commitBotRun for the external routes: a failed save is a JSON 500 the
@@ -266,7 +267,9 @@ const TURN_KINDS: Readonly<Record<string, TurnKind>> = {
 		schema: Type.Object({ text: Type.String({ description: "The teaching text, Markdown." }) }),
 		refine: (p) => (p.text.trim() === "" ? ["text must not be empty"] : []),
 		needsPlanNode: false,
-		build: (p) => [newBotAssistantMessage([{ type: "text", text: p.text }])],
+		// trimEnd: `echo` adds a newline a `--file` rerun may lack, and the
+		// repeat check compares exact text.
+		build: (p) => [newBotAssistantMessage([{ type: "text", text: p.text.trimEnd() }])],
 	}),
 };
 
@@ -286,6 +289,7 @@ export function botTurn(id: string, body: unknown): Response {
 	const record = botLesson(id);
 	if (record instanceof Response) return record;
 	const cursor = cursorOf(record);
+	// A body that is not an object has no `after`, so check 2 refuses it.
 	const isObject = typeof body === "object" && body !== null && !Array.isArray(body);
 	const { kind, after, ...payload } = (isObject ? body : {}) as Record<string, unknown>;
 
@@ -297,11 +301,9 @@ export function botTurn(id: string, body: unknown): Response {
 	const since = record.messages.slice(afterIndex + 1);
 
 	const row = typeof kind === "string" && Object.hasOwn(TURN_KINDS, kind) ? TURN_KINDS[kind] : undefined;
-	const checked: Checked = !isObject
-		? { ok: false, problems: ["the body must be a JSON object: { kind, after, ...payload }"] }
-		: row
-			? row.check(payload)
-			: { ok: false, problems: [`unknown kind ${JSON.stringify(kind)}; kinds: ${Object.keys(TURN_KINDS).join(", ")}`] };
+	const checked: Checked = row
+		? row.check(payload)
+		: { ok: false, problems: [`unknown kind ${JSON.stringify(kind)}; kinds: ${Object.keys(TURN_KINDS).join(", ")}`] };
 
 	// 3. repeat: the same turn already follows `after`
 	const own = checked.ok ? checked.built[0] : undefined;

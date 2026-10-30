@@ -75,10 +75,17 @@ function readInput(flags) {
 	return text;
 }
 
+/** The flags each command takes. A misspelled flag is refused, never
+ *  silently dropped. */
+const FLAGS = { lesson: ["title", "key", "prompt"], say: ["after", "file"], answer: [], show: [] };
+
 /** The HTTP request a command line makes: `{ method, path, body? }`. */
 function requestFor(argv) {
 	const { positionals, flags } = parseArgs(argv);
 	const [command, ...rest] = positionals;
+	const allowed = Object.hasOwn(FLAGS, command ?? "") ? FLAGS[command] : null;
+	const unknown = allowed ? Object.keys(flags).filter((f) => !allowed.includes(f)) : [];
+	if (unknown.length > 0) throw new UsageError(`${command} does not take --${unknown.join(", --")}`);
 	switch (command) {
 		case "lesson": {
 			if (rest[0] !== "new") throw new UsageError("usage: lh lesson new --title <t> --key <k> [--prompt <p>]");
