@@ -197,6 +197,14 @@ describe("page input a bot-run lesson refuses", () => {
 		});
 	}
 
+	it("a practice-only input is 400 with the append error and saves nothing", async () => {
+		const chat = botLesson("Next on teach", true);
+		const res = await handleChatRequest(post(chat.id, { type: "next" }), throwingBuilder);
+		assert.equal(res.status, 400);
+		assert.match(((await res.json()) as { error: string }).error, /practice-session affordance/);
+		assert.equal(chatStore.getChat(chat.id)!.messages.length, 0);
+	});
+
 	it("an internal wake input is 400 bot_run_lesson and saves nothing", async () => {
 		const chat = botLesson("Wake", true);
 		const steer = newUserMessage("a steer marker");

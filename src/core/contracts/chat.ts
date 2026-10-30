@@ -49,8 +49,9 @@ export interface ChatRecord {
 	 *  Teacher writes the turns and LearnHarness never calls its model.
 	 *  Absent = LearnHarness drives, as before. */
 	driver?: ChatDriver;
-	/** The Bot Teacher's create key: a rerun with the same key returns
-	 *  this lesson instead of a new one. Bot-run lessons only. */
+	/** The Bot Teacher's create key, stored at birth. The create route
+	 *  (external-teacher ticket 03) uses it to return this lesson on a
+	 *  rerun instead of making a new one. Bot-run lessons only. */
 	externalKey?: string;
 	/** The session's plan tree (vision §2) — written by plan tools via saveTree. */
 	tree?: PlanTree;

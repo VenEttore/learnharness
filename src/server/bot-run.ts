@@ -19,8 +19,10 @@ import { settledTurnResponse } from "./turn-runs.ts";
 /** The refusal code every bot-run refusal carries. */
 export const BOT_RUN_LESSON_CODE = "bot_run_lesson";
 
+/** Any driver at all means someone other than LearnHarness teaches, so an
+ *  unexpected stored value fails safe: no model runs. */
 export function isBotRun(record: Pick<ChatRecord, "driver">): boolean {
-	return record.driver === "external";
+	return record.driver !== undefined;
 }
 
 /** THE ONE BOT-RUN WRITE: save the messages, then announce both the record
