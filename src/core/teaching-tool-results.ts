@@ -5,9 +5,9 @@ import { PROBE_DONE_ACK_TEXT, type ProbeDoneResult } from "./contracts/probe.ts"
 /**
  * teaching-tool-results — the probe_done and plan_init success results and
  * the teaching plan-node check, in one place. LearnHarness's own tools
- * (src/agent/tools/probe.ts, plan.ts, tools.ts) build from these, and the
- * bot-run lesson code writes the same records from them (ADR 0001), so a
- * bot turn and a model turn store identical text and details.
+ * (src/agent/tools/probe.ts, plan.ts, tools.ts) build from these. Bot-run
+ * lesson code will write its records from the same helpers (ADR 0001), so
+ * a bot turn and a model turn store identical text and details.
  */
 
 /** The success value a server-side tool returns. serverExecute's

@@ -1,9 +1,10 @@
 /**
  * teaching-tool-results — the shared probe_done / plan_init success results
  * and the teaching plan-node check (src/core/teaching-tool-results.ts).
- * LearnHarness's tools and the bot-run lesson code both build from these,
- * so each helper is pinned to the exact value the tool returned before the
- * move, and each tool is checked to still return that value.
+ * LearnHarness's tools build from these now, and bot-run lesson code will
+ * (ADR 0001), so each helper is pinned to the exact value the tool returned
+ * before the move, as the helper returns it, as the tool-result mapping
+ * stores it, and as the tool still returns it.
  */
 import assert from "node:assert/strict";
 import * as fs from "node:fs";
@@ -23,6 +24,7 @@ import { explainInputObject, quizInputObject } from "../src/core/question-core.t
 import { planTools } from "../src/agent/tools/plan.ts";
 import { probeDoneTool } from "../src/agent/tools/probe.ts";
 import { teachExplainToolFor, teachQuizToolFor } from "../src/agent/tools.ts";
+import { toToolResult } from "../src/agent/tool-execute.ts";
 import { chatStore } from "../src/store/chats.ts";
 import { PATHS } from "../config.ts";
 
@@ -48,6 +50,23 @@ const PROBE_ACK =
 const REMINDER =
 	"These are the plan's node ids — the only valid nodeId values for every quiz and explain call from here on. Reference them exactly.";
 
+/** plan_init's input schema, serialized as the model read it before the move. */
+const PRE_MOVE_PLAN_SCHEMA = {
+	type: "object",
+	required: ["mermaid"],
+	properties: {
+		mermaid: {
+			type: "string",
+			minLength: 1,
+			description:
+				"A mermaid graph block (any direction), e.g.:\ngraph TD\n  primitives[Number primitives] --> operators[Arithmetic operators] --> expressions[Evaluating expressions]\n" +
+				"The only strict rule: ids are permanent lowercase slugs (a-z, 0-9, hyphens/underscores) — checks reference them via nodeId. " +
+				"Titles are free single-line text; `-->` means 'from = prerequisite' (chains fine); no subgraphs, styles, or classes.",
+		},
+	},
+};
+const serialized = (schema: unknown): unknown => JSON.parse(JSON.stringify(schema));
+
 const AB_TREE: PlanTree = {
 	nodes: [
 		{ id: "a", title: "A" },
@@ -64,6 +83,13 @@ function treeOf(ids: string[]): PlanTree {
 describe("probeDoneSuccessResult", () => {
 	it("is the fixed ack text with details {ok:true}", () => {
 		assert.deepEqual(probeDoneSuccessResult(), { text: PROBE_ACK, details: { ok: true } });
+	});
+
+	it("maps to the stored tool result: the ack as content, {ok:true} as details", () => {
+		assert.deepEqual(toToolResult(probeDoneSuccessResult()), {
+			content: [{ type: "text", text: PROBE_ACK }],
+			details: { ok: true },
+		});
 	});
 
 	it("is what probe_done returns on success", async () => {
@@ -86,6 +112,13 @@ describe("planInitSuccessResult", () => {
 		});
 	});
 
+	it("maps to the stored tool result: the JSON text as content, the tree in details", () => {
+		assert.deepEqual(toToolResult(planInitSuccessResult(AB_TREE)), {
+			content: [{ type: "text", text: `{"ok":true,"nodeIds":["a","b"],"reminder":${JSON.stringify(REMINDER)}}` }],
+			details: { ok: true, tree: AB_TREE },
+		});
+	});
+
 	it("is what plan_init returns on success", async () => {
 		const chatId = newChat("Shared: plan_init");
 		const res = await planTools({ chatId, chatStore }).plan_init!.execute("t", {
@@ -95,18 +128,11 @@ describe("planInitSuccessResult", () => {
 		assert.deepEqual(res, { content: [{ type: "text", text: expected.text }], details: expected.details });
 	});
 
-	it("the exported schema accepts and refuses what plan_init's parameters do", () => {
-		const toolSchema = planTools({ chatId: "x", chatStore }).plan_init!.parameters;
-		const cases: [unknown, boolean][] = [
-			[{ mermaid: "graph TD\n  a[A]\n" }, true],
-			[{ mermaid: "" }, false],
-			[{ mermaid: 7 }, false],
-			[{}, false],
-		];
-		for (const [input, valid] of cases) {
-			assert.equal(Value.Check(planInitInputSchema, input), valid, JSON.stringify(input));
-			assert.equal(Value.Check(toolSchema, input), valid, JSON.stringify(input));
-		}
+	it("the exported schema is the pre-move schema, and plan_init's parameters match it", () => {
+		assert.deepEqual(serialized(planInitInputSchema), PRE_MOVE_PLAN_SCHEMA);
+		assert.deepEqual(serialized(planTools({ chatId: "x", chatStore }).plan_init!.parameters), PRE_MOVE_PLAN_SCHEMA);
+		assert.equal(Value.Check(planInitInputSchema, { mermaid: "graph TD\n  a[A]\n" }), true);
+		assert.equal(Value.Check(planInitInputSchema, { mermaid: "" }), false);
 	});
 });
 
@@ -126,6 +152,13 @@ describe("planNodeProblem", () => {
 		assert.equal(
 			planNodeProblem(AB_TREE, "c"),
 			'nodeId "c" matches no node in this session\'s plan map. Copy one of your plan_init slugs exactly (a, b).',
+		);
+	});
+
+	it("exactly five nodes: lists all five, no ellipsis", () => {
+		assert.equal(
+			planNodeProblem(treeOf(["n1", "n2", "n3", "n4", "n5"]), "zz"),
+			'nodeId "zz" matches no node in this session\'s plan map. Copy one of your plan_init slugs exactly (n1, n2, n3, n4, n5).',
 		);
 	});
 
@@ -166,9 +199,9 @@ describe("planNodeProblem", () => {
 		const explain = await explainTool.execute("t", explainInput);
 		const expected = planNodeProblem(AB_TREE, "c");
 		assert.ok(expected);
-		for (const res of [quiz, explain]) {
-			const problems = (res.details as { problems: string[] }).problems;
-			assert.ok(problems.includes(expected), `expected ${JSON.stringify(problems)} to include the shared problem`);
+		for (const [name, res] of [["quiz", quiz], ["explain", explain]] as const) {
+			assert.deepEqual(res.details, { tool: name, problems: [expected] });
+			assert.deepEqual(res.content, [{ type: "text", text: `Invalid tool input for tool "${name}":\n- ${expected}` }]);
 		}
 	});
 });
