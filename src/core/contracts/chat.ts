@@ -289,6 +289,10 @@ export interface ChatSummary {
 	/** Practice sessions (2026-10-04): a posed problem with no conclude —
 	 *  the sidebar meta's "Problem waiting". Absent on teaching sessions. */
 	pendingProblem: boolean;
+	/** Bot-run fields (fork, ADR 0001), riding the summary spread like
+	 *  `settings`; the external create route finds a lesson by its key. */
+	driver?: ChatDriver;
+	externalKey?: string;
 	/** The record's model-control settings — rides the list payload via the
 	 *  summary spread (the picker never needs it from here; the full record
 	 *  is its source). */
