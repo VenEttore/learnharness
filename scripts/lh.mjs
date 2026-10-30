@@ -5,7 +5,7 @@
  * routes (app/api/external/**) and prints one JSON line per command.
  *
  *   lh lesson new --title <t> --key <k> [--prompt <p>]
- *   lh say <lesson> --after <cursor> [--file <path>]   text from --file or stdin
+ *   lh say <lesson> --after <cursor> [--file <path>]   text from --file, else stdin
  *   lh answer <lesson>
  *   lh show <lesson>
  *
@@ -87,7 +87,7 @@ function readStdin() {
 /** Long input: --file, else stdin (never a terminal, which would hang). */
 async function readInput(flags) {
 	let text;
-	if (flags.file) {
+	if (flags.file !== undefined) {
 		try {
 			text = readFileSync(flags.file, "utf-8");
 		} catch (err) {
@@ -111,6 +111,8 @@ async function requestFor(argv) {
 	const allowed = Object.hasOwn(FLAGS, command ?? "") ? FLAGS[command] : null;
 	const unknown = allowed ? Object.keys(flags).filter((f) => !allowed.includes(f)) : [];
 	if (unknown.length > 0) throw new UsageError(`${command} does not take --${unknown.join(", --")}`);
+	// lesson takes "new"; the rest take one lesson id.
+	if (allowed && rest.length > 1) throw new UsageError(`${command} takes one ${command === "lesson" ? "subcommand" : "lesson id"}, got ${rest.length}`);
 	switch (command) {
 		case "lesson": {
 			if (rest[0] !== "new") throw new UsageError("usage: lh lesson new --title <t> --key <k> [--prompt <p>]");

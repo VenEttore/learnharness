@@ -102,8 +102,23 @@ function isBotMessage(m: LhMessage): m is LhMessage & AssistantMessage {
 	return m.role === "assistant" && m.provider === BOT_STAMPS.provider && m.model === BOT_STAMPS.model;
 }
 
+/** The external API is open, so it guards its door instead: only lh-style
+ *  callers on this computer. A browser always sends Origin on a POST
+ *  (a page elsewhere could otherwise post text/plain JSON with no
+ *  preflight), and a non-loopback Host means DNS rebinding or a remote
+ *  caller. lh sends neither. Null when the request may proceed. */
+export function externalRequestRefusal(req: Request): Response | null {
+	if (req.headers.has("origin")) return fail(403, "forbidden_origin");
+	const host = req.headers.get("host");
+	if (host !== null && !/^(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/i.test(host)) return fail(403, "forbidden_host");
+	return null;
+}
+
 /** The newest message's id. An empty lesson has none, so its cursor is the
- *  lesson id, which `after` accepts as "before the first message". */
+ *  lesson id, which `after` accepts as "before the first message". A
+ *  reply whose cursor passes learner input the bot has not read (a
+ *  repeat, a same-key create, bad_after) also carries those items, so
+ *  adopting the cursor never skips them. */
 function cursorOf(record: ChatRecord): string {
 	return record.messages.at(-1)?.id ?? record.id;
 }
@@ -150,7 +165,9 @@ export function createBotLesson(body: unknown): Response {
 	if (problems.length > 0) return fail(422, "invalid", { problems });
 	const found = stores.chatStore.listChats().find((c) => c.driver !== undefined && c.externalKey === key);
 	const existing = found ? stores.chatStore.getChat(found.id) : null;
-	if (existing) return Response.json({ ok: true, id: existing.id, title: existing.title, existing: true, cursor: cursorOf(existing) });
+	if (existing) {
+		return Response.json({ ok: true, id: existing.id, title: existing.title, existing: true, items: unreadByBot(existing), cursor: cursorOf(existing) });
+	}
 	const title = typeof b.title === "string" && b.title ? b.title : "Untitled session";
 	// The prompt rides the create's one save: no crash can leave a keyed
 	// lesson without it, which a rerun (saving nothing) could never repair.
@@ -322,7 +339,7 @@ export function botTurn(id: string, body: unknown): Response {
 	if (checked.ok) {
 		const signature = turnSignature(checked.built[0]);
 		if (since.some((m) => isBotMessage(m) && turnSignature(m) === signature)) {
-			return Response.json({ ok: true, repeat: true, cursor });
+			return Response.json({ ok: true, repeat: true, items: unreadByBot(record), cursor });
 		}
 	}
 

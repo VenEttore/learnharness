@@ -87,7 +87,14 @@ describe("create", () => {
 		const before = chatStore.listChats().length;
 		const second = await create({ title: "Twice", key, prompt: "hello again" });
 		assert.equal(second.status, 200);
-		assert.deepEqual(second.body, { ok: true, id: first.body.id, title: "Once", existing: true, cursor: first.body.cursor });
+		assert.deepEqual(second.body, {
+			ok: true,
+			id: first.body.id,
+			title: "Once",
+			existing: true,
+			items: [{ type: "message", id: first.body.cursor, text: "hello" }],
+			cursor: first.body.cursor,
+		});
 		assert.equal(chatStore.listChats().length, before);
 		assert.equal(chatStore.getChat(first.body.id)!.messages.length, 1);
 	});
@@ -96,7 +103,7 @@ describe("create", () => {
 		const key = newKey();
 		const first = await create({ title: "Bare", key });
 		const second = await create({ title: "Bare", key, prompt: "now a prompt" });
-		assert.deepEqual(second.body, { ok: true, id: first.body.id, title: "Bare", existing: true, cursor: first.body.id });
+		assert.deepEqual(second.body, { ok: true, id: first.body.id, title: "Bare", existing: true, items: [], cursor: first.body.id });
 		assert.equal(chatStore.getChat(first.body.id)!.messages.length, 0);
 	});
 
@@ -115,7 +122,7 @@ describe("create", () => {
 		assert.equal(said.status, 200);
 		assert.equal(said.body.ok, true);
 		const retry = await turn(body.id, { kind: "say", after: body.cursor, text: "Welcome." });
-		assert.deepEqual(retry, { status: 200, body: { ok: true, repeat: true, cursor: said.body.cursor } });
+		assert.deepEqual(retry, { status: 200, body: { ok: true, repeat: true, items: [], cursor: said.body.cursor } });
 		assert.equal(chatStore.getChat(body.id)!.messages.length, 1);
 	});
 
@@ -167,6 +174,7 @@ describe("say", () => {
 		assert.equal(rerun.status, 200);
 		assert.equal(rerun.body.repeat, true);
 		assert.notEqual(rerun.body.cursor, first.body.cursor, "the cursor is the newest message, the learner's");
+		assert.deepEqual(rerun.body.items.map((i: Json) => i.text), ["ok, and then?"], "a cursor past unread input comes with it");
 		assert.equal(chatStore.getChat(id)!.messages.length, count);
 	});
 
@@ -223,16 +231,40 @@ describe("say", () => {
 describe("save failures", () => {
 	it("a turn whose save fails is a JSON 500 with the cursor, and nothing changes", async () => {
 		const lesson = await create({ title: "Locked", key: newKey(), prompt: "Teach me" });
-		const file = path.join(TMP_DATA, "chats", `${lesson.body.id}.json`);
-		fs.chmodSync(file, 0o444);
+		const save = chatStore.saveMessages;
+		chatStore.saveMessages = () => {
+			throw new Error("disk full");
+		};
 		try {
 			const { status, body } = await turn(lesson.body.id, { kind: "say", after: lesson.body.cursor, text: "Lost?" });
 			assert.equal(status, 500);
 			assert.deepEqual(body, { ok: false, code: "save_failed", cursor: lesson.body.cursor });
 		} finally {
-			fs.chmodSync(file, 0o644);
+			chatStore.saveMessages = save;
 		}
 		assert.equal(chatStore.getChat(lesson.body.id)!.messages.length, 1);
+	});
+});
+
+describe("request guard", () => {
+	it("refuses a browser Origin or a non-loopback Host on every external route, saving nothing", async () => {
+		const lesson = await create({ title: "Guarded", key: newKey(), prompt: "Teach me" });
+		const id = lesson.body.id;
+		const before = chatStore.listChats().length;
+		for (const [headers, code] of [[{ Origin: "https://evil.example" }, "forbidden_origin"], [{ Host: "evil.example:3000" }, "forbidden_host"]] as const) {
+			const sayBody = JSON.stringify({ kind: "say", after: lesson.body.cursor, text: "injected" });
+			const replies = [
+				await createRoute.POST(new Request("http://test/api/external/chats", { method: "POST", headers, body: JSON.stringify({ title: "x", key: newKey() }) })),
+				await turnRoute.POST(new Request(`http://test/api/external/chats/${id}/turn`, { method: "POST", headers, body: sayBody }), ctx(id)),
+				await showRoute.GET(new Request(`http://test/api/external/chats/${id}`, { headers }), ctx(id)),
+				await answerRoute.GET(new Request(`http://test/api/external/chats/${id}/answer`, { headers }), ctx(id)),
+			];
+			for (const res of replies) assert.deepEqual(await json(res), { status: 403, body: { ok: false, code } });
+		}
+		assert.equal(chatStore.listChats().length, before);
+		assert.equal(chatStore.getChat(id)!.messages.length, 1);
+		const local = await json(await showRoute.GET(new Request(`http://127.0.0.1:3000/api/external/chats/${id}`, { headers: { Host: "127.0.0.1:3000" } }), ctx(id)));
+		assert.equal(local.status, 200);
 	});
 });
 
@@ -273,6 +305,12 @@ describe("answer", () => {
 });
 
 describe("show", () => {
+	it("reads an empty lesson", async () => {
+		const lesson = await create({ title: "Blank", key: newKey() });
+		const { body } = await show(lesson.body.id);
+		assert.deepEqual(body, { ok: true, id: lesson.body.id, title: "Blank", phase: "probe", plan: null, openQuestion: null, messages: [], cursor: lesson.body.id });
+	});
+
 	it("returns phase, a null plan, no open question, compact messages and the cursor", async () => {
 		const lesson = await create({ title: "Show", key: newKey(), prompt: "Teach me" });
 		const id = lesson.body.id;

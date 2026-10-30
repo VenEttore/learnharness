@@ -149,6 +149,7 @@ describe("lh refusals and exit codes", () => {
 			["dance"],
 			["show"],
 			["lesson", "new", "--key", "k", "--tiitle", "Bayes"],
+			["show", "chat_a", "chat_b"],
 		]) {
 			seen.length = 0;
 			const { code, lines, json } = await lh(args);
