@@ -6,4 +6,4 @@ host: linuxdev, repo ~/code/learnharness, Node 22 in ~/.local/bin. No GitHub cre
 live:
 touches-locked:
 waiting on Matt: GitHub access on linuxdev (optional; needed before "ship it" can push from here)
-next: run the check baseline (npm ci first), commit check-baseline.txt, launch 01 and 02
+next: baseline explorer node:delegated-task:command%3Amcp%3Ac44b857c-1bf3-4cae-977d-9bf3323ef477%3Adelegate-task%3Aexternal-teacher-baseline-1 running on the integration tip (npm ci, then the repo check). When it finishes, commit check-baseline.txt, then claim and launch 01 and 02.
