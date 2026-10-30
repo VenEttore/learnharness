@@ -159,6 +159,20 @@ describe("lh refusals and exit codes", () => {
 		}
 	});
 
+	it("exits 1 when stdin stays open past its deadline, without a request", async () => {
+		seen.length = 0;
+		const { code, json } = await new Promise<{ code: number; json: any }>((resolve) => {
+			// stdin is left open: the writer never closes the pipe.
+			execFile(process.execPath, [LH, "say", "chat_a", "--after", "msg_1"], { env: { ...process.env, LH_URL: url, LH_STDIN_TIMEOUT_MS: "300" } }, (err, stdout) =>
+				resolve({ code: err ? ((err as { code?: number }).code ?? -1) : 0, json: JSON.parse(stdout.split("\n")[0]!) }),
+			);
+		});
+		assert.equal(code, 1);
+		assert.equal(json.code, "usage");
+		assert.match(json.error, /stdin/);
+		assert.equal(seen.length, 0);
+	});
+
 	it("exits 3 naming LH_URL and the guide when LearnHarness is unreachable", async () => {
 		const closed = http.createServer();
 		await new Promise<void>((resolve) => closed.listen(0, "127.0.0.1", resolve));

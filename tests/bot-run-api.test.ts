@@ -108,12 +108,26 @@ describe("create", () => {
 		}
 	});
 
-	it("gives an empty lesson its own id as the cursor, and a say accepts it", async () => {
+	it("gives an empty lesson its own id as the cursor; a say accepts it, and its retry is a repeat", async () => {
 		const { body } = await create({ title: "Empty", key: newKey() });
 		assert.equal(body.cursor, body.id);
 		const said = await turn(body.id, { kind: "say", after: body.cursor, text: "Welcome." });
 		assert.equal(said.status, 200);
 		assert.equal(said.body.ok, true);
+		const retry = await turn(body.id, { kind: "say", after: body.cursor, text: "Welcome." });
+		assert.deepEqual(retry, { status: 200, body: { ok: true, repeat: true, cursor: said.body.cursor } });
+		assert.equal(chatStore.getChat(body.id)!.messages.length, 1);
+	});
+
+	it("refuses a title or prompt that is not a string, saving nothing", async () => {
+		const before = chatStore.listChats().length;
+		for (const body of [{ title: { x: 1 }, key: newKey() }, { title: "T", key: newKey(), prompt: 42 }]) {
+			const res = await create(body);
+			assert.equal(res.status, 422);
+			assert.equal(res.body.code, "invalid");
+			assert.ok(res.body.problems.length > 0);
+		}
+		assert.equal(chatStore.listChats().length, before);
 	});
 });
 
@@ -171,7 +185,7 @@ describe("say", () => {
 
 	it("refuses a missing or unknown after with the cursor", async () => {
 		const lesson = await create({ title: "After", key: newKey(), prompt: "Teach me" });
-		for (const after of [undefined, "msg_nope", 7, lesson.body.id]) {
+		for (const after of [undefined, "msg_nope", 7]) {
 			const { status, body } = await turn(lesson.body.id, { kind: "say", after, text: "Hi." });
 			assert.equal(status, 400);
 			assert.deepEqual(body, { ok: false, code: "bad_after", cursor: lesson.body.cursor });

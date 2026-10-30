@@ -35,6 +35,9 @@ export type ChatDriver = "external";
 export interface ChatDriverInit {
 	driver: ChatDriver;
 	externalKey?: string;
+	/** The lesson's first messages, written in the same save as the
+	 *  record, so no crash can leave the lesson without them. */
+	messages?: LhMessage[];
 }
 
 export interface ChatRecord {

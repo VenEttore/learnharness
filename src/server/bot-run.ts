@@ -141,20 +141,23 @@ export function createBotLesson(body: unknown): Response {
 	const b = (typeof body === "object" && body !== null ? body : {}) as { title?: unknown; key?: unknown; prompt?: unknown };
 	if (typeof b.key !== "string" || b.key.trim() === "") return fail(400, "key_required");
 	const key = b.key;
+	const problems = (["title", "prompt"] as const).flatMap((f) => (b[f] !== undefined && b[f] !== null && typeof b[f] !== "string" ? [`${f} must be a string`] : []));
+	if (problems.length > 0) return fail(422, "invalid", { problems });
 	const found = stores.chatStore.listChats().find((c) => c.driver !== undefined && c.externalKey === key);
 	const existing = found ? stores.chatStore.getChat(found.id) : null;
 	if (existing) return Response.json({ ok: true, id: existing.id, title: existing.title, existing: true, cursor: cursorOf(existing) });
 	const title = typeof b.title === "string" && b.title ? b.title : "Untitled session";
-	const chat = stores.chatStore.createChat(titleFromPrompt(title), undefined, { driver: "external", externalKey: key });
-	// Two saves, so a crash between them leaves the lesson without its
-	// prompt, and a rerun then saves nothing (crash-safe saves are out of
-	// the spec's scope); `show` reveals it.
-	const prompt = typeof b.prompt === "string" && b.prompt.trim() !== "" ? [newUserMessage(b.prompt)] : [];
-	if (prompt.length > 0) {
-		const failed = commitOrFail(chat, prompt);
-		if (failed) return failed;
+	// The prompt rides the create's one save: no crash can leave a keyed
+	// lesson without it, which a rerun (saving nothing) could never repair.
+	const messages = typeof b.prompt === "string" && b.prompt.trim() !== "" ? [newUserMessage(b.prompt)] : [];
+	let chat: ChatRecord;
+	try {
+		chat = stores.chatStore.createChat(titleFromPrompt(title), undefined, { driver: "external", externalKey: key, messages });
+	} catch (err) {
+		console.error("[bot-run] lesson create failed:", err);
+		return fail(500, "save_failed");
 	}
-	return Response.json({ ok: true, id: chat.id, title: chat.title, existing: false, cursor: prompt[0]?.id ?? chat.id });
+	return Response.json({ ok: true, id: chat.id, title: chat.title, existing: false, cursor: cursorOf(chat) });
 }
 
 /** commitBotRun for the external routes: a failed save is a JSON 500 the
@@ -218,11 +221,12 @@ export function botAnswer(id: string): Response {
 	});
 }
 
-type Checked = { ok: true; built: LhMessage[] } | { ok: false; problems: string[] };
+/** A turn's records: the bot's assistant message first (the repeat check
+ *  compares it), then any results and markers. */
+type Built = [LhMessage & AssistantMessage, ...LhMessage[]];
+type Checked = { ok: true; built: Built } | { ok: false; problems: string[] };
 
-/** One row per turn kind, typed against its own schema's payload. `build`
- *  returns the records to append, the bot's assistant message first; the
- *  repeat check compares that message. */
+/** One row per turn kind, typed against its own schema's payload. */
 interface TurnKindRow<S extends TSchema> {
 	/** The LearnHarness tool this kind writes a call to; null for plain text. */
 	tool: string | null;
@@ -231,7 +235,7 @@ interface TurnKindRow<S extends TSchema> {
 	/** Problems the schema cannot express; empty means valid. */
 	refine: ((payload: Static<S>) => string[]) | null;
 	needsPlanNode: boolean;
-	build: (payload: Static<S>) => LhMessage[];
+	build: (payload: Static<S>) => Built;
 }
 
 /** A table row with its payload type closed over: `check` runs the
@@ -293,11 +297,11 @@ export function botTurn(id: string, body: unknown): Response {
 	const isObject = typeof body === "object" && body !== null && !Array.isArray(body);
 	const { kind, after, ...payload } = (isObject ? body : {}) as Record<string, unknown>;
 
-	// 2. `after` names a message in the lesson; the lesson id is the
-	// cursor of an empty lesson only
+	// 2. `after` names a message in the lesson, or is the lesson id (an
+	// empty lesson's cursor: the start). The start stays valid after the
+	// first turn so a retried first turn reaches the repeat check.
 	const afterIndex = record.messages.findIndex((m) => m.id === after);
-	const atStart = after === record.id && record.messages.length === 0;
-	if (typeof after !== "string" || (afterIndex === -1 && !atStart)) return fail(400, "bad_after", { cursor });
+	if (typeof after !== "string" || (afterIndex === -1 && after !== record.id)) return fail(400, "bad_after", { cursor });
 	const since = record.messages.slice(afterIndex + 1);
 
 	const row = typeof kind === "string" && Object.hasOwn(TURN_KINDS, kind) ? TURN_KINDS[kind] : undefined;
@@ -306,9 +310,8 @@ export function botTurn(id: string, body: unknown): Response {
 		: { ok: false, problems: [`unknown kind ${JSON.stringify(kind)}; kinds: ${Object.keys(TURN_KINDS).join(", ")}`] };
 
 	// 3. repeat: the same turn already follows `after`
-	const own = checked.ok ? checked.built[0] : undefined;
-	if (own?.role === "assistant") {
-		const signature = turnSignature(own);
+	if (checked.ok) {
+		const signature = turnSignature(checked.built[0]);
 		if (since.some((m) => isBotMessage(m) && turnSignature(m) === signature)) {
 			return Response.json({ ok: true, repeat: true, cursor });
 		}
@@ -323,5 +326,5 @@ export function botTurn(id: string, body: unknown): Response {
 
 	const failed = commitOrFail(record, checked.built);
 	if (failed) return failed;
-	return Response.json({ ok: true, cursor: checked.built.at(-1)!.id });
+	return Response.json({ ok: true, cursor: checked.built[checked.built.length - 1]!.id });
 }

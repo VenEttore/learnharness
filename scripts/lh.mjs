@@ -12,7 +12,8 @@
  * Exit codes: 0 ok; 1 refused or bad input; 3 LearnHarness unreachable.
  * (2 is reserved for `answer --wait` timing out.) The base URL is LH_URL,
  * default http://127.0.0.1:3000: not localhost, which can resolve to the
- * IPv6 address while LearnHarness listens on 127.0.0.1 only.
+ * IPv6 address while LearnHarness listens on 127.0.0.1 only. Stdin must
+ * close within LH_STDIN_TIMEOUT_MS (default 30000).
  */
 
 import { readFileSync } from "node:fs";
@@ -21,6 +22,7 @@ import { isatty } from "node:tty";
 const DEFAULT_URL = "http://127.0.0.1:3000";
 const GUIDE = "docs/external-teacher.md";
 const REQUEST_TIMEOUT_MS = 30_000;
+const STDIN_TIMEOUT_MS = Number(process.env.LH_STDIN_TIMEOUT_MS) || 30_000;
 
 /** Bad input on the command line: exit 1 with a usage refusal. */
 class UsageError extends Error {}
@@ -59,17 +61,40 @@ function requireAfter(flags) {
 	return flags.after;
 }
 
+/** Stdin as a stream, under a deadline: a pipe nobody closes must not
+ *  hang the bot. (A sync read of fd 0 can neither time out nor survive a
+ *  slow writer: once process.stdin exists, fd 0 is non-blocking and the
+ *  read fails with EAGAIN.) */
+function readStdin() {
+	return new Promise((resolve, reject) => {
+		const chunks = [];
+		const timer = setTimeout(() => {
+			process.stdin.destroy();
+			reject(new UsageError(`stdin was not closed within ${STDIN_TIMEOUT_MS / 1000} s; pass the text with --file <path>`));
+		}, STDIN_TIMEOUT_MS);
+		process.stdin.on("data", (chunk) => chunks.push(chunk));
+		process.stdin.on("end", () => {
+			clearTimeout(timer);
+			resolve(Buffer.concat(chunks).toString("utf-8"));
+		});
+		process.stdin.on("error", (err) => {
+			clearTimeout(timer);
+			reject(new UsageError(`could not read stdin: ${err.message}`));
+		});
+	});
+}
+
 /** Long input: --file, else stdin (never a terminal, which would hang). */
-function readInput(flags) {
+async function readInput(flags) {
 	let text;
-	try {
-		if (flags.file) text = readFileSync(flags.file, "utf-8");
-		// isatty(0), not process.stdin: touching process.stdin makes fd 0
-		// non-blocking, and the read below then fails with EAGAIN on a pipe
-		// whose writer is slower than us.
-		else if (!isatty(0)) text = readFileSync(0, "utf-8");
-	} catch (err) {
-		throw new UsageError(`could not read the text: ${err.message}`);
+	if (flags.file) {
+		try {
+			text = readFileSync(flags.file, "utf-8");
+		} catch (err) {
+			throw new UsageError(`could not read the text: ${err.message}`);
+		}
+	} else if (!isatty(0)) {
+		text = await readStdin();
 	}
 	if (!text) throw new UsageError("pass the text with --file <path> or on stdin");
 	return text;
@@ -80,7 +105,7 @@ function readInput(flags) {
 const FLAGS = { lesson: ["title", "key", "prompt"], say: ["after", "file"], answer: [], show: [] };
 
 /** The HTTP request a command line makes: `{ method, path, body? }`. */
-function requestFor(argv) {
+async function requestFor(argv) {
 	const { positionals, flags } = parseArgs(argv);
 	const [command, ...rest] = positionals;
 	const allowed = Object.hasOwn(FLAGS, command ?? "") ? FLAGS[command] : null;
@@ -97,7 +122,7 @@ function requestFor(argv) {
 		case "say": {
 			const path = `${lessonPath(rest[0])}/turn`;
 			const after = requireAfter(flags);
-			return { method: "POST", path, body: { kind: "say", after, text: readInput(flags) } };
+			return { method: "POST", path, body: { kind: "say", after, text: await readInput(flags) } };
 		}
 		case "answer":
 			return { method: "GET", path: `${lessonPath(rest[0])}/answer` };
@@ -115,7 +140,7 @@ function print(value) {
 async function main() {
 	let request;
 	try {
-		request = requestFor(process.argv.slice(2));
+		request = await requestFor(process.argv.slice(2));
 	} catch (err) {
 		if (!(err instanceof UsageError)) throw err;
 		print({ ok: false, code: "usage", error: err.message });
