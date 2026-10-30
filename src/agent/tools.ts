@@ -350,8 +350,9 @@ export function createProberTools(
 
 // ─── the teacher's question tools (quiz carries the position field) ──────────
 
-/** The nodeId-against-live-tree check the teacher's quiz chains after the
- *  shared authoring contract (src/core/teaching-tool-results.ts). */
+/** The nodeId-against-live-tree check the teacher's quiz and explain chain
+ *  after the shared authoring contract: planNodeProblem on the record's
+ *  current tree (src/core/teaching-tool-results.ts). */
 function nodeIdProblem(ctx: Pick<PlanToolContext, "chatId" | "chatStore">, nodeId: string): string | null {
 	return planNodeProblem(ctx.chatStore.getChat(ctx.chatId)?.tree, nodeId);
 }

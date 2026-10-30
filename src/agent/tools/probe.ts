@@ -86,7 +86,7 @@ export function probeDoneTool(ctx: ProbeDoneContext): Record<string, AgentTool<a
 					// constructs the teacher off the transcript seam) — record the
 					// assessment anyway; the wake is an optimization, not a gate.
 				}
-				// The fixed ack + {ok:true} — shared with bot-run lessons. The
+				// The fixed ack + {ok:true} (src/core/teaching-tool-results.ts). The
 				// probe-done card reads the call's input, which it always preferred.
 				return probeDoneSuccessResult();
 			}),

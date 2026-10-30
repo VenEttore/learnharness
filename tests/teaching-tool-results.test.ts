@@ -9,6 +9,7 @@ import assert from "node:assert/strict";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { after, describe, it } from "node:test";
+import type { Static } from "typebox";
 import { Value } from "typebox/value";
 import {
 	PLAN_NODE_IDS_REMINDER,
@@ -18,6 +19,7 @@ import {
 	probeDoneSuccessResult,
 } from "../src/core/teaching-tool-results.ts";
 import type { PlanTree } from "../src/core/contracts.ts";
+import { explainInputObject, quizInputObject } from "../src/core/question-core.ts";
 import { planTools } from "../src/agent/tools/plan.ts";
 import { probeDoneTool } from "../src/agent/tools/probe.ts";
 import { teachExplainToolFor, teachQuizToolFor } from "../src/agent/tools.ts";
@@ -137,7 +139,10 @@ describe("planNodeProblem", () => {
 	it("is the problem the teaching quiz and explain tools report", async () => {
 		const chatId = newChat("Shared: plan-node check");
 		chatStore.saveTree(chatId, AB_TREE);
-		const quiz = await teachQuizToolFor({ chatId, chatStore }).execute("t", {
+		// Inputs the loop would let through (schema-valid), so the refusal
+		// comes from the plan-node check alone.
+		const quizTool = teachQuizToolFor({ chatId, chatStore });
+		const quizInput: Static<typeof quizInputObject> = {
 			type: "check",
 			nodeId: "c",
 			question: "Which is larger?",
@@ -147,13 +152,18 @@ describe("planNodeProblem", () => {
 			],
 			correctAnswer: "2",
 			explanation: "2 is larger than 1.",
-		} as never);
-		const explain = await teachExplainToolFor({ chatId, chatStore }).execute("t", {
+		};
+		const explainTool = teachExplainToolFor({ chatId, chatStore });
+		const explainInput: Static<typeof explainInputObject> = {
 			type: "check",
 			nodeId: "c",
 			question: "Explain why 2 is larger than 1.",
 			correctAnswer: "2 counts one more than 1.",
-		} as never);
+		};
+		assert.equal(Value.Check(quizTool.parameters, quizInput), true);
+		assert.equal(Value.Check(explainTool.parameters, explainInput), true);
+		const quiz = await quizTool.execute("t", quizInput);
+		const explain = await explainTool.execute("t", explainInput);
 		const expected = planNodeProblem(AB_TREE, "c");
 		assert.ok(expected);
 		for (const res of [quiz, explain]) {

@@ -1,6 +1,6 @@
 import { Type } from "typebox";
-import type { PlanTree } from "./contracts.ts";
-import { PROBE_DONE_ACK_TEXT } from "./contracts/probe.ts";
+import type { PlanToolResult, PlanTree } from "./contracts.ts";
+import { PROBE_DONE_ACK_TEXT, type ProbeDoneResult } from "./contracts/probe.ts";
 
 /**
  * teaching-tool-results — the probe_done and plan_init success results and
@@ -10,8 +10,12 @@ import { PROBE_DONE_ACK_TEXT } from "./contracts/probe.ts";
  * bot turn and a model turn store identical text and details.
  */
 
-/** The success value a server-side tool returns: `text` is what the agent
- *  sees, `details` is the record-facing value (serverExecute maps both). */
+/** The success value a server-side tool returns. serverExecute's
+ *  toToolResult (src/agent/tool-execute.ts) stores it as the tool result
+ *  `content: [{ type: "text", text }]` (what the agent sees) and
+ *  `details` (what the record and UI read) — the text-only form of its
+ *  ImageFileResult branch. A writer that builds the tool-result message
+ *  itself must map it the same way to store an identical record. */
 export interface TeachingToolSuccess<D> {
 	text: string;
 	details: D;
@@ -39,7 +43,7 @@ export const planInitInputSchema = Type.Object({
 /** probe_done's success result. Context diet (owner, 2026-10-09): the
  *  assessment lives ONCE — as the call's arguments — so the agent sees the
  *  fixed ack, never an echo; details = {ok:true} for the record/UI. */
-export function probeDoneSuccessResult(): TeachingToolSuccess<{ ok: true }> {
+export function probeDoneSuccessResult(): TeachingToolSuccess<ProbeDoneResult & { ok: true }> {
 	return { text: PROBE_DONE_ACK_TEXT, details: { ok: true } };
 }
 
@@ -48,7 +52,7 @@ export function probeDoneSuccessResult(): TeachingToolSuccess<{ ok: true }> {
  *  for every quiz/explain call); details = the full tree for the record/UI —
  *  the plan popup's latestTree seam, agent-invisible (the serializer sends
  *  content only). */
-export function planInitSuccessResult(tree: PlanTree): TeachingToolSuccess<{ ok: true; tree: PlanTree }> {
+export function planInitSuccessResult(tree: PlanTree): TeachingToolSuccess<PlanToolResult & { ok: true; tree: PlanTree }> {
 	return {
 		text: JSON.stringify({
 			ok: true,

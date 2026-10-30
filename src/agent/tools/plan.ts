@@ -69,8 +69,8 @@ export function planTools(ctx: PlanToolContext): Record<string, AgentTool<any>> 
 					// edge endpoints, self-loops, cycles → PlanTreeError).
 					const next = createTree(parsed.plan.nodes, parsed.plan.edges);
 					chatStore.saveTree(chatId, next);
-					// The validated nodeIds + reminder, the tree in details — shared
-					// with bot-run lessons (src/core/teaching-tool-results.ts).
+					// The validated nodeIds + reminder, the tree in details
+					// (src/core/teaching-tool-results.ts).
 					return planInitSuccessResult(next);
 				} catch (err) {
 					if (err instanceof PlanTreeError) return { ok: false, error: err.message };
