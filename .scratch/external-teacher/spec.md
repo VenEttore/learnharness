@@ -12,10 +12,11 @@ A Bot Teacher (a Grok Bot) runs a whole lesson, probe then plan then teach, thro
 
 The owner answers on the normal page by taking over the bot's browser with Cursor's "Take over", then clicks Cursor's "I'm done". The bot reads the learner input with `lh answer`. A short guide tells the bot how to start LearnHarness and how to run a lesson, and points it at LearnHarness's own teaching prompts for method.
 
-The work comes in three phases:
+The work comes in four phases:
 - **Phase A, Talk.** A bot can create a lesson, say things, and read what the learner types.
 - **Phase B, Probe.** A bot can ask probe questions and read answers and skips, and no model path remains in a bot-run lesson.
-- **Phase C, Plan and teach.** A bot can finish the probe, post a plan, and teach with tagged questions. A Grok Bot runs one full lesson with the owner.
+- **Phase C, Plan and teach.** A bot can finish the probe, post a plan, and teach with tagged questions. A scripted no-key lesson runs end to end.
+- **Phase D, Bench.** A Grok Bot runs one full lesson with the owner on the bot computer.
 
 ## User Stories
 
@@ -77,7 +78,7 @@ The work comes in three phases:
 - **Bot-run flag.** The lesson record gains an optional `driver: "external"` and an optional `externalKey`. Lesson creation in the chat store takes an optional third argument to set them; existing callers stay untouched. Lessons without the flag behave as today.
 - **Bot-run module.** A new server module holds all bot-run logic. Routes are thin wrappers that import it through the server barrel, following the repo's import rule.
 - **Page input in a bot-run lesson.** The chat handler gets one early return, right after it fetches the record and parses the input, into the bot-run module. That path:
-  - accepts only the page's input types;
+  - accepts only the page's input types (any other input, such as an internal wake input, is refused with 400 and code `bot_run_lesson`);
   - refuses `continue` and `retry` with 422 and code `bot_run_lesson` (not 409, which the page treats as "turn running" and resends);
   - otherwise appends the input with the existing input-append logic, turning its errors into 400;
   - commits the record and returns the same settled-turn response the parallel-question path returns.
@@ -107,7 +108,7 @@ The work comes in three phases:
 
   Question kinds take optional lead-in text in the same assistant message.
 - **Validation.** Validation is the real tool boundary: the tool's TypeBox schema checked as pi checks it, then the tool's refinement, then the plan-node check. `plan` runs the Mermaid parser and tree builder. Problem text goes back to the bot.
-- **Shared result builders.** The `probe_done` and `plan_init` tool results move out of the tool files into shared helpers that both the tools and the bot-run module call. The plan input schema and the plan reminder text get exported.
+- **Shared result builders.** The `probe_done` and `plan_init` tool results move out of the tool files into shared helpers that both the tools and the bot-run module call. The plan-node check the teaching tools run moves into the same shared place. The plan input schema and the plan reminder text get exported.
 - **Record shapes.** Tool results are real tool-result messages joined to their call by id, with the same text and details the tools write. Markers come after the result. Bot assistant messages come from one constructor: block-array content, a record id, a normal stop reason, and placeholder provider, model and usage stamps, following the existing synthetic-stamps precedent.
 - **Routes.**
   - **Create** takes `{ title, key, prompt? }` and returns `{ ok, id, title, existing, cursor }`. `key` is required. A lesson with the same key is returned instead of a new one; the lookup and the create run in one synchronous block. The title is shortened the same way the normal route shortens it. `prompt` becomes the first user message.
@@ -132,7 +133,7 @@ The work comes in three phases:
 - **`lh`.** One Node 22 script with no dependencies.
   - Base URL comes from `LH_URL`, default `http://127.0.0.1:3000`. Not `localhost`, which can resolve to the IPv6 address while the server listens on 127.0.0.1 only.
   - It prints one JSON line per command, with the cursor when there is one.
-  - Exit codes: 0 ok; 1 refused or bad input; 2 `--wait` timed out; 3 LearnHarness unreachable, naming `LH_URL` and pointing at the guide.
+  - Exit codes: 0 ok; 1 refused or bad input; 2 `--wait` timed out; 3 LearnHarness unreachable, naming `LH_URL` and printing the guide's path, `docs/external-teacher.md`.
   - Commands, lesson id first:
     - `lesson new --title --key [--prompt]`
     - `say` and `plan`, which read text
@@ -141,7 +142,7 @@ The work comes in three phases:
     - `show`
 
     Turn commands require `--after <cursor>`. Long input comes from `--file` or stdin.
-- **Teacher guide.** A short Markdown guide for the Bot Teacher. It covers:
+- **Teacher guide.** A short Markdown guide for the Bot Teacher, at `docs/external-teacher.md`. It covers:
   - starting LearnHarness: Node 22, listening on 127.0.0.1, browser mode (no desktop secret variables), the data directory under `/workspace`, no keys, and how to check it is up;
   - the commands per phase, with JSON examples and how to pass the cursor along;
   - that the first teaching question goes out while the phase still reads "plan";
@@ -155,7 +156,7 @@ The work comes in three phases:
   - the chat handler (one early return) and the server barrel;
   - the lesson page, the chat view, the session hook and the session model;
   - the dismiss route and the extraction pipeline;
-  - the `probe_done` and `plan_init` tools.
+  - the `probe_done` and `plan_init` tools, and the teaching tools' plan-node check.
 
   Everything else is new files.
 - **Repo check.** `npm test` uses POSIX environment syntax, which fails under npm's default Windows shell. A fork-only `docs/agents/check.md` gives the check as typecheck, lint, and the test suite run with `NODE_ENV=test` from bash.
@@ -180,7 +181,7 @@ The work comes in three phases:
   - Creating a lesson twice with the same key returns the same lesson.
   - Ordinary lessons: the existing suite stays green.
 - **Prior art.** The chat-flow tests (driving the chat handler with a scripted agent), the session-core tests, the `probe_done` tests, the plan-block tests, the question-tool tests, the phase tests, the extraction tests, and the chat-kind tests.
-- **Manual done check, not in the suite.** On a dev server with no keys, an `lh` lesson runs from probe through teach. On the page you type, answer, skip and reload, and see no error banner, no `continue` request, and a sidebar that updates. Phase C ends with a Grok Bot running one real lesson with the owner on the bot computer.
+- **Manual done check, not in the suite.** On a dev server with no keys, an `lh` lesson runs from probe through teach. On the page you type, answer, skip and reload, and see no error banner, no `continue` request, and a sidebar that updates. Phase D is a Grok Bot running one real lesson with the owner on the bot computer.
 
 ## Out of Scope
 
