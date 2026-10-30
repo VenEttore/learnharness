@@ -38,13 +38,20 @@ before(async () => {
 });
 after(() => server.close());
 
-function lh(args: string[], opts: { stdin?: string; env?: Record<string, string> } = {}): Promise<{ code: number; lines: string[]; json: any }> {
+/** Run lh. `stdin` is written after `stdinDelayMs`, the way a slow writer
+ *  on the other end of a pipe would; `script` runs lh from another path. */
+function lh(
+	args: string[],
+	opts: { stdin?: string; stdinDelayMs?: number; env?: Record<string, string>; script?: string } = {},
+): Promise<{ code: number; lines: string[]; json: any }> {
 	return new Promise((resolve) => {
-		const child = execFile(process.execPath, [LH, ...args], { env: { ...process.env, LH_URL: url, ...opts.env } }, (err, stdout) => {
+		const child = execFile(process.execPath, [opts.script ?? LH, ...args], { env: { ...process.env, LH_URL: url, ...opts.env } }, (err, stdout) => {
 			const lines = stdout.split("\n").filter(Boolean);
 			resolve({ code: err ? ((err as { code?: number }).code ?? -1) : 0, lines, json: lines[0] ? JSON.parse(lines[0]) : undefined });
 		});
-		child.stdin!.end(opts.stdin ?? "");
+		const write = () => child.stdin!.end(opts.stdin ?? "");
+		if (opts.stdinDelayMs) setTimeout(write, opts.stdinDelayMs);
+		else write();
 	});
 }
 
@@ -82,6 +89,33 @@ describe("lh maps command lines to requests", () => {
 		}
 	});
 
+	it("say waits for a slow stdin writer", async () => {
+		assert.deepEqual((await lastRequest(["say", "chat_a", "--after", "msg_9"], { stdin: "Late text.", stdinDelayMs: 300 })).body, {
+			kind: "say",
+			after: "msg_9",
+			text: "Late text.",
+		});
+	});
+
+	it("takes --name=value, so a value may start with --", async () => {
+		assert.deepEqual((await lastRequest(["lesson", "new", "--title=--Note: sets", "--key=k2"])).body, { title: "--Note: sets", key: "k2" });
+	});
+
+	it("runs through a symlink", async () => {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "lh-link-"));
+		const link = path.join(dir, "lh");
+		fs.symlinkSync(LH, link);
+		try {
+			seen.length = 0;
+			const { code, json } = await lh(["show", "chat_a"], { script: link });
+			assert.equal(code, 0);
+			assert.equal(json.ok, true);
+			assert.equal(seen.length, 1);
+		} finally {
+			fs.rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
 	it("answer and show read the lesson", async () => {
 		assert.deepEqual(await lastRequest(["answer", "chat_a"]), { method: "GET", url: "/api/external/chats/chat_a/answer", body: undefined });
 		assert.deepEqual(await lastRequest(["show", "chat_a"]), { method: "GET", url: "/api/external/chats/chat_a", body: undefined });
@@ -106,8 +140,15 @@ describe("lh refusals and exit codes", () => {
 		reply = { status: 200, body: { ok: true, cursor: "msg_1" } };
 	});
 
-	it("exits 1 without a request on bad input: no --after, no text, unknown command, no lesson id", async () => {
-		for (const args of [["say", "chat_a"], ["say", "chat_a", "--after", "msg_1", "--file", "/nonexistent/lh.txt"], ["dance"], ["show"]]) {
+	it("exits 1 with one JSON line and no request on bad input", async () => {
+		for (const args of [
+			["say", "chat_a"],
+			["say", "chat_a", "--after", "msg_1"],
+			["say", "chat_a", "--after", "msg_1", "--file", "/nonexistent/lh.txt"],
+			["say", "chat_a", "--after", "msg_1", "--file", os.tmpdir()],
+			["dance"],
+			["show"],
+		]) {
 			seen.length = 0;
 			const { code, lines, json } = await lh(args);
 			assert.equal(code, 1, args.join(" "));

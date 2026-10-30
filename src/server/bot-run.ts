@@ -141,19 +141,31 @@ export function createBotLesson(body: unknown): Response {
 	const b = (typeof body === "object" && body !== null ? body : {}) as { title?: unknown; key?: unknown; prompt?: unknown };
 	if (typeof b.key !== "string" || b.key.trim() === "") return fail(400, "key_required");
 	const key = b.key;
-	const existing = stores.chatStore.listChats().find((c) => c.driver !== undefined && c.externalKey === key);
-	if (existing) {
-		const record = stores.chatStore.getChat(existing.id);
-		if (record) return Response.json({ ok: true, id: record.id, title: record.title, existing: true, cursor: cursorOf(record) });
+	const prompt = typeof b.prompt === "string" && b.prompt.trim() !== "" ? [newUserMessage(b.prompt)] : [];
+	const found = stores.chatStore.listChats().find((c) => c.driver !== undefined && c.externalKey === key);
+	const existing = found ? stores.chatStore.getChat(found.id) : null;
+	const record =
+		existing ?? stores.chatStore.createChat(titleFromPrompt(typeof b.title === "string" && b.title ? b.title : "Untitled session"), undefined, { driver: "external", externalKey: key });
+	// A rerun saves nothing, unless the first create's prompt write never
+	// landed: then the rerun finishes it.
+	if (record.messages.length === 0 && prompt.length > 0) {
+		const failed = commitOrFail(record, prompt);
+		if (failed) return failed;
 	}
-	const title = typeof b.title === "string" ? b.title : "";
-	const chat = stores.chatStore.createChat(titleFromPrompt(title || "Untitled session"), undefined, { driver: "external", externalKey: key });
-	let messages: LhMessage[] = [];
-	if (typeof b.prompt === "string" && b.prompt.trim() !== "") {
-		messages = [newUserMessage(b.prompt)];
-		commitBotRun(chat.id, messages);
+	const messages = record.messages.length === 0 ? prompt : record.messages;
+	return Response.json({ ok: true, id: record.id, title: record.title, existing: existing !== null, cursor: cursorOf({ ...record, messages }) });
+}
+
+/** commitBotRun for the external routes: a failed save is a JSON 500 the
+ *  bot can retry, never an HTML error page. Null when the save landed. */
+function commitOrFail(record: ChatRecord, appends: LhMessage[]): Response | null {
+	try {
+		commitBotRun(record.id, [...record.messages, ...appends]);
+		return null;
+	} catch (err) {
+		console.error(`[chat ${record.id}] bot-run persist failed:`, err);
+		return fail(500, "save_failed", { cursor: cursorOf(record) });
 	}
-	return Response.json({ ok: true, id: chat.id, title: chat.title, existing: false, cursor: cursorOf({ ...chat, messages }) });
 }
 
 /** A compact transcript line: enough to resume a lesson, keeping each
@@ -205,54 +217,58 @@ export function botAnswer(id: string): Response {
 	});
 }
 
-/** One row per turn kind. `build` returns the records to append, the
- *  bot's assistant message first; the repeat check compares that message. */
-interface TurnKind {
+type Checked = { ok: true; built: LhMessage[] } | { ok: false; problems: string[] };
+
+/** One row per turn kind, typed against its own schema's payload. `build`
+ *  returns the records to append, the bot's assistant message first; the
+ *  repeat check compares that message. */
+interface TurnKindRow<S extends TSchema> {
 	/** The LearnHarness tool this kind writes a call to; null for plain text. */
 	tool: string | null;
 	phases: readonly Phase3[];
-	schema: TSchema;
+	schema: S;
 	/** Problems the schema cannot express; empty means valid. */
-	refine: ((payload: never) => string[]) | null;
+	refine: ((payload: Static<S>) => string[]) | null;
 	needsPlanNode: boolean;
-	build: (payload: never) => LhMessage[];
+	build: (payload: Static<S>) => LhMessage[];
+}
+
+/** A table row with its payload type closed over: `check` runs the
+ *  validation as the tool boundary does (the schema the way pi checks it,
+ *  convert then check, then the refinement) and builds the records. */
+type TurnKind = Omit<TurnKindRow<TSchema>, "refine" | "build"> & { check: (payload: Record<string, unknown>) => Checked };
+
+function turnKind<S extends TSchema>(name: string, row: TurnKindRow<S>): TurnKind {
+	const check = (payload: Record<string, unknown>): Checked => {
+		let checked: Static<S>;
+		try {
+			checked = validateToolArguments(
+				{ name: row.tool ?? name, description: name, parameters: row.schema },
+				// The body is parsed JSON, so its values are JSON values.
+				{ type: "toolCall", id: "bot_turn", name: row.tool ?? name, arguments: payload as ToolCall["arguments"] },
+			) as Static<S>;
+		} catch (err) {
+			return { ok: false, problems: [err instanceof Error ? err.message : String(err)] };
+		}
+		const problems = row.refine?.(checked) ?? [];
+		return problems.length ? { ok: false, problems } : { ok: true, built: row.build(checked) };
+	};
+	return { tool: row.tool, phases: row.phases, schema: row.schema, needsPlanNode: row.needsPlanNode, check };
 }
 
 const ANY_PHASE = ["probe", "plan", "teach"] as const satisfies readonly Phase3[];
 
-const sayInputSchema = Type.Object({ text: Type.String({ description: "The teaching text, Markdown." }) });
-type SayInput = Static<typeof sayInputSchema>;
-
 /** THE KINDS TABLE. Later tickets add a row per kind. */
-const TURN_KINDS = {
-	say: {
+const TURN_KINDS: Readonly<Record<string, TurnKind>> = {
+	say: turnKind("say", {
 		tool: null,
 		phases: ANY_PHASE,
-		schema: sayInputSchema,
-		refine: (p: SayInput) => (p.text.trim() === "" ? ["text must not be empty"] : []),
+		schema: Type.Object({ text: Type.String({ description: "The teaching text, Markdown." }) }),
+		refine: (p) => (p.text.trim() === "" ? ["text must not be empty"] : []),
 		needsPlanNode: false,
-		build: (p: SayInput) => [newBotAssistantMessage([{ type: "text", text: p.text }])],
-	},
-} satisfies Record<string, TurnKind>;
-
-type TurnKindName = keyof typeof TURN_KINDS;
-
-/** Validation as the tool boundary runs it: the schema the way pi checks
- *  it (convert, then check), then the refinement. */
-function checkPayload(row: TurnKind, kind: string, payload: Record<string, unknown>): { ok: true; payload: unknown } | { ok: false; problems: string[] } {
-	let checked: unknown;
-	try {
-		checked = validateToolArguments(
-			{ name: row.tool ?? kind, description: kind, parameters: row.schema },
-			// The body is parsed JSON, so its values are JSON values.
-			{ type: "toolCall", id: "bot_turn", name: row.tool ?? kind, arguments: payload as ToolCall["arguments"] },
-		);
-	} catch (err) {
-		return { ok: false, problems: [err instanceof Error ? err.message : String(err)] };
-	}
-	const problems = row.refine ? row.refine(checked as never) : [];
-	return problems.length ? { ok: false, problems } : { ok: true, payload: checked };
-}
+		build: (p) => [newBotAssistantMessage([{ type: "text", text: p.text }])],
+	}),
+};
 
 /** Content with tool-call ids dropped: two turns with the same blocks are
  *  the same turn, whatever ids they were minted with. */
@@ -262,25 +278,33 @@ function turnSignature(m: AssistantMessage): string {
 
 /** Turn: `{ kind, after, ...payload }`. Checks run in the spec's order,
  *  all before any write, with no await from the read to the commit.
- *  Checks 5 and 6 (open question, phase) arrive with the question kinds. */
+ *  Checks 5 and 6 (open question, phase) arrive with the question kinds.
+ *  Validation runs early because the repeat check compares checked
+ *  payloads, but its refusal waits for its place, check 7. */
 export function botTurn(id: string, body: unknown): Response {
 	// 1. the lesson exists and is bot-run
 	const record = botLesson(id);
 	if (record instanceof Response) return record;
 	const cursor = cursorOf(record);
-	const { kind, after, ...payload } = (typeof body === "object" && body !== null ? body : {}) as Record<string, unknown>;
+	const isObject = typeof body === "object" && body !== null && !Array.isArray(body);
+	const { kind, after, ...payload } = (isObject ? body : {}) as Record<string, unknown>;
 
-	// 2. `after` names a message in the lesson (the lesson id: the start)
-	const afterIndex = after === record.id ? -1 : record.messages.findIndex((m) => m.id === after);
-	if (typeof after !== "string" || (afterIndex === -1 && after !== record.id)) return fail(400, "bad_after", { cursor });
+	// 2. `after` names a message in the lesson; the lesson id is the
+	// cursor of an empty lesson only
+	const afterIndex = record.messages.findIndex((m) => m.id === after);
+	const atStart = after === record.id && record.messages.length === 0;
+	if (typeof after !== "string" || (afterIndex === -1 && !atStart)) return fail(400, "bad_after", { cursor });
 	const since = record.messages.slice(afterIndex + 1);
 
-	const row: TurnKind | undefined = typeof kind === "string" && Object.hasOwn(TURN_KINDS, kind) ? TURN_KINDS[kind as TurnKindName] : undefined;
-	const checked = row ? checkPayload(row, kind as string, payload) : null;
-	const built = checked?.ok ? row!.build(checked.payload as never) : null;
+	const row = typeof kind === "string" && Object.hasOwn(TURN_KINDS, kind) ? TURN_KINDS[kind] : undefined;
+	const checked: Checked = !isObject
+		? { ok: false, problems: ["the body must be a JSON object: { kind, after, ...payload }"] }
+		: row
+			? row.check(payload)
+			: { ok: false, problems: [`unknown kind ${JSON.stringify(kind)}; kinds: ${Object.keys(TURN_KINDS).join(", ")}`] };
 
 	// 3. repeat: the same turn already follows `after`
-	const own = built?.[0];
+	const own = checked.ok ? checked.built[0] : undefined;
 	if (own?.role === "assistant") {
 		const signature = turnSignature(own);
 		if (since.some((m) => isBotMessage(m) && turnSignature(m) === signature)) {
@@ -293,10 +317,9 @@ export function botTurn(id: string, body: unknown): Response {
 	if (unread.length > 0) return fail(409, "unread_input", { items: unread, cursor });
 
 	// 7. validation
-	if (!row) return fail(422, "invalid", { problems: [`unknown kind ${JSON.stringify(kind)}; kinds: ${Object.keys(TURN_KINDS).join(", ")}`] });
-	if (!checked || !checked.ok || !built) return fail(422, "invalid", { problems: checked && !checked.ok ? checked.problems : [] });
+	if (!checked.ok) return fail(422, "invalid", { problems: checked.problems, cursor });
 
-	const messages = [...record.messages, ...built];
-	commitBotRun(record.id, messages);
-	return Response.json({ ok: true, cursor: messages.at(-1)!.id });
+	const failed = commitOrFail(record, checked.built);
+	if (failed) return failed;
+	return Response.json({ ok: true, cursor: checked.built.at(-1)!.id });
 }

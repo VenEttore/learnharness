@@ -22,6 +22,7 @@ const answerRoute = await import("../app/api/external/chats/[id]/answer/route.ts
 const { handleChatRequest } = await import("../src/server/chat-handler.ts");
 const { chatStore } = await import("../src/store/chats.ts");
 const { phaseAt3Lh } = await import("../src/core/phases.ts");
+const { titleFromPrompt } = await import("../src/core/contracts.ts");
 const { subscribe } = await import("../src/core/events.ts");
 type ServerEvent = import("../src/core/events.ts").ServerEvent;
 
@@ -77,7 +78,7 @@ describe("create", () => {
 		const long = "word ".repeat(40);
 		const { body } = await create({ title: long, key: newKey() });
 		assert.ok(body.title.length < long.trim().length);
-		assert.ok(!body.title.endsWith(" "));
+		assert.equal(body.title, titleFromPrompt(long));
 	});
 
 	it("returns the same lesson for the same key and saves nothing", async () => {
@@ -89,6 +90,17 @@ describe("create", () => {
 		assert.deepEqual(second.body, { ok: true, id: first.body.id, title: "Once", existing: true, cursor: first.body.cursor });
 		assert.equal(chatStore.listChats().length, before);
 		assert.equal(chatStore.getChat(first.body.id)!.messages.length, 1);
+	});
+
+	it("a rerun finishes a create whose prompt never landed", async () => {
+		const key = newKey();
+		const half = chatStore.createChat("Half", undefined, { driver: "external", externalKey: key });
+		const { body } = await create({ title: "Half", key, prompt: "Teach me sets" });
+		const record = chatStore.getChat(half.id)!;
+		assert.equal(body.id, half.id);
+		assert.equal(body.existing, true);
+		assert.deepEqual(record.messages.map((m) => (m as { content: unknown }).content), ["Teach me sets"]);
+		assert.equal(body.cursor, record.messages[0]!.id);
 	});
 
 	it("refuses a create with no key", async () => {
@@ -162,7 +174,7 @@ describe("say", () => {
 
 	it("refuses a missing or unknown after with the cursor", async () => {
 		const lesson = await create({ title: "After", key: newKey(), prompt: "Teach me" });
-		for (const after of [undefined, "msg_nope", 7]) {
+		for (const after of [undefined, "msg_nope", 7, lesson.body.id]) {
 			const { status, body } = await turn(lesson.body.id, { kind: "say", after, text: "Hi." });
 			assert.equal(status, 400);
 			assert.deepEqual(body, { ok: false, code: "bad_after", cursor: lesson.body.cursor });
@@ -175,11 +187,13 @@ describe("say", () => {
 		for (const body of [
 			{ kind: "say", after: lesson.body.cursor, text: "   " },
 			{ kind: "say", after: lesson.body.cursor },
+			{ kind: "say", after: lesson.body.cursor, text: { not: "text" } },
 			{ kind: "dance", after: lesson.body.cursor },
 		]) {
 			const res = await turn(lesson.body.id, body);
 			assert.equal(res.status, 422);
 			assert.equal(res.body.code, "invalid");
+			assert.equal(res.body.cursor, lesson.body.cursor);
 			assert.ok(res.body.problems.length > 0 && res.body.problems.every((p: unknown) => typeof p === "string" && p.length > 0));
 		}
 		assert.equal(chatStore.getChat(lesson.body.id)!.messages.length, 1);

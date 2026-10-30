@@ -16,7 +16,7 @@
  */
 
 import { readFileSync } from "node:fs";
-import { pathToFileURL } from "node:url";
+import { isatty } from "node:tty";
 
 const DEFAULT_URL = "http://127.0.0.1:3000";
 const GUIDE = "docs/external-teacher.md";
@@ -25,7 +25,8 @@ const REQUEST_TIMEOUT_MS = 30_000;
 /** Bad input on the command line: exit 1 with a usage refusal. */
 class UsageError extends Error {}
 
-/** Split argv into positionals and `--name value` flags. */
+/** Split argv into positionals and flags, `--name value` or `--name=value`
+ *  (the second form takes a value that itself starts with `--`). */
 function parseArgs(argv) {
 	const positionals = [];
 	const flags = {};
@@ -33,6 +34,11 @@ function parseArgs(argv) {
 		const arg = argv[i];
 		if (!arg.startsWith("--")) {
 			positionals.push(arg);
+			continue;
+		}
+		const eq = arg.indexOf("=");
+		if (eq > 2) {
+			flags[arg.slice(2, eq)] = arg.slice(eq + 1);
 			continue;
 		}
 		const value = argv[i + 1];
@@ -54,18 +60,23 @@ function requireAfter(flags) {
 }
 
 /** Long input: --file, else stdin (never a terminal, which would hang). */
-function readInput(flags, readStdin) {
-	if (flags.file) return readFileSync(flags.file, "utf-8");
-	const text = readStdin();
-	if (text === null) throw new UsageError("pass the text with --file <path> or on stdin");
+function readInput(flags) {
+	let text;
+	try {
+		if (flags.file) text = readFileSync(flags.file, "utf-8");
+		// isatty(0), not process.stdin: touching process.stdin makes fd 0
+		// non-blocking, and the read below then fails with EAGAIN on a pipe
+		// whose writer is slower than us.
+		else if (!isatty(0)) text = readFileSync(0, "utf-8");
+	} catch (err) {
+		throw new UsageError(`could not read the text: ${err.message}`);
+	}
+	if (!text) throw new UsageError("pass the text with --file <path> or on stdin");
 	return text;
 }
 
-/**
- * The HTTP request a command line makes: `{ method, path, body? }`.
- * `readStdin` returns stdin's text, or null when stdin is a terminal.
- */
-export function requestFor(argv, readStdin) {
+/** The HTTP request a command line makes: `{ method, path, body? }`. */
+function requestFor(argv) {
 	const { positionals, flags } = parseArgs(argv);
 	const [command, ...rest] = positionals;
 	switch (command) {
@@ -79,7 +90,7 @@ export function requestFor(argv, readStdin) {
 		case "say": {
 			const path = `${lessonPath(rest[0])}/turn`;
 			const after = requireAfter(flags);
-			return { method: "POST", path, body: { kind: "say", after, text: readInput(flags, readStdin) } };
+			return { method: "POST", path, body: { kind: "say", after, text: readInput(flags) } };
 		}
 		case "answer":
 			return { method: "GET", path: `${lessonPath(rest[0])}/answer` };
@@ -90,11 +101,6 @@ export function requestFor(argv, readStdin) {
 	}
 }
 
-function stdinText() {
-	if (process.stdin.isTTY) return null;
-	return readFileSync(0, "utf-8");
-}
-
 function print(value) {
 	process.stdout.write(`${JSON.stringify(value)}\n`);
 }
@@ -102,14 +108,15 @@ function print(value) {
 async function main() {
 	let request;
 	try {
-		request = requestFor(process.argv.slice(2), stdinText);
+		request = requestFor(process.argv.slice(2));
 	} catch (err) {
-		if (!(err instanceof UsageError) && err?.code !== "ENOENT") throw err;
+		if (!(err instanceof UsageError)) throw err;
 		print({ ok: false, code: "usage", error: err.message });
 		return 1;
 	}
 	const base = process.env.LH_URL || DEFAULT_URL;
 	let res;
+	let text;
 	try {
 		res = await fetch(new URL(request.path, base), {
 			method: request.method,
@@ -117,16 +124,17 @@ async function main() {
 			body: request.body ? JSON.stringify(request.body) : undefined,
 			signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
 		});
-	} catch {
+		text = await res.text();
+	} catch (err) {
+		const what = err?.name === "TimeoutError" ? `did not answer within ${REQUEST_TIMEOUT_MS / 1000} s` : "is not reachable";
 		print({
 			ok: false,
 			code: "unreachable",
-			error: `LearnHarness is not reachable at ${base} (LH_URL). Start it as ${GUIDE} describes, or set LH_URL.`,
+			error: `LearnHarness at ${base} (LH_URL) ${what}. Start it as ${GUIDE} describes, or set LH_URL.`,
 			guide: GUIDE,
 		});
 		return 3;
 	}
-	const text = await res.text();
 	let body;
 	try {
 		body = JSON.parse(text);
@@ -137,6 +145,11 @@ async function main() {
 	return res.ok && body?.ok === true ? 0 : 1;
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+// No main-module guard: the file is only ever run, and a guard comparing
+// paths misfires when lh is a symlink (it would exit 0 doing nothing).
+try {
 	process.exitCode = await main();
+} catch (err) {
+	print({ ok: false, code: "error", error: err instanceof Error ? err.message : String(err) });
+	process.exitCode = 1;
 }
