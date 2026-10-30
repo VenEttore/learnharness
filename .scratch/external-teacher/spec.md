@@ -202,5 +202,5 @@ Deferred in the grill or the reviews:
 
 - The grill ran across three threads. It was checked by two interrogate passes, with four reviewers each, against the code. The owner chose no third design pass, so the real diff gets `code-review` and `interrogate` per ticket.
 - Glossary terms: Lesson, Bot-run lesson, Bot Teacher, Learner input, Phase, Open question, Worker (`GLOSSARY.md`). Decision record: ADR 0001.
-- No code ticket is tied to the laptop, so they are `Host: linuxdev`. This parent runs on the Windows laptop (the #19112 check passes), so their worktrees run here and the repo check runs from Git Bash. Only the bench ticket is `Host: laptop`.
+- No code ticket is tied to the laptop, so they are `Host: linuxdev`, and development runs on linuxdev: the repo is `~/code/learnharness`, and Node 22 is in `~/.local/bin`. linuxdev has no GitHub credentials, so ticket branches stay in that repo until GitHub access is added there. Only the bench ticket is `Host: laptop`.
 - The final spec ship needs the owner's "ship it" after the final spec review.
