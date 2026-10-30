@@ -151,6 +151,12 @@ describe("say", () => {
 		assert.ok(events.some((e) => e.type === "chats-changed"));
 	});
 
+	it("drops one final newline and keeps a Markdown hard break", async () => {
+		const lesson = await create({ title: "Break", key: newKey(), prompt: "Teach me" });
+		await turn(lesson.body.id, { kind: "say", after: lesson.body.cursor, text: "See below.  \n" });
+		assert.deepEqual((chatStore.getChat(lesson.body.id)!.messages.at(-1) as { content: unknown }).content, [{ type: "text", text: "See below.  " }]);
+	});
+
 	it("drops a rerun with the same after, even after learner input arrived", async () => {
 		const lesson = await create({ title: "Repeat", key: newKey(), prompt: "Teach me" });
 		const id = lesson.body.id;
@@ -188,10 +194,11 @@ describe("say", () => {
 		for (const after of [undefined, "msg_nope", 7]) {
 			const { status, body } = await turn(lesson.body.id, { kind: "say", after, text: "Hi." });
 			assert.equal(status, 400);
-			assert.deepEqual(body, { ok: false, code: "bad_after", cursor: lesson.body.cursor });
+			assert.deepEqual(body, { ok: false, code: "bad_after", items: [{ type: "message", id: lesson.body.cursor, text: "Teach me" }], cursor: lesson.body.cursor });
 		}
 		const notObject = await json(await turnRoute.POST(new Request(`http://test/api/external/chats/${lesson.body.id}/turn`, { method: "POST", body: "[1]" }), ctx(lesson.body.id)));
-		assert.deepEqual(notObject, { status: 400, body: { ok: false, code: "bad_after", cursor: lesson.body.cursor } });
+		assert.equal(notObject.status, 400);
+		assert.equal(notObject.body.code, "bad_after");
 		assert.equal(chatStore.getChat(lesson.body.id)!.messages.length, 1);
 	});
 

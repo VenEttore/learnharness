@@ -126,6 +126,11 @@ function learnerItems(messages: readonly LhMessage[]): LearnerItem[] {
 	return messages.flatMap((m) => (m.role === "user" ? [{ type: "message" as const, id: m.id, text: textOf(m.content) }] : []));
 }
 
+/** The learner input after the bot's last message: what answer returns. */
+function unreadByBot(record: ChatRecord): LearnerItem[] {
+	return learnerItems(record.messages.slice(record.messages.findLastIndex(isBotMessage) + 1));
+}
+
 /** The record, or the refusal for check 1 (exists and is bot-run). */
 function botLesson(id: string): ChatRecord | Response {
 	const record = stores.chatStore.getChat(id);
@@ -212,10 +217,9 @@ export function showBotLesson(id: string): Response {
 export function botAnswer(id: string): Response {
 	const record = botLesson(id);
 	if (record instanceof Response) return record;
-	const lastBot = record.messages.findLastIndex(isBotMessage);
 	return Response.json({
 		ok: true,
-		items: learnerItems(record.messages.slice(lastBot + 1)),
+		items: unreadByBot(record),
 		openQuestion: danglingQuestionOf(record.messages),
 		cursor: cursorOf(record),
 	});
@@ -271,9 +275,10 @@ const TURN_KINDS: Readonly<Record<string, TurnKind>> = {
 		schema: Type.Object({ text: Type.String({ description: "The teaching text, Markdown." }) }),
 		refine: (p) => (p.text.trim() === "" ? ["text must not be empty"] : []),
 		needsPlanNode: false,
-		// trimEnd: `echo` adds a newline a `--file` rerun may lack, and the
-		// repeat check compares exact text.
-		build: (p) => [newBotAssistantMessage([{ type: "text", text: p.text.trimEnd() }])],
+		// One final newline goes: `echo` adds one a `--file` rerun may lack,
+		// and the repeat check compares exact text. Other trailing
+		// whitespace (a Markdown hard break) stays.
+		build: (p) => [newBotAssistantMessage([{ type: "text", text: p.text.replace(/\r?\n$/, "") }])],
 	}),
 };
 
@@ -301,7 +306,11 @@ export function botTurn(id: string, body: unknown): Response {
 	// empty lesson's cursor: the start). The start stays valid after the
 	// first turn so a retried first turn reaches the repeat check.
 	const afterIndex = record.messages.findIndex((m) => m.id === after);
-	if (typeof after !== "string" || (afterIndex === -1 && after !== record.id)) return fail(400, "bad_after", { cursor });
+	// The refusal carries the input after the bot's last message, as answer
+	// does, so a bot that adopts the cursor has not skipped any.
+	if (typeof after !== "string" || (afterIndex === -1 && after !== record.id)) {
+		return fail(400, "bad_after", { items: unreadByBot(record), cursor });
+	}
 	const since = record.messages.slice(afterIndex + 1);
 
 	const row = typeof kind === "string" && Object.hasOwn(TURN_KINDS, kind) ? TURN_KINDS[kind] : undefined;
