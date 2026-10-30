@@ -93,11 +93,18 @@ describe("planInitSuccessResult", () => {
 		assert.deepEqual(res, { content: [{ type: "text", text: expected.text }], details: expected.details });
 	});
 
-	it("plan_init's parameters are the exported schema", () => {
-		assert.equal(planTools({ chatId: "x", chatStore }).plan_init!.parameters, planInitInputSchema);
-		assert.equal(Value.Check(planInitInputSchema, { mermaid: "graph TD\n  a[A]\n" }), true);
-		assert.equal(Value.Check(planInitInputSchema, { mermaid: "" }), false);
-		assert.equal(Value.Check(planInitInputSchema, {}), false);
+	it("the exported schema accepts and refuses what plan_init's parameters do", () => {
+		const toolSchema = planTools({ chatId: "x", chatStore }).plan_init!.parameters;
+		const cases: [unknown, boolean][] = [
+			[{ mermaid: "graph TD\n  a[A]\n" }, true],
+			[{ mermaid: "" }, false],
+			[{ mermaid: 7 }, false],
+			[{}, false],
+		];
+		for (const [input, valid] of cases) {
+			assert.equal(Value.Check(planInitInputSchema, input), valid, JSON.stringify(input));
+			assert.equal(Value.Check(toolSchema, input), valid, JSON.stringify(input));
+		}
 	});
 });
 
