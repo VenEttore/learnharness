@@ -8,8 +8,12 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 <!-- END:nextjs-agent-rules -->
 
-# No guessing
+Global workflow rules: `~/.agents/AGENTS.md` (fleet). They decide how work runs here: grilling, questions, modes, review.
 
-All design authority belongs to the human. **Never guess a design or implementation decision.** If anything is ambiguous — naming, behavior, data shapes, UX, defaults, scope boundaries, prompt wording — STOP and ask with the ask-user-question tool before proceeding. If you are "a little unsure," you are unsure: ask. A wrong guess is far more expensive than a question. Ask early, ask specific, one question per call.
+## Fork
 
-Concretely: first investigate and plan rigorously (asking the user design questions along the way), get the plan approved by the user, and only then implement. Implementation should be mechanical execution of an approved plan — not interpretation.
+This is Matt's fork of LearnHarness. It adds bot-run lessons: outside agents (Grok Bots on a shared cloud computer) teach through LearnHarness's HTTP API and an `lh` CLI instead of LearnHarness's own model.
+
+- `origin` is `VenEttore/learnharness`. `upstream` is `amosblomqvist/learnharness`. Upstream updates come in by merging `upstream/main`.
+- Put fork changes in new files where you can, and keep edits to upstream files small, so those merges stay clean.
+- When an upstream merge touches this file, keep the fork's version below the Next.js block.
