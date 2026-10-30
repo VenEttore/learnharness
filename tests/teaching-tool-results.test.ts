@@ -50,6 +50,9 @@ const PROBE_ACK =
 const REMINDER =
 	"These are the plan's node ids — the only valid nodeId values for every quiz and explain call from here on. Reference them exactly.";
 
+/** plan_init's success text for AB_TREE before the move. */
+const AB_PLAN_TEXT = `{"ok":true,"nodeIds":["a","b"],"reminder":${JSON.stringify(REMINDER)}}`;
+
 /** plan_init's input schema, serialized as the model read it before the move. */
 const PRE_MOVE_PLAN_SCHEMA = {
 	type: "object",
@@ -98,8 +101,7 @@ describe("probeDoneSuccessResult", () => {
 			strands: [{ strand: "limits", assessment: "Floor: slopes. Ceiling: ε–δ." }],
 			summary: "Start at the formal definition.",
 		});
-		const expected = probeDoneSuccessResult();
-		assert.deepEqual(res, { content: [{ type: "text", text: expected.text }], details: expected.details });
+		assert.deepEqual(res, { content: [{ type: "text", text: PROBE_ACK }], details: { ok: true } });
 	});
 });
 
@@ -107,14 +109,14 @@ describe("planInitSuccessResult", () => {
 	it("is the nodeIds + reminder JSON text with the tree in details", () => {
 		assert.equal(PLAN_NODE_IDS_REMINDER, REMINDER);
 		assert.deepEqual(planInitSuccessResult(AB_TREE), {
-			text: `{"ok":true,"nodeIds":["a","b"],"reminder":${JSON.stringify(REMINDER)}}`,
+			text: AB_PLAN_TEXT,
 			details: { ok: true, tree: AB_TREE },
 		});
 	});
 
 	it("maps to the stored tool result: the JSON text as content, the tree in details", () => {
 		assert.deepEqual(toToolResult(planInitSuccessResult(AB_TREE)), {
-			content: [{ type: "text", text: `{"ok":true,"nodeIds":["a","b"],"reminder":${JSON.stringify(REMINDER)}}` }],
+			content: [{ type: "text", text: AB_PLAN_TEXT }],
 			details: { ok: true, tree: AB_TREE },
 		});
 	});
@@ -124,8 +126,7 @@ describe("planInitSuccessResult", () => {
 		const res = await planTools({ chatId, chatStore }).plan_init!.execute("t", {
 			mermaid: "graph TD\n  a[A] --> b[B]\n",
 		});
-		const expected = planInitSuccessResult(AB_TREE);
-		assert.deepEqual(res, { content: [{ type: "text", text: expected.text }], details: expected.details });
+		assert.deepEqual(res, { content: [{ type: "text", text: AB_PLAN_TEXT }], details: { ok: true, tree: AB_TREE } });
 	});
 
 	it("the exported schema is the pre-move schema, and plan_init's parameters match it", () => {
@@ -197,8 +198,8 @@ describe("planNodeProblem", () => {
 		assert.equal(Value.Check(explainTool.parameters, explainInput), true);
 		const quiz = await quizTool.execute("t", quizInput);
 		const explain = await explainTool.execute("t", explainInput);
-		const expected = planNodeProblem(AB_TREE, "c");
-		assert.ok(expected);
+		const expected =
+			'nodeId "c" matches no node in this session\'s plan map. Copy one of your plan_init slugs exactly (a, b).';
 		for (const [name, res] of [["quiz", quiz], ["explain", explain]] as const) {
 			assert.deepEqual(res.details, { tool: name, problems: [expected] });
 			assert.deepEqual(res.content, [{ type: "text", text: `Invalid tool input for tool "${name}":\n- ${expected}` }]);
