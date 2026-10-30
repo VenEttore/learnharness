@@ -51,6 +51,7 @@ import { ensureCompacted, kickCompaction, effectiveThresholdTokens } from "./com
 import { catalogContextLimits, refreshConnectionCatalog } from "./model-catalog.ts";
 import { emit } from "../core/events.ts";
 import { settledTurnResponse } from "./turn-runs.ts";
+import { handleBotRunInput, isBotRun } from "./bot-run.ts";
 import { asAgentMessages } from "../core/native-messages.ts";
 import {
 	ChatInputError,
@@ -193,6 +194,9 @@ export async function handleChatInput(
 	if (!record) {
 		return Response.json({ error: "Unknown chat" }, { status: 404 });
 	}
+	// Fork (ADR 0001): a bot-run lesson saves page input and never reaches
+	// the model gates, compaction, or a turn below.
+	if (isBotRun(record)) return handleBotRunInput(record, input);
 
 	// Refuse an ineligible Retry before catalog refresh, compaction, or any
 	// turn/write effects. Revalidate after the awaited gates below too.

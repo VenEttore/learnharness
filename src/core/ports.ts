@@ -11,6 +11,7 @@
 
 import type { LhMessage } from "./native-messages.ts";
 import type {
+	ChatDriverInit,
 	ChatRecord,
 	ChatSettings,
 	ChatSummary,
@@ -33,8 +34,9 @@ import type { UserSettings } from "./settings.ts";
 export interface ChatStore {
 	/** Create a session record (persisted immediately). */
 	/** Create a session record; kind "practice" marks a practice session
-	 *  (absent = teach, the default). */
-	createChat(title: string, kind?: "practice"): ChatRecord;
+	 *  (absent = teach, the default). `init` stamps a bot-run lesson's
+	 *  driver and key (fork, ADR 0001); absent = an ordinary lesson. */
+	createChat(title: string, kind?: "practice", init?: ChatDriverInit): ChatRecord;
 	/** The full record, or null if unknown id / corrupt file. */
 	getChat(id: string): ChatRecord | null;
 	/** All sessions, newest activity first (the sidebar's list view). */

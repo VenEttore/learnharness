@@ -27,6 +27,16 @@ import type { EmissionStats } from "./graph.ts";
  *  practice agent, its two tools, no extraction, no graph writes. */
 export type ChatKind = "teach" | "practice";
 
+/** Who drives the lesson's turns (fork, ADR 0001). Only "external"
+ *  exists; absence means LearnHarness's own model. */
+export type ChatDriver = "external";
+
+/** The bot-run fields createChat may stamp at birth. */
+export interface ChatDriverInit {
+	driver: ChatDriver;
+	externalKey?: string;
+}
+
 export interface ChatRecord {
 	id: string;
 	title: string;
@@ -35,6 +45,14 @@ export interface ChatRecord {
 	messages: LhMessage[];
 	/** The session's kind — absent = teach (pre-practice records). */
 	kind?: ChatKind;
+	/** Bot-run lesson (fork, ADR 0001): "external" means an outside Bot
+	 *  Teacher writes the turns and LearnHarness never calls its model.
+	 *  Absent = LearnHarness drives, as before. */
+	driver?: ChatDriver;
+	/** The Bot Teacher's create key, stored at birth. The create route
+	 *  (external-teacher ticket 03) uses it to return this lesson on a
+	 *  rerun instead of making a new one. Bot-run lessons only. */
+	externalKey?: string;
 	/** The session's plan tree (vision §2) — written by plan tools via saveTree. */
 	tree?: PlanTree;
 	/** Append-only usage log (observability, 2026-09): one entry per model
