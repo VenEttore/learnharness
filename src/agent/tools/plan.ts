@@ -1,18 +1,9 @@
-import { Type } from "typebox";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { serverExecute } from "../tool-execute.ts";
-import type { PlanToolResult, PlanTree } from "../../core/contracts.ts";
 import type { ChatStore } from "../../core/ports.ts";
 import { createTree, PlanTreeError } from "../../core/plan-tree.ts";
 import { parseMermaidPlan } from "./mermaid-plan.ts";
-
-/** The binding-id reminder riding plan_init's slim content (owner,
- *  2026-10-09): plan_init is the exact moment the node ids become
- *  load-bearing — every later quiz/explain call must reference one. The
- *  field-drop incidents (tools_fails_2) showed the turn's tail is where
- *  discipline slips; the reminder lands right there. */
-const PLAN_NODE_IDS_REMINDER =
-	"These are the plan's node ids — the only valid nodeId values for every quiz and explain call from here on. Reference them exactly.";
+import { planInitInputSchema, planInitSuccessResult } from "../../core/teaching-tool-results.ts";
 
 /** What the plan tools close over (the plan-tree half of the tool context). */
 export interface PlanToolContext {
@@ -49,16 +40,6 @@ export interface PlanToolContext {
  * tree for the record and the plan popup (latestTree reads it — the
  * agent-invisible channel, serializer-verified).
  */
-const planInitInput = Type.Object({
-	mermaid: Type.String({
-		minLength: 1,
-		description:
-			"A mermaid graph block (any direction), e.g.:\ngraph TD\n  primitives[Number primitives] --> operators[Arithmetic operators] --> expressions[Evaluating expressions]\n" +
-			"The only strict rule: ids are permanent lowercase slugs (a-z, 0-9, hyphens/underscores) — checks reference them via nodeId. " +
-			"Titles are free single-line text; `-->` means 'from = prerequisite' (chains fine); no subgraphs, styles, or classes.",
-	}),
-});
-
 export function planTools(ctx: PlanToolContext): Record<string, AgentTool<any>> {
 	return {
 		plan_init: {
@@ -70,8 +51,8 @@ export function planTools(ctx: PlanToolContext): Record<string, AgentTool<any>> 
 				"A mermaid graph block (any direction): one node per line (`slug[Short Title]` — slugs are permanent lowercase ids: a-z, 0-9, hyphens/underscores), " +
 				"`-->` edges meaning 'from must be understood before to' (chains fine). 5–15 nodes: a map, not a syllabus — one reasoning step per node, compress. " +
 				"Every check you fire names the node it assesses via `nodeId`; where the lesson stands derives from those tags.",
-			parameters: planInitInput,
-			execute: serverExecute("plan_init", planInitInput, async ({ mermaid }) => {
+			parameters: planInitInputSchema,
+			execute: serverExecute("plan_init", planInitInputSchema, async ({ mermaid }) => {
 				const { chatId, chatStore } = ctx;
 				const record = chatStore.getChat(chatId);
 				if (!record) return { ok: false, error: `Chat not found: ${chatId}` };
@@ -88,18 +69,9 @@ export function planTools(ctx: PlanToolContext): Record<string, AgentTool<any>> 
 					// edge endpoints, self-loops, cycles → PlanTreeError).
 					const next = createTree(parsed.plan.nodes, parsed.plan.edges);
 					chatStore.saveTree(chatId, next);
-					// Context diet: content = the validated nodeIds + the reminder (the
-				// ids just became binding for every quiz/explain call); details =
-					// the full tree for the record/UI — the plan popup's latestTree
-					// seam, agent-invisible (the serializer sends content only).
-					return {
-						text: JSON.stringify({
-							ok: true,
-							nodeIds: next.nodes.map((n) => n.id),
-							reminder: PLAN_NODE_IDS_REMINDER,
-						}),
-						details: { ok: true, tree: next },
-					};
+					// The validated nodeIds + reminder, the tree in details — shared
+					// with bot-run lessons (src/core/teaching-tool-results.ts).
+					return planInitSuccessResult(next);
 				} catch (err) {
 					if (err instanceof PlanTreeError) return { ok: false, error: err.message };
 					throw err;
