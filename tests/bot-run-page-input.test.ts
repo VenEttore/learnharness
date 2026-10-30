@@ -18,7 +18,9 @@ import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi
 // ── the seam, BEFORE any config-loading import ──────────────────────────────
 const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), "lh-bot-run-page-input-"));
 process.env.LH_DATA_DIR = TMP_DATA;
-process.env.OPENROUTER_API_KEY ??= "test-key-presence-gate";
+// Unconditional: a regression that reaches the model path must hit a fake
+// key, never a developer's real one.
+process.env.OPENROUTER_API_KEY = "test-key-presence-gate";
 
 const { handleChatInput, handleChatRequest } = await import("../src/server/chat-handler.ts");
 const { settledTurnResponse } = await import("../src/server/turn-runs.ts");
@@ -118,10 +120,14 @@ describe("page input on a bot-run lesson saves and calls no model", () => {
 		seedOpenAsk(chat.id, "call-ask");
 		agentBuilds = 0;
 		const answer = { kind: "ask", questionText: ASK.question, dontKnow: false, answers: ["Algebra"], answeredAt: new Date().toISOString() };
-		const res = await handleChatRequest(post(chat.id, { type: "answer", toolCallId: "call-ask", answer }), throwingBuilder);
+		const { res, events } = await eventsDuring(() =>
+			handleChatRequest(post(chat.id, { type: "answer", toolCallId: "call-ask", answer }), throwingBuilder),
+		);
 		assert.equal(res.status, 200);
 		assert.equal(await res.text(), SETTLED);
 		assert.equal(agentBuilds, 0);
+		assert.ok(events.some((e) => e.type === "record-changed" && (e as { chatId?: string }).chatId === chat.id));
+		assert.ok(events.some((e) => e.type === "chats-changed"), "the sidebar's question-waiting state refreshes");
 		const saved = chatStore.getChat(chat.id)!;
 		assert.equal(saved.messages.length, 3);
 		const result = saved.messages[2]!;
@@ -167,7 +173,8 @@ describe("page input on a bot-run lesson saves and calls no model", () => {
 		try {
 			outcome = await eventsDuring(() => handleChatRequest(post(chat.id, { type: "text", text: "next" }), throwingBuilder));
 		} finally {
-			env.NODE_ENV = nodeEnv;
+			if (nodeEnv === undefined) delete env.NODE_ENV;
+			else env.NODE_ENV = nodeEnv;
 		}
 		assert.equal(outcome.res.status, 200);
 		assert.equal(agentBuilds, 0);

@@ -45,7 +45,8 @@ function createChat(title: string, kind?: "practice", init?: ChatDriverInit): Ch
 		// Practice sessions carry the marker; teach stays ABSENT (absence
 		// reads as teach — pre-practice records never migrate).
 		...(kind === "practice" ? { kind: "practice" as const } : {}),
-		...(init ? { driver: init.driver, ...(init.externalKey !== undefined ? { externalKey: init.externalKey } : {}) } : {}),
+		...(init ? { driver: init.driver } : {}),
+		...(init?.externalKey !== undefined ? { externalKey: init.externalKey } : {}),
 	};
 	fs.mkdirSync(PATHS.chats, { recursive: true });
 	writeChat(record);
