@@ -4,7 +4,7 @@ Status: open
 Blocked by: 10
 Risk: pre-release
 Gate: none
-Host: laptop
+Host: linuxdev
 Touches: src/server/bot-run.ts, app/api/external/** (show), scripts/lh.mjs, new test files
 
 Phase C. Uses ticket 01's shared `plan_init` result and plan input schema.

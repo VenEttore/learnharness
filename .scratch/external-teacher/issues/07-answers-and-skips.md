@@ -4,7 +4,7 @@ Status: open
 Blocked by: 06
 Risk: pre-release
 Gate: none
-Host: laptop
+Host: linuxdev
 Touches: src/server/bot-run.ts, app/api/external/chats/[id]/answer, scripts/lh.mjs, app/api/chats/[id]/dismiss/route.ts, new test files
 
 Phase B.

@@ -4,7 +4,7 @@ Status: open
 Blocked by: 05
 Risk: pre-release
 Gate: none
-Host: laptop
+Host: linuxdev
 Touches: src/agent/subagents/extraction.ts, new test files
 
 Phase B.

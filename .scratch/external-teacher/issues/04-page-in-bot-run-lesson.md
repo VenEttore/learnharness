@@ -4,7 +4,7 @@ Status: open
 Blocked by: 02
 Risk: pre-release
 Gate: none
-Host: laptop
+Host: linuxdev
 Touches: app/chat/[id]/page.tsx, components/chat.tsx, components/session.ts, components/session-core.ts, new test files
 
 Phase A.

@@ -4,7 +4,7 @@ Status: open
 Blocked by: none
 Risk: pre-release
 Gate: none
-Host: laptop
+Host: linuxdev
 Touches: src/agent/tools/probe.ts, src/agent/tools/plan.ts, src/agent/tools.ts, a new shared helper module under src/core, new test file
 
 Phase A.

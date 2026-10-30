@@ -4,7 +4,7 @@ Status: open
 Blocked by: 05
 Risk: pre-release
 Gate: none
-Host: laptop
+Host: linuxdev
 Touches: src/server/bot-run.ts, scripts/lh.mjs, new test files
 
 Phase B.

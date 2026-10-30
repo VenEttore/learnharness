@@ -4,7 +4,7 @@ Status: open
 Blocked by: none
 Risk: pre-release
 Gate: none
-Host: laptop
+Host: linuxdev
 Touches: src/core/contracts/chat.ts, src/store/chats.ts, src/core/ports.ts, src/server/chat-handler.ts, src/server/bot-run.ts (new), src/server/index.ts, new test files
 
 Phase A.

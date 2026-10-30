@@ -4,7 +4,7 @@ Status: open
 Blocked by: 09
 Risk: pre-release
 Gate: none
-Host: laptop
+Host: linuxdev
 Touches: docs/external-teacher.md (new)
 
 Phase C. Written from the spec's command contract, in parallel with tickets 10–12.
