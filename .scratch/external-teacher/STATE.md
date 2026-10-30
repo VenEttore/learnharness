@@ -5,7 +5,8 @@ destination: One LearnHarness lesson taught by a Grok Bot through lh, with no Le
 host: linuxdev, repo ~/code/learnharness, Node 22 in ~/.local/bin.
 live:
   01 external-teacher-01-shared-tool-helpers node:delegated-task:command%3Amcp%3Ac44b857c-1bf3-4cae-977d-9bf3323ef477%3Adelegate-task%3Aexternal-teacher-01-1 /home/matt/.t3/worktrees/learnharness/t3-4ef9bc38 running
-  02 external-teacher-02-page-input-without-model node:delegated-task:command%3Amcp%3Ac44b857c-1bf3-4cae-977d-9bf3323ef477%3Adelegate-task%3Aexternal-teacher-02-1 /home/matt/.t3/worktrees/learnharness/t3-dc6664d5 running
-touches-locked: 01, 02
+  03 external-teacher-03-bot-talks-over-api pending-launch - running
+touches-locked: 01, 03
+merged: 02 (33e1e55; check matches baseline)
 waiting on Matt: none
-next: both slots are full. Ticket branches push to origin at every handoff; a shipped commit must be the pushed tip. Do not push feat/external-teacher or main until Matt says "ship it". On a handoff, validate it, merge or relaunch, then launch the next frontier ticket if a slot is free.
+next: both slots are full. 04 is next on the frontier. Ticket branches push to origin at every handoff; a shipped commit must be the pushed tip. Do not push feat/external-teacher or main until Matt says "ship it". On a handoff, validate it, merge or relaunch, then launch the next frontier ticket if a slot is free.

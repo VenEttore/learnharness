@@ -1,6 +1,6 @@
 # 03: A bot creates a lesson, talks, and reads back over the API
 
-Status: open
+Status: claimed
 Blocked by: 02
 Risk: pre-release
 Gate: none
