@@ -1,6 +1,6 @@
 # 02: Bot-run flag; page input saved without a model
 
-Status: open
+Status: claimed
 Blocked by: none
 Risk: pre-release
 Gate: none

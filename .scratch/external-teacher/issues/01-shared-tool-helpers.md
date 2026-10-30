@@ -1,6 +1,6 @@
 # 01: Shared tool-result builders and plan-node check (prefactor)
 
-Status: open
+Status: claimed
 Blocked by: none
 Risk: pre-release
 Gate: none
