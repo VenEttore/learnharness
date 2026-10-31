@@ -166,7 +166,7 @@ lh explain "$L" --after "$C" <<'EOF'
 EOF
 ```
 
-A `nodeId` that is not in the plan is refused with `invalid`. Teach between questions with `say`, one step at a time.
+The node check reads the latest plan that `lh plan` accepted, the one the page draws and `lh show` returns as `plan`. A `nodeId` that is not in it is refused with `invalid`, and `problems` lists some of the plan's ids. With no plan yet, `problems` says "call plan_init": that means send `lh plan` first. A resend of a question that landed before a plan rewrite dropped its node still returns `"repeat":true`, so the lost-reply recovery in section 5 works after a rewrite too. Teach between questions with `say`, one step at a time.
 
 When the learner can do what their goal asked for (the last node of the plan), close the lesson with a `say` that sums up what they built.
 
