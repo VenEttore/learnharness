@@ -220,6 +220,7 @@ export function Chat({
 	initiallyCompacting = false,
 	initialConfigured = false,
 	kind = "teach",
+	botRun = false,
 }: {
 	chatId: string;
 	title: string;
@@ -243,6 +244,9 @@ export function Chat({
 	 *  it (BYOK, owner 2026-09-22). The server gate stays the truth; this
 	 *  only decides whether the pill rides the composer. */
 	initialConfigured?: boolean;
+	/** Bot-run lesson (fork, ADR 0001): an outside teacher answers, so no
+	 *  automatic `continue`, no key or model checks on send, no setup CTA. */
+	botRun?: boolean;
 }) {
 	// Reattach plumbing (background-turn runner wave): the hook holds the
 	// settled terminal's callback — a stable ref assigned below, once
@@ -256,7 +260,7 @@ export function Chat({
 	// ({chatId, input} — the stash indirection died with the SDK), and the
 	// turn stream is the VERBATIM AgentEvent passthrough the server emits.
 	const { messages, nativeMessages, hasConfirmedConversation, contextTokens, send, continueIfOwed, steer, steerQueue, submitAnswer, dismissQuestion, dismissProblem, questionDraft, saveQuestionDraft, setMessages, adoptRecord, status, error, stop, clearError, resumeStream, setReattachSettled } =
-		useChatSession({ chatId, initialMessages, initialError, initiallyInFlight });
+		useChatSession({ chatId, initialMessages, initialError, initiallyInFlight, botRun });
 
 	const sessionFindScopeRef = useRef<HTMLDivElement | null>(null);
 	const scrollContextRef = useRef<StickToBottomContext | null>(null);
@@ -464,8 +468,10 @@ export function Chat({
 
 	const localStream = status === "submitted" || status === "streaming";
 	const busy = localStream || turnInFlight;
-	const busyRef = useRef(busy);
-	busyRef.current = busy;
+	/** A turn to steer, stop, or abort: a bot-run lesson never has one. */
+	const turnBusy = busy && !botRun;
+	const busyRef = useRef(turnBusy);
+	busyRef.current = turnBusy;
 	// The attach handoff (stream-reattach wave): the moment a resumed
 	// stream takes over the rendering — the SDK left "ready", so
 	// submitted/streaming means chunks are flowing — localStream covers
@@ -1208,11 +1214,11 @@ export function Chat({
 		if (busy || pending || compacting) return;
 		const t = textRef.current.trim();
 		if (!t) return;
-		if (zeroKeys) {
+		if (zeroKeys && !botRun) {
 			setSetupOpen(true);
 			return;
 		}
-		if (selectedModelUnavailable(catalog, selectedModel)) {
+		if (!botRun && selectedModelUnavailable(catalog, selectedModel)) {
 			openModelPicker();
 			return; // No optimistic send and no change to the learner's draft.
 		}
@@ -1238,7 +1244,8 @@ export function Chat({
 		if (pending || compacting) return;
 		const t = textRef.current.trim();
 		if (!t) return;
-		if (busy) {
+		// A bot-run lesson has no live turn to steer: doSend keeps the text.
+		if (turnBusy) {
 			applyText("");
 			void steer(t);
 			return;
@@ -1701,7 +1708,7 @@ export function Chat({
 					dictationCancel={dictation.cancel}
 					queuedSteers={visibleQueuedSteers(steerQueue, nativeMessages)}
 					setupCta={
-						zeroKeys ? (
+						botRun ? undefined : zeroKeys ? (
 							<ZeroKeysPill onOpen={() => setSetupOpen(true)} />
 						) : (
 							!configured && (
@@ -1724,7 +1731,7 @@ export function Chat({
 							// square renders while a reattached/wake turn runs too — the
 							// abort channel kills it server-side; stop() alone would
 							// only detach our view.
-							busy={busy}
+							busy={turnBusy}
 							value={text}
 							onChange={applyText}
 							inputRef={composerInputRef}
@@ -1774,7 +1781,7 @@ export function Chat({
 					/>
 				)}
 				{planOpen && <PlanPopup messages={messages} onClose={() => setPlanOpen(false)} />}
-				<AbortTurnDialog mode={abortAsk} onClose={() => setAbortAsk(null)} onConfirm={confirmAbort} busy={busy} />
+				<AbortTurnDialog mode={abortAsk} onClose={() => setAbortAsk(null)} onConfirm={confirmAbort} busy={turnBusy} />
 				</div>
 			</div>
 		</div>

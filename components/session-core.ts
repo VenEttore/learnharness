@@ -216,6 +216,9 @@ export interface SessionModelOptions extends SessionModelDeps {
 	initialMessages: LhMessage[];
 	/** Retained, memory-only server failure when reopening a session. */
 	initialError?: string;
+	/** Bot-run lesson (fork, ADR 0001): an outside teacher writes the turns,
+	 *  so this view never sends `continue` on its own. */
+	botRun?: boolean;
 	/** Fires on every state change (the hook re-renders). */
 	onChange?: () => void;
 	/** The reattach settled terminal (turn-settled): no turn running, the
@@ -232,6 +235,7 @@ export class SessionModel {
 	private readonly pollMs: number;
 	private readonly waitMaxMs: number;
 	private onReattachSettled?: () => void;
+	readonly botRun: boolean;
 	/** The hook's re-render trigger (set by the adapter). */
 	onChange?: () => void;
 
@@ -267,6 +271,7 @@ export class SessionModel {
 
 	constructor(opts: SessionModelOptions) {
 		this.chatId = opts.chatId;
+		this.botRun = opts.botRun === true;
 		this.base = opts.initialMessages;
 		this.errorValue = opts.initialError === undefined ? null : { message: opts.initialError };
 		this.automaticContinuationBlocked = opts.initialError !== undefined;
@@ -953,7 +958,7 @@ export class SessionModel {
 	/** Automatic mount/sync continuation is never permission to retry a
 	 * failed turn. Read current model truth, not a stale React closure. */
 	async continueIfOwed(record: readonly LhMessage[]): Promise<void> {
-		if (this.statusValue === "ready" && !this.automaticContinuationBlocked && this.getState().error === null && needsContinuation(record)) {
+		if (!this.botRun && this.statusValue === "ready" && !this.automaticContinuationBlocked && this.getState().error === null && needsContinuation(record)) {
 			await this.send({ type: "continue" });
 		}
 	}
