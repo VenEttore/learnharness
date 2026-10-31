@@ -72,6 +72,7 @@ describe("create", () => {
 		assert.equal(record.messages[0]!.role, "user");
 		assert.equal((record.messages[0] as { content: unknown }).content, "Teach me Bayes");
 		assert.equal(body.cursor, record.messages[0]!.id);
+		assert.deepEqual(body.items, [{ type: "message", id: body.cursor, text: "Teach me Bayes" }], "its cursor passes the prompt, so the reply carries it");
 	});
 
 	it("shortens a long title the way the normal create route does", async () => {

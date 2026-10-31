@@ -128,7 +128,7 @@ export function externalRequestRefusal(req: Request): Response | null {
 /** The newest message's id. An empty lesson has none, so its cursor is the
  *  lesson id, which `after` accepts as "before the first message". A
  *  reply whose cursor passes learner input the bot has not read (a
- *  repeat, a same-key create, bad_after) also carries those items, so
+ *  create, a repeat, bad_after, show) also carries those items, so
  *  adopting the cursor never skips them. */
 function cursorOf(record: ChatRecord): string {
 	return record.messages.at(-1)?.id ?? record.id;
@@ -241,7 +241,7 @@ export function createBotLesson(body: unknown): Response {
 		console.error("[bot-run] lesson create failed:", err);
 		return fail(500, "save_failed");
 	}
-	return Response.json({ ok: true, id: chat.id, title: chat.title, existing: false, cursor: cursorOf(chat) });
+	return Response.json({ ok: true, id: chat.id, title: chat.title, existing: false, items: unreadByBot(chat), cursor: cursorOf(chat) });
 }
 
 /** commitBotRun for the external routes: a failed save is a JSON 500 the
