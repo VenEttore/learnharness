@@ -355,7 +355,9 @@ interface TurnKindRow<S extends TSchema> {
 	 *  empty means valid. */
 	refine: ((payload: Static<S>) => string[]) | null;
 	/** The payload's `nodeId` must name a node of the lesson's plan (the
-	 *  shared plan-node check, after the refinement). */
+	 *  shared plan-node check, after the refinement). Such a row's `build`
+	 *  also runs on a node the plan lacks (for the repeat check), so it must
+	 *  not look the node up. */
 	needsPlanNode: boolean;
 	/** Takes optional lead-in `text`, which rides the same assistant message
 	 *  ahead of the call and is not part of the tool's arguments. */
@@ -445,8 +447,8 @@ function turnKind<S extends TSchema>(name: string, row: TurnKindRow<S>): TurnKin
 		const converted = conversionProblems(args, checked, "");
 		if (converted.length > 0) return { ok: false, problems: converted };
 		const refined = row.refine?.(checked) ?? [];
-		// Reported together, as the teaching tools report them.
 		const nodeProblems = row.needsPlanNode ? planNodeProblems(checked, record) : [];
+		// Reported together, as the teaching tools report them.
 		if (refined.length > 0) return { ok: false, problems: [...refined, ...nodeProblems] };
 		const built = row.build(checked, leadIn, record);
 		return nodeProblems.length > 0 ? { ok: false, problems: nodeProblems, built } : { ok: true, built };
@@ -699,7 +701,9 @@ export function botTurn(id: string, body: unknown): Response {
 		return fail(500, "internal_error", { cursor });
 	}
 
-	// 3. repeat: the same turn already follows `after`
+	// 3. repeat: the same turn already follows `after`. A turn refused only
+	// by the plan-node check is built too: it may have landed before a plan
+	// rewrite dropped its node.
 	if (checked.built) {
 		const signature = turnSignature(checked.built.records[0]);
 		if (since.some((m) => isBotMessage(m) && turnSignature(m) === signature)) {

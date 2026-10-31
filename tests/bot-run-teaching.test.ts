@@ -61,6 +61,8 @@ const ASSESSMENT = {
 
 const PLAN = "graph TD\n  base-rates[Base rates] --> conditional[Conditional probability] --> bayes[Bayes' rule]";
 const REWRITE = "graph LR\n  base-rates[Base rates] --> bayes[Bayes' rule]\n  likelihood[Likelihood] --> bayes";
+/** A rewrite without "base-rates", QUIZ's node. */
+const WITHOUT_BASE_RATES = "graph TD\n  likelihood[Likelihood] --> conditional[Conditional probability]";
 
 const QUIZ = {
 	type: "predict",
@@ -211,7 +213,7 @@ describe("teaching questions the page can show", () => {
 		const { id, cursor } = await plannedLesson();
 		await turn(id, { kind: "quiz", after: cursor, ...QUIZ });
 		const skipped = await learnerSkips(id, pendingQuestionOf(messages(id))!.toolCallId, "quiz", QUIZ.question);
-		const rewrite = await turn(id, { kind: "plan", after: skipped, mermaid: "graph TD\n  likelihood[Likelihood] --> conditional[Conditional probability]" });
+		const rewrite = await turn(id, { kind: "plan", after: skipped, mermaid: WITHOUT_BASE_RATES });
 		assert.equal(rewrite.status, 200, JSON.stringify(rewrite.body));
 		const count = messages(id).length;
 		const again = await turn(id, { kind: "quiz", after: cursor, ...QUIZ });
