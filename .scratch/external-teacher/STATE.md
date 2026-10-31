@@ -4,7 +4,7 @@ max_suborchestrators: 2
 destination: One LearnHarness lesson taught by a Grok Bot through lh, with no LearnHarness model calls.
 host: linuxdev, repo ~/code/learnharness, Node 22 in ~/.local/bin.
 live:
-  13 external-teacher-13-teacher-guide node:delegated-task:command%3Amcp%3Af3ac2e17-bdcd-4886-bd61-bf365b215c00%3Adelegate-task%3Aexternal-teacher-13-3 (attempt 3, from 38de61e, review round 3) running
+  13 external-teacher-13-teacher-guide task node:delegated-task:limit-resume (resumed in thread external-teacher-13-3 after a rate-limit failure, 20:50 UTC); worktree /home/matt/.t3/worktrees/learnharness/t3-2aba6d2b; tip 58a49cb; review round 3 interrogate in progress
 touches-locked: 13
 merged: 02 (33e1e55), 01 (0400540), 04 (8d77b94), 03 (e51624e), 05 (phase A verified; .scratch only), 08 (2e93d6c), 06 (8247cca), 07 (5929722), 09 (phase B verified; .scratch only), 10 (17ab05a), 11 (439f106), 12 (4c38b64); check after each code merge matches baseline
 notes: 03 round 5 code-review did not run (Grok 4.7 provider error twice, no substitute); last code-review was round 4 on a6b7044, ~25 lines of bot-run.ts changed after it and were covered only by round-5 interrogate (3 seats).
