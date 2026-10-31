@@ -468,9 +468,10 @@ export function Chat({
 
 	const localStream = status === "submitted" || status === "streaming";
 	const busy = localStream || turnInFlight;
-	const busyRef = useRef(busy);
-	// The abort gate: a bot-run lesson never has a turn to abort.
-	busyRef.current = busy && !botRun;
+	/** A turn to steer, stop, or abort: a bot-run lesson never has one. */
+	const turnBusy = busy && !botRun;
+	const busyRef = useRef(turnBusy);
+	busyRef.current = turnBusy;
 	// The attach handoff (stream-reattach wave): the moment a resumed
 	// stream takes over the rendering — the SDK left "ready", so
 	// submitted/streaming means chunks are flowing — localStream covers
@@ -1244,7 +1245,7 @@ export function Chat({
 		const t = textRef.current.trim();
 		if (!t) return;
 		// A bot-run lesson has no live turn to steer: doSend keeps the text.
-		if (busy && !botRun) {
+		if (turnBusy) {
 			applyText("");
 			void steer(t);
 			return;
@@ -1730,7 +1731,7 @@ export function Chat({
 							// square renders while a reattached/wake turn runs too — the
 							// abort channel kills it server-side; stop() alone would
 							// only detach our view.
-							busy={busy && !botRun}
+							busy={turnBusy}
 							value={text}
 							onChange={applyText}
 							inputRef={composerInputRef}
@@ -1780,7 +1781,7 @@ export function Chat({
 					/>
 				)}
 				{planOpen && <PlanPopup messages={messages} onClose={() => setPlanOpen(false)} />}
-				<AbortTurnDialog mode={abortAsk} onClose={() => setAbortAsk(null)} onConfirm={confirmAbort} busy={busy} />
+				<AbortTurnDialog mode={abortAsk} onClose={() => setAbortAsk(null)} onConfirm={confirmAbort} busy={turnBusy} />
 				</div>
 			</div>
 		</div>

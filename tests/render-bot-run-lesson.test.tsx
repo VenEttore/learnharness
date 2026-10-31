@@ -44,6 +44,9 @@ g.location ??= (dom.window as unknown as Record<string, unknown>).location;
 const posts: string[] = [];
 /** Holds the stream attach open, so the view stays busy after a send. */
 let streamDelayMs = 0;
+/** The record the page refetches after a send (e.g. a question the bot
+ *  wrote meanwhile); absent = an empty answer. */
+let recordAfterSend: unknown[] | undefined;
 const realFetch = globalThis.fetch;
 
 before(() => {
@@ -53,6 +56,7 @@ before(() => {
 			posts.push(JSON.parse(String(init?.body)).input.type);
 			return Response.json({ ok: true });
 		}
+		if (url === "/api/chats/chat_x" && recordAfterSend && posts.length > 0) return Response.json({ messages: recordAfterSend });
 		if (url === "/api/activity/abort") {
 			posts.push("abort");
 			return Response.json({ error: "not_running" }, { status: 409 });
@@ -176,6 +180,43 @@ describe("keyless install: the chat view", () => {
 		assert.deepEqual(posts, ["text"], "no turn abort is posted");
 		assert.ok(!testIds().includes("abort-turn-dialog"), "Esc offers no turn abort");
 		streamDelayMs = 0;
+		await act(async () => {
+			await new Promise((r) => setTimeout(r, 400));
+		});
+		await act(async () => root.unmount());
+		host.remove();
+	});
+
+	it("a bot-run lesson's question dismissal promises no turn stop while a send settles", async () => {
+		posts.length = 0;
+		streamDelayMs = 300;
+		// The bot asked a question while the owner's send was settling.
+		recordAfterSend = [{
+			id: "a1",
+			role: "assistant",
+			content: [{ type: "toolCall", id: "q1", name: "quiz", arguments: { question: "Q?" } }],
+			stopReason: "toolUse",
+			usage: { input: 0, output: 0, total: 0, cacheReads: 0, cacheWrites: 0 },
+			timestamp: 0,
+			provider: "external",
+			model: "bot",
+		}];
+		const { host, root } = await mount(true);
+		await typeAndSend(host, "first");
+		await act(async () => {
+			window.dispatchEvent(new CustomEvent("lh:kbd-abort-turn"));
+			await new Promise((r) => setTimeout(r, 20));
+		});
+		assert.ok(testIds().includes("abort-turn-dialog"), "Esc opens the question dismissal");
+		const copy = document.querySelector('[data-testid="abort-turn-line"]')?.textContent ?? "";
+		assert.doesNotMatch(copy, /working turn stops/, "a bot-run lesson has no turn to stop");
+		await act(async () => {
+			document.querySelector<HTMLButtonElement>('[data-testid="abort-turn-confirm"]')?.click();
+			await new Promise((r) => setTimeout(r, 20));
+		});
+		assert.ok(!posts.includes("abort"), "confirming posts no turn abort");
+		streamDelayMs = 0;
+		recordAfterSend = undefined;
 		await act(async () => {
 			await new Promise((r) => setTimeout(r, 400));
 		});
