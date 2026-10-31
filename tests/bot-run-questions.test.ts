@@ -214,7 +214,7 @@ describe("refusals save nothing", () => {
 		assert.equal(messages(id).length, 1);
 	});
 
-	it("refuses a question the page could not read, though the tool's schema lets it through", async () => {
+	it("refuses a type field on probe or recall, which the dock could not read", async () => {
 		const { id, cursor } = await lesson();
 		for (const body of [
 			{ kind: "probe", after: cursor, ...PROBE, type: { a: 1 } },
@@ -223,7 +223,23 @@ describe("refusals save nothing", () => {
 			const res = await turn(id, body);
 			assert.equal(res.status, 422, JSON.stringify(body));
 			assert.equal(res.body.code, "invalid");
-			assert.ok(res.body.problems.some((p: string) => /page/.test(p)), res.body.problems.join("; "));
+			assert.ok(res.body.problems.some((p: string) => /^type is not a field/.test(p)), res.body.problems.join("; "));
+		}
+		assert.equal(messages(id).length, 1);
+	});
+
+	it("refuses fields the tool does not define, at any depth, naming them", async () => {
+		const { id, cursor } = await lesson();
+		const cases: Array<[Record<string, unknown>, RegExp]> = [
+			[{ kind: "probe", ...PROBE, detials: "typo" }, /detials/],
+			[{ kind: "ask", ...ASK, options: [{ label: "A", desc: "x" }, { label: "B" }] }, /options\[0\]\.desc/],
+			[{ kind: "say", text: "Hi", extra: 1 }, /extra/],
+		];
+		for (const [body, problem] of cases) {
+			const res = await turn(id, { ...body, after: cursor });
+			assert.equal(res.status, 422, JSON.stringify(body));
+			assert.equal(res.body.code, "invalid");
+			assert.ok(res.body.problems.some((p: string) => problem.test(p)), res.body.problems.join("; "));
 		}
 		assert.equal(messages(id).length, 1);
 	});

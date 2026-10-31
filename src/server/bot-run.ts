@@ -25,7 +25,6 @@ import {
 	probeQuizInputSchema,
 	quizInputProblems,
 } from "../core/question-core.ts";
-import { parseAskInput, parseExplainInput, parseQuizInput } from "../core/tool-parts.ts";
 import { stores } from "./stores.ts";
 import { settledTurnResponse } from "./turn-runs.ts";
 
@@ -299,6 +298,25 @@ function conversionProblems(raw: unknown, checked: unknown, path: string): strin
 	return [];
 }
 
+/** Fields the schema does not define. pi passes them through for a model;
+ *  from a bot they are typos the page would never show (`detials`), and
+ *  stored, they would make a clean retry miss the repeat check. With these
+ *  and conversions refused, the dock's display parse (core/tool-parts.ts)
+ *  reads every call the boundary accepts: its one extra rule is on a
+ *  `type` field the probe-phase kinds do not have. */
+function unknownFields(schema: unknown, value: unknown, path: string): string[] {
+	const s = schema as { type?: unknown; properties?: Record<string, unknown>; items?: unknown };
+	if (s.type === "object" && s.properties && jsonType(value) === "object") {
+		const props = s.properties;
+		return Object.entries(value as Record<string, unknown>).flatMap(([k, v]) => {
+			const at = path ? `${path}.${k}` : k;
+			return Object.hasOwn(props, k) ? unknownFields(props[k], v, at) : [`${at} is not a field of this kind; fields: ${Object.keys(props).join(", ")}`];
+		});
+	}
+	if (s.type === "array" && s.items && Array.isArray(value)) return value.flatMap((v, i) => unknownFields(s.items, v, `${path}[${i}]`));
+	return [];
+}
+
 function turnKind<S extends TSchema>(name: string, row: TurnKindRow<S>): TurnKind {
 	const check = (payload: Record<string, unknown>): Checked => {
 		let args = payload;
@@ -319,7 +337,8 @@ function turnKind<S extends TSchema>(name: string, row: TurnKindRow<S>): TurnKin
 		} catch (err) {
 			return { ok: false, problems: [err instanceof Error ? err.message : String(err)] };
 		}
-		const problems = [...conversionProblems(args, checked, ""), ...(row.refine?.(checked) ?? [])];
+		const problems = [...unknownFields(row.schema, checked, ""), ...conversionProblems(args, checked, "")];
+		if (problems.length === 0) problems.push(...(row.refine?.(checked) ?? []));
 		return problems.length ? { ok: false, problems } : { ok: true, built: row.build(checked, leadIn) };
 	};
 	return { tool: row.tool, phases: row.phases, schema: row.schema, needsPlanNode: row.needsPlanNode, takesLeadIn: row.takesLeadIn, check };
@@ -329,18 +348,6 @@ const ANY_PHASE = ["probe", "plan", "teach"] as const satisfies readonly Phase3[
 
 function newToolCallId(): string {
 	return `call_bot_${crypto.randomUUID().replaceAll("-", "")}`;
-}
-
-/** The tool's refinement, then the dock's own parse (core/tool-parts.ts).
- *  The display schemas are stricter in one place the tool schemas are
- *  silent (an optional `type` must be a string), and a call the dock
- *  cannot read stalls the lesson behind a question nobody can answer. */
-function questionRefine<P>(refine: (p: P) => string[], parse: (input: unknown) => unknown) {
-	return (p: P): string[] => {
-		const problems = refine(p);
-		if (problems.length > 0 || parse(p) !== undefined) return problems;
-		return ["the page cannot show this question; a `type` field, if present, must be a string"];
-	};
 }
 
 /** A question kind's records: one assistant message, the lead-in text (if
@@ -386,7 +393,7 @@ const TURN_KINDS: Readonly<Record<string, TurnKind>> = {
 		tool: "ask_user_question",
 		phases: ANY_PHASE,
 		schema: askInputSchema,
-		refine: questionRefine((p) => askOptionProblems(p.options ?? []), parseAskInput),
+		refine: (p) => askOptionProblems(p.options ?? []),
 		needsPlanNode: false,
 		takesLeadIn: true,
 		build: questionBuild("ask_user_question"),
@@ -395,7 +402,7 @@ const TURN_KINDS: Readonly<Record<string, TurnKind>> = {
 		tool: "probe",
 		phases: ["probe"],
 		schema: probeQuizInputSchema,
-		refine: questionRefine(quizInputProblems, parseQuizInput),
+		refine: quizInputProblems,
 		needsPlanNode: false,
 		takesLeadIn: true,
 		build: questionBuild("probe"),
@@ -404,7 +411,7 @@ const TURN_KINDS: Readonly<Record<string, TurnKind>> = {
 		tool: "recall",
 		phases: ["probe"],
 		schema: explainInputBase,
-		refine: questionRefine(explainInputProblems, parseExplainInput),
+		refine: explainInputProblems,
 		needsPlanNode: false,
 		takesLeadIn: true,
 		build: questionBuild("recall"),
