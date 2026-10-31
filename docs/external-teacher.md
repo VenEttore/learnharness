@@ -27,9 +27,9 @@ The examples assume the repo is at `/workspace/learnharness`. Use your own path 
    - `-H 127.0.0.1` is required. Next listens on every interface by default, and the `lh` routes have no login. LearnHarness checks the Host header, but a machine on the network can forge it. Only the bind keeps other machines out.
    - Browser mode: `LH_DESKTOP_SERVER` and `LH_DESKTOP_API_SECRET` stay unset. They belong to the desktop app.
    - `LH_DATA_DIR` under `/workspace` keeps lessons across restarts of the computer.
-   - No API keys. `LH_IGNORE_ENV_KEYS=1` removes LearnHarness's key variables (`XAI_API_KEY`, `OPENROUTER_API_KEY`, `ANTHROPIC_API_KEY` and the rest) from the server's environment. It leaves some provider tokens in place, and the second `unset` line clears those. It does not touch cloud credentials (`AWS_*`, `GOOGLE_APPLICATION_CREDENTIALS` or a gcloud login in `~/.config/gcloud`, `ANTHROPIC_FEDERATION_RULE_ID`), so start from a shell and an account that hold none. Keep no `.env` or `.env.local` file in the repo: `next dev` loads it after the shell `unset`. Add no key in Settings either. A bot-run lesson needs none.
+   - No API keys. `LH_IGNORE_ENV_KEYS=1` removes LearnHarness's key variables (`XAI_API_KEY`, `OPENROUTER_API_KEY`, `ANTHROPIC_API_KEY` and the rest) from the server's environment. It leaves some provider tokens in place, and the second `unset` line clears those. It does not touch cloud credentials (`AWS_*`, `GOOGLE_APPLICATION_CREDENTIALS` or a gcloud login in `~/.config/gcloud`, `ANTHROPIC_FEDERATION_RULE_ID`), so start from a shell and an account that hold none. Keep no `.env*` file in the repo. Next loads those files after the shell `unset`. Add no key in Settings either. A bot-run lesson needs none.
 
-5. Check it is up: `lh show no-such-lesson`. It prints `{"ok":false,"code":"not_found"}` and exits 1 when a LearnHarness answers. Exit 3 means it is not reachable yet. The first start compiles for a while, so read `/workspace/lh-server.log` and try again. Confirm the server is yours. `grep -E 'Local: +http://127\.0\.0\.1:3000' /workspace/lh-server.log` finds a line (use your port if you changed it). After `lh lesson new` (section 3), the lesson's file `/workspace/lh-data/chats/<lesson id>.json` exists.
+5. Check it is up: `lh show no-such-lesson`. It prints `{"ok":false,"code":"not_found"}` and exits 1 when a LearnHarness answers. Exit 3 means it is not reachable yet. The first start compiles for a while, so read `/workspace/lh-server.log` and try again. Confirm the server is yours. `grep -E 'Local: +http://127\.0\.0\.1:3000' /workspace/lh-server.log` finds a line (use your port if you changed it).
 
 `lh` talks to `LH_URL`, default `http://127.0.0.1:3000`. Use the IP, not `localhost`, which can resolve to the IPv6 address while the server listens on 127.0.0.1 only. To use another port, change `-p` and set `LH_URL` to match, for example `-p 3001` and `LH_URL=http://127.0.0.1:3001`.
 
@@ -46,7 +46,7 @@ Every command prints one JSON line and exits with a code:
 
 A reply with `"code":"bad_reply"` means LearnHarness answered with something other than JSON, such as an error page. Read `/workspace/lh-server.log`.
 
-**The cursor.** Every reply about a lesson you can write to carries `cursor`, the id of the newest message in the lesson. A new lesson created without `--prompt` is empty, and its cursor is the lesson id. Pass the lesson id only when a reply gave it to you as the cursor. As `--after` it means "from the start": before your first turn on a lesson with a prompt it is refused as `unread_input`, and after that a turn that matches any earlier turn counts as a repeat and saves nothing. Every turn command needs `--after <cursor>`, and you pass the cursor from the last reply you read. In the examples, `L` is the lesson id and `C` is the cursor; after each reply, set `C` to its `cursor`.
+**The cursor.** Every reply about a lesson you can write to carries `cursor`, the id of the newest message in the lesson. A new lesson created without `--prompt` is empty, and its cursor is the lesson id. Pass the lesson id only when a reply gave it to you as the cursor. As `--after` it means "from the start". Before your first turn on a lesson with a prompt it is refused as `unread_input`, and after that a turn that matches any earlier turn counts as a repeat and saves nothing. Every turn command needs `--after <cursor>`. In the examples, `L` is the lesson id and `C` is the cursor; after each reply, set `C` to its `cursor`.
 
 **Items.** Learner input comes back as `items`. `lh answer` always has them. Other replies (a create, a repeat, a refusal, `lh show`) carry `items` when there is learner input you have not responded to. That is everything after your last turn, or everything since the lesson began if you have not taken a turn. A create with `--prompt` returns the prompt this way. Read the items in every reply that has them, and respond to all of them, before your next turn.
 
@@ -64,7 +64,7 @@ lh lesson new --title "Binary search" --key binary-search-1 --prompt "I want to 
 {"ok":true,"id":"<lesson id>","title":"Binary search","existing":false,"items":[{"type":"message","id":"<message id>","text":"I want to understand why binary search is fast."}],"cursor":"<message id>"}
 ```
 
-Rerunning with the same key returns the same lesson with `"existing":true` and saves nothing, so a retried create never makes a duplicate. `--prompt` is the learner's request, saved as the first message. Open `http://127.0.0.1:3000/chat/<lesson id>` in your browser. That is the page the learner uses.
+Rerunning with the same key returns the same lesson with `"existing":true` and saves nothing, so a retried create never makes a duplicate. `--prompt` is the learner's request, saved as the first message. The lesson's file `/workspace/lh-data/chats/<lesson id>.json` now exists, which confirms the server writes to your data directory. Open `http://127.0.0.1:3000/chat/<lesson id>` in your browser (your port, if you changed it). That is the page the learner uses.
 
 ### Which kinds each phase takes
 
@@ -129,7 +129,7 @@ You already know why the list must be sorted. We'll build from halving: what one
 EOF
 ```
 
-Then the map. `lh plan` reads a Mermaid graph. Node ids are permanent slugs: lowercase letters and digits, with single `-` or `_` between parts (`chain-rule`), and no leading, trailing or doubled separator, and `a --> b` means a must be understood before b:
+Then the map. `lh plan` reads a Mermaid graph. Node ids are permanent slugs: lowercase letters and digits, with single `-` or `_` between parts (`chain-rule`), and no leading, trailing or doubled separator. `a --> b` means a must be understood before b.
 
 ```bash
 lh plan "$L" --after "$C" <<'EOF'
