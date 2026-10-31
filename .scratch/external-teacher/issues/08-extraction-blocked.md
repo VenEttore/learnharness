@@ -1,6 +1,6 @@
 # 08: Extraction never runs for a bot-run lesson
 
-Status: open
+Status: claimed
 Blocked by: 05
 Risk: pre-release
 Gate: none

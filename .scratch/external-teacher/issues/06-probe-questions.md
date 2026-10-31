@@ -1,6 +1,6 @@
 # 06: Probe questions
 
-Status: open
+Status: claimed
 Blocked by: 05
 Risk: pre-release
 Gate: none
