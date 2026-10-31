@@ -1,6 +1,6 @@
 # 09: Verify phase B
 
-Status: open
+Status: claimed
 Blocked by: 06, 07, 08
 Risk: pre-release
 Gate: none
