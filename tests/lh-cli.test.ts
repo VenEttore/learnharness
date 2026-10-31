@@ -28,6 +28,12 @@ const server = http.createServer((req, res) => {
 	let raw = "";
 	req.on("data", (chunk) => (raw += chunk));
 	req.on("end", () => {
+		// The host is shared, and something there probes local ports (GET /):
+		// only lh's own requests count or take a queued reply.
+		if (!req.url!.startsWith("/api/")) {
+			res.writeHead(404).end();
+			return;
+		}
 		seen.push({ method: req.method!, url: req.url!, body: raw ? JSON.parse(raw) : undefined });
 		const next = queued.shift() ?? reply;
 		res.writeHead(next.status, { "Content-Type": "application/json" });
