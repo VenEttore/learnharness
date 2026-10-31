@@ -214,6 +214,20 @@ describe("refusals save nothing", () => {
 		assert.equal(messages(id).length, 1);
 	});
 
+	it("refuses a question the page could not read, though the tool's schema lets it through", async () => {
+		const { id, cursor } = await lesson();
+		for (const body of [
+			{ kind: "probe", after: cursor, ...PROBE, type: { a: 1 } },
+			{ kind: "recall", after: cursor, ...RECALL, type: ["x"] },
+		]) {
+			const res = await turn(id, body);
+			assert.equal(res.status, 422, JSON.stringify(body));
+			assert.equal(res.body.code, "invalid");
+			assert.ok(res.body.problems.some((p: string) => /page/.test(p)), res.body.problems.join("; "));
+		}
+		assert.equal(messages(id).length, 1);
+	});
+
 	it("refuses a payload that fails the tool's refinement with its problem text", async () => {
 		const { id, cursor } = await lesson();
 		const cases: Array<[Record<string, unknown>, RegExp]> = [
@@ -263,6 +277,16 @@ describe("repeats", () => {
 		const answered = await turn(id, reordered);
 		assert.equal(answered.status, 200);
 		assert.equal(answered.body.repeat, true, "after the learner answered");
+		assert.equal(messages(id).length, count);
+	});
+
+	it("a rerun that rewords only the lead-in is a repeat, after the learner answered", async () => {
+		const { id, cursor } = await lesson();
+		await turn(id, { kind: "ask", after: cursor, text: "First wording.", ...ASK });
+		await learnerAnswers(id, pendingQuestionOf(messages(id))!.toolCallId);
+		const count = messages(id).length;
+		const reworded = await turn(id, { kind: "ask", after: cursor, text: "Second wording.", ...ASK });
+		assert.equal(reworded.body.repeat, true);
 		assert.equal(messages(id).length, count);
 	});
 

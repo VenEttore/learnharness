@@ -25,6 +25,7 @@ import {
 	probeQuizInputSchema,
 	quizInputProblems,
 } from "../core/question-core.ts";
+import { parseAskInput, parseExplainInput, parseQuizInput } from "../core/tool-parts.ts";
 import { stores } from "./stores.ts";
 import { settledTurnResponse } from "./turn-runs.ts";
 
@@ -330,6 +331,18 @@ function newToolCallId(): string {
 	return `call_bot_${crypto.randomUUID().replaceAll("-", "")}`;
 }
 
+/** The tool's refinement, then the dock's own parse (core/tool-parts.ts).
+ *  The display schemas are stricter in one place the tool schemas are
+ *  silent (an optional `type` must be a string), and a call the dock
+ *  cannot read stalls the lesson behind a question nobody can answer. */
+function questionRefine<P>(refine: (p: P) => string[], parse: (input: unknown) => unknown) {
+	return (p: P): string[] => {
+		const problems = refine(p);
+		if (problems.length > 0 || parse(p) !== undefined) return problems;
+		return ["the page cannot show this question; a `type` field, if present, must be a string"];
+	};
+}
+
 /** A question kind's records: one assistant message, the lead-in text (if
  *  any) then the call, as LearnHarness's model writes them. The call's
  *  arguments are the checked payload. No result follows: the learner's
@@ -373,7 +386,7 @@ const TURN_KINDS: Readonly<Record<string, TurnKind>> = {
 		tool: "ask_user_question",
 		phases: ANY_PHASE,
 		schema: askInputSchema,
-		refine: (p) => askOptionProblems(p.options ?? []),
+		refine: questionRefine((p) => askOptionProblems(p.options ?? []), parseAskInput),
 		needsPlanNode: false,
 		takesLeadIn: true,
 		build: questionBuild("ask_user_question"),
@@ -382,7 +395,7 @@ const TURN_KINDS: Readonly<Record<string, TurnKind>> = {
 		tool: "probe",
 		phases: ["probe"],
 		schema: probeQuizInputSchema,
-		refine: quizInputProblems,
+		refine: questionRefine(quizInputProblems, parseQuizInput),
 		needsPlanNode: false,
 		takesLeadIn: true,
 		build: questionBuild("probe"),
@@ -391,7 +404,7 @@ const TURN_KINDS: Readonly<Record<string, TurnKind>> = {
 		tool: "recall",
 		phases: ["probe"],
 		schema: explainInputBase,
-		refine: explainInputProblems,
+		refine: questionRefine(explainInputProblems, parseExplainInput),
 		needsPlanNode: false,
 		takesLeadIn: true,
 		build: questionBuild("recall"),
@@ -413,11 +426,12 @@ function canonicalJson(value: unknown): string {
 	);
 }
 
-/** Content with tool-call ids dropped: two turns with the same blocks are
- *  the same turn, whatever ids they were minted with and whatever order
- *  the bot's JSON listed the keys in. */
+/** What makes two turns the same turn: a call turn's calls without their
+ *  ids (a lead-in is wording, so a retry that rewords it repeats), and a
+ *  text turn's text. Key order in the bot's JSON does not count. */
 function turnSignature(m: AssistantMessage): string {
-	return canonicalJson(m.content.map((b) => (b.type === "toolCall" ? { ...b, id: undefined } : b)));
+	const calls = m.content.flatMap((b) => (b.type === "toolCall" ? [{ ...b, id: undefined }] : []));
+	return canonicalJson(calls.length > 0 ? calls : m.content);
 }
 
 /** Turn: `{ kind, after, ...payload }`. Checks run in the spec's order,
