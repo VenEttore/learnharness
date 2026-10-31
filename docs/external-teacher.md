@@ -1,8 +1,8 @@
 # Teaching a lesson with `lh`
 
-This guide is for the Bot Teacher: a Grok Bot on the shared cloud computer that teaches a LearnHarness lesson through the `lh` command instead of LearnHarness's own model. The lesson is a bot-run lesson. LearnHarness saves your turns and the learner's input, shows them on its normal page, and never calls a model. Terms follow `GLOSSARY.md`.
+This guide is for the Bot Teacher: a Grok Bot on the shared cloud computer that teaches a LearnHarness lesson through the `lh` command instead of LearnHarness's own model. The lesson is a bot-run lesson. LearnHarness saves your turns and the learner's input, shows them on its normal page, and never calls a model.
 
-You run the whole lesson: probe, then plan, then teach. The learner (the owner) answers on the lesson page in your browser, through Cursor's "Take over".
+You run the whole lesson: probe, then plan, then teach. The learner is the owner of this computer. They answer on the lesson page in your browser, through Cursor's "Take over".
 
 ## 1. Start LearnHarness
 
@@ -14,20 +14,20 @@ The examples assume the repo is at `/workspace/learnharness`. Use your own path 
 
    ```bash
    cd /workspace/learnharness
-   unset LH_DESKTOP_SERVER LH_DESKTOP_API_SECRET OPENROUTER_API_KEY
+   unset LH_DESKTOP_SERVER LH_DESKTOP_API_SECRET
    mkdir -p /workspace/lh-data
-   LH_DATA_DIR=/workspace/lh-data nohup npx next dev -H 127.0.0.1 > /workspace/lh-server.log 2>&1 &
+   LH_DATA_DIR=/workspace/lh-data LH_IGNORE_ENV_KEYS=1 nohup npx next dev -H 127.0.0.1 > /workspace/lh-server.log 2>&1 &
    ```
 
    For a production build, run `npm run build` once, then use `npx next start -H 127.0.0.1` in place of `npx next dev -H 127.0.0.1`.
 
-   - `-H 127.0.0.1` is required. Next listens on every interface by default, and the `lh` routes have no login. LearnHarness refuses requests whose Host header is not a loopback name, but a machine on the network can forge that header, so only the bind keeps it out.
+   - `-H 127.0.0.1` is required. Next listens on every interface by default, and the `lh` routes have no login. LearnHarness checks the Host header, but a machine on the network can forge it. Only the bind keeps other machines out.
    - Browser mode: `LH_DESKTOP_SERVER` and `LH_DESKTOP_API_SECRET` stay unset. They belong to the desktop app.
    - `LH_DATA_DIR` under `/workspace` keeps lessons across restarts of the computer.
-   - Set no API keys: no `.env.local`, no `OPENROUTER_API_KEY`, and no key in Settings. A bot-run lesson needs none.
+   - No API keys. `LH_IGNORE_ENV_KEYS=1` hides every key variable in the environment (`XAI_API_KEY`, `OPENROUTER_API_KEY` and the rest) from LearnHarness. Add no key in Settings either. A bot-run lesson needs none.
 
 4. Put `lh` on your PATH: `mkdir -p ~/.local/bin && ln -sf /workspace/learnharness/scripts/lh.mjs ~/.local/bin/lh`. Check that `~/.local/bin` is on `PATH`. Without the link, run `node /workspace/learnharness/scripts/lh.mjs` wherever this guide says `lh`.
-5. Check it is up: `lh show no-such-lesson`. It prints `{"ok":false,"code":"not_found"}` and exits 1 when LearnHarness answers. Exit 3 means it is not reachable yet: the first start compiles for a while, so read `/workspace/lh-server.log` and try again.
+5. Check it is up: `lh show no-such-lesson`. It prints `{"ok":false,"code":"not_found"}` and exits 1 when LearnHarness answers. Exit 3 means it is not reachable yet. The first start compiles for a while, so read `/workspace/lh-server.log` and try again.
 
 `lh` talks to `LH_URL`, default `http://127.0.0.1:3000`. Use the IP, not `localhost`, which can resolve to the IPv6 address while the server listens on 127.0.0.1 only. If you start the server on another port (`-p 3001`), set `LH_URL=http://127.0.0.1:3001`.
 
@@ -42,11 +42,13 @@ Every command prints one JSON line and exits with a code:
 | 2 | `lh answer --wait` timed out: `{"ok":false,"error":"timeout"}` |
 | 3 | LearnHarness unreachable: `{"ok":false,"code":"unreachable",...}`. Start it as in section 1. |
 
-**The cursor.** Every reply carries `cursor`, the id of the newest message in the lesson. A new empty lesson's cursor is the lesson id. Every turn command needs `--after <cursor>`, and you pass the cursor from the last reply you read. In the examples, `L` is the lesson id and `C` is the cursor; after each reply, set `C` to its `cursor`.
+A reply with `"code":"bad_reply"` means LearnHarness answered with something other than JSON, such as an error page. Read `/workspace/lh-server.log`.
 
-**Items.** Learner input comes back as `items`. `lh answer` always has them. Any other reply whose cursor passes input you have not read also carries it as `items` (a create, a repeat, a refusal, `lh show`). Read the items in every reply that has them before you send your next turn.
+**The cursor.** Every reply about a lesson you can write to carries `cursor`, the id of the newest message in the lesson. A new empty lesson's cursor is the lesson id. Every turn command needs `--after <cursor>`, and you pass the cursor from the last reply you read. In the examples, `L` is the lesson id and `C` is the cursor; after each reply, set `C` to its `cursor`.
 
-**Input.** `say` and `plan` read plain text. `ask`, `probe`, `recall`, `probe-done`, `quiz` and `explain` read one JSON object. Both come from `--file <path>` or stdin; the examples use a quoted heredoc (`<<'EOF'`), which keeps `$` and backticks literal. The JSON never carries `kind` or `after`: those come from the command line.
+**Items.** Learner input comes back as `items`. `lh answer` always has them. Other replies (a create, a repeat, a refusal, `lh show`) carry `items` when the learner added input after your last turn. Read the items in every reply that has them, and respond to all of them, before your next turn.
+
+**Input.** `say` and `plan` read plain text. `ask`, `probe`, `recall`, `probe-done`, `quiz` and `explain` read one JSON object. Both come from `--file <path>` or stdin; the examples use a quoted heredoc (`<<'EOF'`), which keeps `$` and backticks literal. The JSON never carries `kind` or `after`. Those come from the command line.
 
 ## 3. Run a lesson
 
@@ -60,16 +62,16 @@ lh lesson new --title "Binary search" --key binary-search-1 --prompt "I want to 
 {"ok":true,"id":"<lesson id>","title":"Binary search","existing":false,"items":[{"type":"message","id":"<message id>","text":"I want to understand why binary search is fast."}],"cursor":"<message id>"}
 ```
 
-`--key` is required. Rerunning with the same key returns the same lesson with `"existing":true` and saves nothing, so a retried create never makes a duplicate. `--prompt` is the learner's request, saved as the first message. Open `http://127.0.0.1:3000/chat/<lesson id>` in your browser: that is the page the learner uses.
+`--key` is required (`key_required` without it). Rerunning with the same key returns the same lesson with `"existing":true` and saves nothing, so a retried create never makes a duplicate. `--prompt` is the learner's request, saved as the first message. Open `http://127.0.0.1:3000/chat/<lesson id>` in your browser. That is the page the learner uses.
 
 ### Which kinds each phase takes
 
-`lh show` reports the phase. A turn that does not fit is refused with `wrong_phase`, the current `phase`, and the kinds `allowed` now.
+`lh show` reports the phase. A turn that does not fit is refused with `wrong_phase`, the current `phase`, and the kinds `allowed` now (section 5).
 
 | kind | phases | what it posts |
 |---|---|---|
 | `say` | any | teaching text, Markdown |
-| `ask` | any | an open question, or a choice of options |
+| `ask` | any | a question answered in the learner's own words, or a choice of options |
 | `probe` | probe | a multiple-choice probe question |
 | `recall` | probe | a free-recall probe question |
 | `probe-done` | probe | the assessment that ends the probe |
@@ -113,7 +115,7 @@ lh probe-done "$L" --after "$C" <<'EOF'
 EOF
 ```
 
-The phase moves to `plan`. Nothing wakes: you carry on as the teacher. Close the probe with a short `say`.
+The phase moves to `plan`. LearnHarness starts no model and hands nothing over, so you stay the teacher in the same lesson. Close the probe with a short `say`.
 
 ### Plan
 
@@ -136,7 +138,7 @@ graph TD
 EOF
 ```
 
-A plan that does not parse, or has a cycle or a duplicate id, is refused with `invalid` and the problems, and nothing is saved. Send `plan` again whenever the map is wrong, in the plan or teach phase: the new map replaces the old one.
+A plan that does not parse, or has a cycle, is refused with `invalid` and the problems. If a node id appears twice, the first label wins. Send `plan` again whenever the map is wrong, in the plan or teach phase. The new map replaces the old one.
 
 Then ask, and wait for the answer:
 
@@ -164,21 +166,23 @@ EOF
 
 A `nodeId` that is not in the plan is refused with `invalid`. Teach between questions with `say`, one step at a time.
 
+When the learner can do what their goal asked for (the last node of the plan), close the lesson with a `say` that sums up what they built.
+
 ## 4. Read learner input
 
 ### Items
 
 ```json
-{"ok":true,"items":[{"type":"answer","id":"...","toolCallId":"...","kind":"probe","question":"...","answers":[{"index":0,"label":"About 10"}],"dontKnow":false,"confidence":80,"correct":true}],"openQuestion":null,"cursor":"..."}
+{"ok":true,"items":[{"type":"answer","id":"...","toolCallId":"...","kind":"quiz","question":"...","answers":[{"index":1,"label":"About 10"}],"dontKnow":false,"confidence":80,"correct":true}],"openQuestion":null,"cursor":"..."}
 ```
 
 - `{"type":"message","id","text"}` is something the learner typed.
-- `{"type":"answer",...}` is an answer. It carries `kind`, `question`, the picked `answers`, and `dontKnow`, plus whichever of these the page recorded: `text` (free recall), `other` (the "Other" text), `thinking` and `readingThinking` (their reasoning), `confidence` (0 to 100, multiple choice only), and `correct` (multiple choice only).
+- `{"type":"answer",...}` is an answer. Its `kind` is `quiz` (from `probe` or `quiz`), `explain` (from `recall` or `explain`), or `ask`; `toolCallId` names the question. It carries `question`, the picked `answers` (`index` counts from 1), and `dontKnow`, plus whichever of these the page recorded: `text` (free recall), `other` (the "Other" text), `thinking` and `readingThinking` (their reasoning), `confidence` (0 to 100, multiple choice only), and `correct` (multiple choice only).
 - `{"type":"skip","id","toolCallId","kind"}` is a skip. Re-ask, or move on.
 
-LearnHarness never grades free recall. For a `recall` or `explain` answer, compare `text` with the `correctAnswer` you committed (it is in the question's call in `lh show`), and give your grade in the next `say`. Grade against the committed answer as written.
+LearnHarness never grades free recall. For an answer of kind `explain`, compare `text` with the `correctAnswer` you committed (it is in the question's call in `lh show`), and give your grade in the next `say`. Grade against the committed answer as written.
 
-`lh answer` only reads, so running it twice returns the same items. The items are the input after your last turn, in order. Answer all of them.
+`lh answer` only reads, so running it twice returns the same items. The items are the input after your last turn, in order.
 
 ### Takeover
 
@@ -190,17 +194,17 @@ Use `--wait` only when the learner answers outside a takeover, while you keep ru
 lh answer "$L" --wait --timeout 300
 ```
 
-`--wait` takes no value. It checks every 2 s until there is at least one item, for 600 s unless `--timeout <seconds>` says otherwise. A timeout prints `{"ok":false,"error":"timeout"}` and exits 2: the learner has not answered, so do not act as if they did.
+`--wait` takes no value. It checks every 2 s until there is at least one item, for 600 s unless `--timeout <seconds>` says otherwise. A timeout (exit 2) means the learner has not answered. Wait again, or ask them in Cursor.
 
 ## 5. Refusals and recovery
 
-LearnHarness runs its checks before it saves anything, so a refused turn saved nothing. Fix it and resend.
+LearnHarness runs its checks before it saves anything, so a refused turn saved nothing. Fix it and resend. Refusals about a lesson carry the `cursor`; `not_found`, `not_bot_run`, `key_required`, `usage`, the `forbidden_*` codes and a `--wait` timeout do not.
 
 | code | what to do |
 |---|---|
 | `unread_input` | The learner added input after your cursor. Read `items`, take the new `cursor`, and respond to that input. |
-| `open_question` | A question is still open. Wait for its answer or skip. |
-| `wrong_phase` | The kind does not fit `phase`. Use one of `allowed`. |
+| `open_question` | Wait for the open question's answer or skip. |
+| `wrong_phase` | Use one of the kinds in `allowed`. |
 | `invalid` | The payload failed the tool's checks. `problems` says what to fix. |
 | `bad_after` | `--after` is not a message in this lesson. Use the reply's `cursor`, after reading its `items`. |
 | `not_found` | No lesson with that id. |
@@ -214,7 +218,7 @@ LearnHarness runs its checks before it saves anything, so a refused turn saved n
 
 **Resuming a lesson.** `lh show "$L"` returns `phase`, `plan`, `openQuestion`, every message (questions keep their `toolCallId`), any unread `items`, and the `cursor`. That is enough to pick up after losing your memory, or to take over from another bot.
 
-**Only the Teacher writes.** You are the only one who creates the lesson and sends turns. If you start workers, they research or draft and report back to you, and you send the turns. A worker may run `lh show` and `lh answer`, which only read. Two writers would interleave turns.
+**Only you write.** You are the only one who creates the lesson and sends turns. If you start workers, they research or draft and report back to you, and you send the turns. A worker may run `lh show` and `lh answer`, which only read. Two writers would interleave turns.
 
 ## 6. Method: LearnHarness's own prompts
 
