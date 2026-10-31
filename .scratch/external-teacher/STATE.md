@@ -4,8 +4,9 @@ max_suborchestrators: 2
 destination: One LearnHarness lesson taught by a Grok Bot through lh, with no LearnHarness model calls.
 host: linuxdev, repo ~/code/learnharness, Node 22 in ~/.local/bin.
 live:
-  03 external-teacher-03-bot-talks-over-api node:delegated-task:command%3Amcp%3Ac6c92c30-704a-4b69-a950-617f497e7ae0%3Adelegate-task%3Aexternal-teacher-03-2 (worktree from handoff) running
-touches-locked: 03
-merged: 02 (33e1e55), 01 (0400540), 04 (8d77b94); check after each matches baseline
+  05 external-teacher-05-verify-phase-a pending-launch - running
+touches-locked: 05 (Touches: unknown, locks everything)
+merged: 02 (33e1e55), 01 (0400540), 04 (8d77b94), 03 (e51624e); check after each matches baseline
+notes: 03 round 5 code-review did not run (Grok 4.7 provider error twice, no substitute); last code-review was round 4 on a6b7044, ~25 lines of bot-run.ts changed after it and were covered only by round-5 interrogate (3 seats).
 waiting on Matt: none
-next: 03 relaunched (attempt 2, resume at review, rounds 4-6 of 8). On its handoff, validate and merge; then 05 is on the frontier. Ticket branches push to origin at every handoff; do not push feat/external-teacher or main until Matt says "ship it".
+next: 05 running alone (Touches: unknown). On its handoff, validate and merge; then 06 and 08 are on the frontier. Ticket branches push to origin at every handoff; do not push feat/external-teacher or main until Matt says "ship it".

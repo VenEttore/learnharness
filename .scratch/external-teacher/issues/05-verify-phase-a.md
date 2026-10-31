@@ -1,6 +1,6 @@
 # 05: Verify phase A
 
-Status: open
+Status: claimed
 Blocked by: 01, 02, 03, 04
 Risk: pre-release
 Gate: none
