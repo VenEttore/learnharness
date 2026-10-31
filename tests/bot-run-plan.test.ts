@@ -141,9 +141,7 @@ describe("plan", () => {
 		const id = created.body.id;
 		const { status, body } = await turn(id, { kind: "plan", after: created.body.cursor, mermaid: PLAN });
 		assert.equal(status, 409);
-		assert.equal(body.code, "wrong_phase");
-		assert.equal(body.phase, "probe");
-		assert.ok(!body.allowed.includes("plan"));
+		assert.deepEqual(body, { ok: false, code: "wrong_phase", phase: "probe", allowed: ["say", "ask", "probe", "recall", "probe-done"], cursor: created.body.cursor });
 		assert.equal(messages(id).length, 0);
 		assert.equal(chatStore.getChat(id)!.tree, undefined);
 	});
@@ -161,6 +159,7 @@ describe("plan", () => {
 		for (const [mermaid, problem] of cases) {
 			const { status, body } = await turn(id, { kind: "plan", after: cursor, mermaid });
 			assert.equal(status, 422, JSON.stringify(mermaid));
+			assert.equal(body.ok, false);
 			assert.equal(body.code, "invalid");
 			assert.equal(body.cursor, cursor);
 			assert.match(body.problems.join("\n"), problem, JSON.stringify(mermaid));
@@ -272,6 +271,19 @@ describe("plan", () => {
 		assert.equal(messages(id).length, count + 3);
 		assert.deepEqual(pageTree(id), chatStore.getChat(id)!.tree);
 		assert.ok(parts(id).some((p: any) => p.type === "data-plan-block"));
+	});
+
+	it("a build that throws is a JSON 500 and saves nothing", async () => {
+		const { id } = await planningLesson();
+		// A corrupt stored message the plan block's snapshot trips on.
+		const corrupt = { ...newBotAssistantMessage([]), content: [null] } as any;
+		chatStore.saveMessages(id, [...messages(id), corrupt]);
+		const count = messages(id).length;
+		const { status, body } = await turn(id, { kind: "plan", after: corrupt.id, mermaid: PLAN });
+		assert.equal(status, 500);
+		assert.deepEqual(body, { ok: false, code: "internal_error", cursor: corrupt.id });
+		assert.equal(messages(id).length, count);
+		assert.equal(chatStore.getChat(id)!.tree, undefined);
 	});
 
 	it("a failed tree save is a JSON 500 and saves nothing", async () => {
