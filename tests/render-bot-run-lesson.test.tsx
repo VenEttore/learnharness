@@ -39,7 +39,8 @@ g.getComputedStyle ??= () => ({ getPropertyValue: () => "", overflow: "auto" });
 (dom.window as unknown as Record<string, unknown>).location ??= new URL("http://localhost/chat/chat_x");
 g.location ??= (dom.window as unknown as Record<string, unknown>).location;
 
-/** POSTs to /api/chat this test saw, by input type; "steer" for a steer. */
+/** POSTs to /api/chat this test saw, by input type; "steer" for a steer,
+ *  "abort" for a turn abort. */
 const posts: string[] = [];
 /** Holds the stream attach open, so the view stays busy after a send. */
 let streamDelayMs = 0;
@@ -51,6 +52,10 @@ before(() => {
 		if (url === "/api/chat") {
 			posts.push(JSON.parse(String(init?.body)).input.type);
 			return Response.json({ ok: true });
+		}
+		if (url === "/api/activity/abort") {
+			posts.push("abort");
+			return Response.json({ error: "not_running" }, { status: 409 });
 		}
 		// Faithful to the steer route: a bot-run lesson has no live turn.
 		if (url.endsWith("/steer")) {
@@ -147,6 +152,29 @@ describe("keyless install: the chat view", () => {
 		const box = host.querySelector('[data-testid="composer"] [role="textbox"]');
 		assert.ok(!posts.includes("steer"), "no steer: a bot-run lesson has no live turn to take one");
 		assert.equal(box?.textContent, "second", "the unsent text stays in the composer");
+		streamDelayMs = 0;
+		await act(async () => {
+			await new Promise((r) => setTimeout(r, 400));
+		});
+		await act(async () => root.unmount());
+		host.remove();
+	});
+
+	it("a bot-run lesson offers no Stop and aborts nothing while a send settles", async () => {
+		posts.length = 0;
+		streamDelayMs = 300;
+		const { host, root } = await mount(true);
+		await typeAndSend(host, "first");
+		const form = host.querySelector('[data-testid="composer"]')!;
+		assert.ok(!form.querySelector('button[aria-label="Stop"]'), "no Stop button: there is no turn to stop");
+		await act(async () => {
+			// Enter on the empty composer, then Esc.
+			form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+			window.dispatchEvent(new CustomEvent("lh:kbd-abort-turn"));
+			await new Promise((r) => setTimeout(r, 20));
+		});
+		assert.deepEqual(posts, ["text"], "no turn abort is posted");
+		assert.ok(!testIds().includes("abort-turn-dialog"), "Esc offers no turn abort");
 		streamDelayMs = 0;
 		await act(async () => {
 			await new Promise((r) => setTimeout(r, 400));

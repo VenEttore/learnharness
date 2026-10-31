@@ -469,7 +469,8 @@ export function Chat({
 	const localStream = status === "submitted" || status === "streaming";
 	const busy = localStream || turnInFlight;
 	const busyRef = useRef(busy);
-	busyRef.current = busy;
+	// The abort gate: a bot-run lesson never has a turn to abort.
+	busyRef.current = busy && !botRun;
 	// The attach handoff (stream-reattach wave): the moment a resumed
 	// stream takes over the rendering — the SDK left "ready", so
 	// submitted/streaming means chunks are flowing — localStream covers
@@ -1729,7 +1730,7 @@ export function Chat({
 							// square renders while a reattached/wake turn runs too — the
 							// abort channel kills it server-side; stop() alone would
 							// only detach our view.
-							busy={busy}
+							busy={busy && !botRun}
 							value={text}
 							onChange={applyText}
 							inputRef={composerInputRef}
