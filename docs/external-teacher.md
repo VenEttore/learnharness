@@ -14,7 +14,8 @@ The examples assume the repo is at `/workspace/learnharness`. Use your own path 
 
    ```bash
    cd /workspace/learnharness
-   unset LH_DESKTOP_SERVER LH_DESKTOP_API_SECRET ANTHROPIC_AUTH_TOKEN ANTHROPIC_OAUTH_TOKEN
+   unset LH_DESKTOP_SERVER LH_DESKTOP_API_SECRET
+   unset ANTHROPIC_AUTH_TOKEN ANTHROPIC_OAUTH_TOKEN AZURE_OPENAI_API_KEY GOOGLE_CLOUD_API_KEY CLOUDFLARE_API_KEY COPILOT_GITHUB_TOKEN
    mkdir -p /workspace/lh-data
    LH_DATA_DIR=/workspace/lh-data LH_IGNORE_ENV_KEYS=1 nohup npx next dev -H 127.0.0.1 -p 3000 > /workspace/lh-server.log 2>&1 &
    ```
@@ -25,10 +26,10 @@ The examples assume the repo is at `/workspace/learnharness`. Use your own path 
    - `-H 127.0.0.1` is required. Next listens on every interface by default, and the `lh` routes have no login. LearnHarness checks the Host header, but a machine on the network can forge it. Only the bind keeps other machines out.
    - Browser mode: `LH_DESKTOP_SERVER` and `LH_DESKTOP_API_SECRET` stay unset. They belong to the desktop app.
    - `LH_DATA_DIR` under `/workspace` keeps lessons across restarts of the computer.
-   - No API keys. `LH_IGNORE_ENV_KEYS=1` removes LearnHarness's key variables (`XAI_API_KEY`, `OPENROUTER_API_KEY`, `ANTHROPIC_API_KEY` and the rest) from the server's environment. It leaves `ANTHROPIC_AUTH_TOKEN` and `ANTHROPIC_OAUTH_TOKEN`, so the command unsets those. Add no key in Settings either. A bot-run lesson needs none.
+   - No API keys. `LH_IGNORE_ENV_KEYS=1` removes LearnHarness's key variables (`XAI_API_KEY`, `OPENROUTER_API_KEY`, `ANTHROPIC_API_KEY` and the rest) from the server's environment. It leaves a few provider variables in place, so the second `unset` line clears them. Add no key in Settings either. A bot-run lesson needs none.
 
 4. Put `lh` on your PATH: `mkdir -p ~/.local/bin && ln -sf /workspace/learnharness/scripts/lh.mjs ~/.local/bin/lh`. Check that `~/.local/bin` is on `PATH`. Without the link, run `node /workspace/learnharness/scripts/lh.mjs` wherever this guide says `lh`.
-5. Check it is up: `lh show no-such-lesson`. It prints `{"ok":false,"code":"not_found"}` and exits 1 when a LearnHarness answers. Exit 3 means it is not reachable yet. The first start compiles for a while, so read `/workspace/lh-server.log` and try again. Confirm the server is yours: its log shows `Local: http://127.0.0.1:3000`, and your first lesson appears under `/workspace/lh-data/chats`.
+5. Check it is up: `lh show no-such-lesson`. It prints `{"ok":false,"code":"not_found"}` and exits 1 when a LearnHarness answers. Exit 3 means it is not reachable yet. The first start compiles for a while, so read `/workspace/lh-server.log` and try again. Confirm the server is yours. `grep -E 'Local: +http://127\.0\.0\.1:3000' /workspace/lh-server.log` finds a line, and your first lesson appears under `/workspace/lh-data/chats`.
 
 `lh` talks to `LH_URL`, default `http://127.0.0.1:3000`. Use the IP, not `localhost`, which can resolve to the IPv6 address while the server listens on 127.0.0.1 only. To use another port, change `-p` and set `LH_URL` to match, for example `-p 3001` and `LH_URL=http://127.0.0.1:3001`.
 
@@ -47,7 +48,7 @@ A reply with `"code":"bad_reply"` means LearnHarness answered with something oth
 
 **The cursor.** Every reply about a lesson you can write to carries `cursor`, the id of the newest message in the lesson. A new empty lesson's cursor is the lesson id. Use the lesson id only for the first turn. As `--after` it means "from the start", so later on a turn that matches any earlier turn counts as a repeat and saves nothing. Every turn command needs `--after <cursor>`, and you pass the cursor from the last reply you read. In the examples, `L` is the lesson id and `C` is the cursor; after each reply, set `C` to its `cursor`.
 
-**Items.** Learner input comes back as `items`. `lh answer` always has them. Other replies (a create, a repeat, a refusal, `lh show`) carry `items` when there is learner input you have not responded to: everything after your last turn, or since the lesson began if you have not taken one. A create with `--prompt` returns the prompt this way. Read the items in every reply that has them, and respond to all of them, before your next turn.
+**Items.** Learner input comes back as `items`. `lh answer` always has them. Other replies (a create, a repeat, a refusal, `lh show`) carry `items` when there is learner input you have not responded to. That is everything after your last turn, or everything since the lesson began if you have not taken a turn. A create with `--prompt` returns the prompt this way. Read the items in every reply that has them, and respond to all of them, before your next turn.
 
 **Input.** `say` and `plan` read plain text. `ask`, `probe`, `recall`, `probe-done`, `quiz` and `explain` read one JSON object. Both come from `--file <path>` or stdin; the examples use a quoted heredoc (`<<'EOF'`), which keeps `$` and backticks literal. The JSON never carries `kind` or `after`. Those come from the command line.
 
@@ -178,12 +179,12 @@ When the learner can do what their goal asked for (the last node of the plan), c
 ```
 
 - `{"type":"message","id","text"}` is something the learner typed.
-- `{"type":"answer",...}` is an answer. Its `kind` is `quiz` (from `probe` or `quiz`), `explain` (from `recall` or `explain`), or `ask`; `toolCallId` names the question. It carries `question`, `dontKnow`, and the picked `answers` as `index` and `label`, with no `value`. LearnHarness shuffles `probe` and `quiz` options, so `index` (from 1) is the order the learner saw, not your array's order: match picks by `label`. It also carries whichever of these the page recorded: `text` (a typed answer: free recall, or an `ask` without options), `other` (the "Other" text), and `thinking` and `readingThinking` (their reasoning). A `probe` or `quiz` answer that picked an option has `correct` and `confidence` (one of 0, 30, 50, 70, 90, 100). With `dontKnow` true, `correct` is false and `confidence` is absent: the learner declined, which is not a wrong pick.
-- `{"type":"skip","id","toolCallId","kind"}` is a skip. Re-ask or move on. To re-ask, send the question again with the cursor from the reply that carried the skip. With the question's old `--after`, it counts as a repeat and posts nothing.
+- `{"type":"answer",...}` is an answer. Its `kind` is `quiz` (from `probe` or `quiz`), `explain` (from `recall` or `explain`), or `ask`; `toolCallId` names the question. It carries `question`, `dontKnow`, and the picked `answers` as `index` and `label`, with no `value`. LearnHarness shuffles `probe` and `quiz` options, so `index` (from 1) is the order the learner saw, not your array's order. Match picks by `label`. It also carries whichever of these the page recorded: `text` (a typed answer: free recall, or an `ask` without options), `other` (the "Other" text), and `thinking` and `readingThinking` (their reasoning). A `probe` or `quiz` answer that picked an option has `correct` and `confidence` (one of 0, 30, 50, 70, 90, 100). With `dontKnow` true, `correct` is false and `confidence` is absent. The learner declined, which is not a wrong pick.
+- `{"type":"skip","id","toolCallId","kind"}` is a skip. Re-ask or move on. To re-ask, send the question again with the cursor from the reply that carried the skip. With the question's old `--after`, it counts as a repeat (section 2) and saves nothing.
 
 LearnHarness never grades free recall. For an answer of kind `explain`, compare `text` with the `correctAnswer` you committed (it is in the question's call in `lh show`), and give your grade in the next `say`. Grade against the committed answer as written.
 
-`lh answer` only reads, so running it twice returns the same items. The items are the input after your last turn, in order.
+`lh answer` only reads, so running it twice returns the same items, in order.
 
 ### Takeover
 
@@ -241,6 +242,6 @@ The cursor rules above are mechanics. For how to probe, plan and teach, read Lea
 | `quiz` (teacher prompts) | `lh quiz` |
 | `explain` (teacher prompts) | `lh explain` |
 
-The input fields match the tools' fields. The prompts describe answers as the model sees them: there a skip is `dismissed: true`, and `readingThinking` is called `thinkingWhileReading`. Where a prompt says "end your turn" after a question, wait for the learner's input.
+The input fields match the tools' fields. The prompts call the `readingThinking` field `thinkingWhileReading`. Where a prompt says "end your turn" after a question, wait for the learner's input.
 
 `lh` has no equivalent for these tools: `research`, `demo`, `visual`, `pdf`, `find`, `ls`, `grep`, `read`, `list_sessions`, `list_propositions`. Where a prompt relies on one, use your own tools on this computer (your browser, your shell) and put what you learn into a `say`. With no `list_sessions` or `list_propositions`, you cannot see earlier lessons, so probe every strand.
