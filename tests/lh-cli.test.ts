@@ -49,6 +49,11 @@ function lh(
 			const lines = stdout.split("\n").filter(Boolean);
 			resolve({ code: err ? ((err as { code?: number }).code ?? -1) : 0, lines, json: lines[0] ? JSON.parse(lines[0]) : undefined });
 		});
+		// lh may exit on bad input before reading stdin; under load the write
+		// then lands on a closed pipe. That EPIPE is expected, nothing else is.
+		child.stdin!.on("error", (err: NodeJS.ErrnoException) => {
+			if (err.code !== "EPIPE") throw err;
+		});
 		const write = () => child.stdin!.end(opts.stdin ?? "");
 		if (opts.stdinDelayMs) setTimeout(write, opts.stdinDelayMs);
 		else write();
