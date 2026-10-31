@@ -61,5 +61,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
 	const merged = [...chat.messages, ...appends];
 	stores.chatStore.saveMessages(id, merged);
 	emit("record-changed", { chatId: id });
+	// Fork (external-teacher): a skip changes the sidebar's question-waiting
+	// state, and no turn event follows to carry that refresh.
+	emit("chats-changed", {});
 	return Response.json({ ok: true });
 }
