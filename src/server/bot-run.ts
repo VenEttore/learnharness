@@ -105,8 +105,9 @@ function isBotMessage(m: LhMessage): m is LhMessage & AssistantMessage {
 /** The external API is open, so it guards its door instead: only lh-style
  *  callers on this computer. A browser always sends Origin on a POST
  *  (a page elsewhere could otherwise post text/plain JSON with no
- *  preflight), and a non-loopback Host means DNS rebinding or a remote
- *  caller. lh sends neither. Null when the request may proceed. */
+ *  preflight), and a non-loopback Host means DNS rebinding. A remote peer
+ *  can forge Host, so keeping it out is the 127.0.0.1 bind's job, not
+ *  this check's. lh sends neither. Null when the request may proceed. */
 export function externalRequestRefusal(req: Request): Response | null {
 	if (req.headers.has("origin")) return fail(403, "forbidden_origin");
 	const host = req.headers.get("host");
