@@ -7,7 +7,7 @@
  *   lh lesson new --title <t> --key <k> [--prompt <p>]
  *   lh say <lesson> --after <cursor> [--file <path>]   text from --file, else stdin
  *   lh plan <lesson> --after <cursor> [--file <path>]  Mermaid from --file, else stdin
- *   lh ask|probe|recall|probe-done <lesson> --after <cursor> [--file <path>]
+ *   lh ask|probe|recall|probe-done|quiz|explain <lesson> --after <cursor> [--file <path>]
  *                                 a JSON object from --file, else stdin
  *   lh answer <lesson> [--wait] [--timeout <seconds>]
  *                                 --wait checks every 2 s until there is
@@ -139,7 +139,7 @@ async function readPayload(flags) {
 }
 
 /** The turn kinds whose payload is a JSON object. */
-const JSON_KINDS = ["ask", "probe", "recall", "probe-done"];
+const JSON_KINDS = ["ask", "probe", "recall", "probe-done", "quiz", "explain"];
 
 /** The flags each command takes. A misspelled flag is refused, never
  *  silently dropped. */
@@ -182,7 +182,9 @@ async function requestFor(argv) {
 		case "ask":
 		case "probe":
 		case "recall":
-		case "probe-done": {
+		case "probe-done":
+		case "quiz":
+		case "explain": {
 			const path = `${lessonPath(rest[0])}/turn`;
 			const after = requireAfter(flags);
 			return { method: "POST", path, body: { ...(await readPayload(flags)), kind: command, after } };
