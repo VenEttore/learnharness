@@ -89,6 +89,25 @@ describe("lh maps command lines to requests", () => {
 		}
 	});
 
+	it("ask, probe and recall post the JSON from stdin or --file with the kind and cursor", async () => {
+		const payload = { text: "Lead-in.", question: "Which?", options: [{ label: "A" }, { label: "B" }] };
+		for (const kind of ["ask", "probe", "recall"]) {
+			assert.deepEqual(await lastRequest([kind, "chat_a", "--after", "msg_9"], { stdin: JSON.stringify(payload) }), {
+				method: "POST",
+				url: "/api/external/chats/chat_a/turn",
+				body: { ...payload, kind, after: "msg_9" },
+			});
+		}
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "lh-cli-"));
+		const file = path.join(dir, "probe.json");
+		fs.writeFileSync(file, JSON.stringify(payload));
+		try {
+			assert.deepEqual((await lastRequest(["probe", "chat_a", "--after", "msg_9", "--file", file])).body, { ...payload, kind: "probe", after: "msg_9" });
+		} finally {
+			fs.rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
 	it("say waits for a slow stdin writer", async () => {
 		assert.deepEqual((await lastRequest(["say", "chat_a", "--after", "msg_9"], { stdin: "Late text.", stdinDelayMs: 300 })).body, {
 			kind: "say",
@@ -156,6 +175,25 @@ describe("lh refusals and exit codes", () => {
 			assert.equal(code, 1, args.join(" "));
 			assert.equal(lines.length, 1);
 			assert.equal(json.ok, false);
+			assert.equal(seen.length, 0);
+		}
+	});
+
+	it("exits 1 with no request when a question's input is not one JSON object without kind or after", async () => {
+		for (const [args, stdin] of [
+			[["ask", "chat_a", "--after", "msg_1"], "not json"],
+			[["probe", "chat_a", "--after", "msg_1"], "[1, 2]"],
+			[["recall", "chat_a", "--after", "msg_1"], "null"],
+			[["ask", "chat_a", "--after", "msg_1"], '{"kind":"say","question":"Q?"}'],
+			[["ask", "chat_a", "--after", "msg_1"], '{"after":"msg_0","question":"Q?"}'],
+			[["ask", "chat_a"], '{"question":"Q?"}'],
+			[["ask", "chat_a", "--after", "msg_1", "--text", "x"], '{"question":"Q?"}'],
+		] as const) {
+			seen.length = 0;
+			const { code, lines, json } = await lh([...args], { stdin });
+			assert.equal(code, 1, `${args.join(" ")} <<< ${stdin}`);
+			assert.equal(lines.length, 1);
+			assert.equal(json.code, "usage");
 			assert.equal(seen.length, 0);
 		}
 	});

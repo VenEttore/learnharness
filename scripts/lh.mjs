@@ -6,6 +6,8 @@
  *
  *   lh lesson new --title <t> --key <k> [--prompt <p>]
  *   lh say <lesson> --after <cursor> [--file <path>]   text from --file, else stdin
+ *   lh ask|probe|recall <lesson> --after <cursor> [--file <path>]
+ *                                 a JSON object from --file, else stdin
  *   lh answer <lesson>
  *   lh show <lesson>
  *
@@ -100,9 +102,35 @@ async function readInput(flags) {
 	return text;
 }
 
+/** A question kind's payload: one JSON object, e.g. `{ "text": "lead-in",
+ *  "question": "...", "options": [...] }`. The kind and cursor come from
+ *  the command line, so the object may not carry its own. */
+async function readPayload(flags) {
+	const text = await readInput(flags);
+	let payload;
+	try {
+		payload = JSON.parse(text);
+	} catch (err) {
+		throw new UsageError(`the input is not JSON: ${err.message}`);
+	}
+	if (typeof payload !== "object" || payload === null || Array.isArray(payload)) throw new UsageError("the input must be a JSON object");
+	for (const key of ["kind", "after"]) {
+		if (Object.hasOwn(payload, key)) throw new UsageError(`the JSON must not set "${key}"; it comes from the command line`);
+	}
+	return payload;
+}
+
+const QUESTION_KINDS = ["ask", "probe", "recall"];
+
 /** The flags each command takes. A misspelled flag is refused, never
  *  silently dropped. */
-const FLAGS = { lesson: ["title", "key", "prompt"], say: ["after", "file"], answer: [], show: [] };
+const FLAGS = {
+	lesson: ["title", "key", "prompt"],
+	say: ["after", "file"],
+	...Object.fromEntries(QUESTION_KINDS.map((k) => [k, ["after", "file"]])),
+	answer: [],
+	show: [],
+};
 
 /** The HTTP request a command line makes: `{ method, path, body? }`. */
 async function requestFor(argv) {
@@ -126,12 +154,19 @@ async function requestFor(argv) {
 			const after = requireAfter(flags);
 			return { method: "POST", path, body: { kind: "say", after, text: await readInput(flags) } };
 		}
+		case "ask":
+		case "probe":
+		case "recall": {
+			const path = `${lessonPath(rest[0])}/turn`;
+			const after = requireAfter(flags);
+			return { method: "POST", path, body: { ...(await readPayload(flags)), kind: command, after } };
+		}
 		case "answer":
 			return { method: "GET", path: `${lessonPath(rest[0])}/answer` };
 		case "show":
 			return { method: "GET", path: lessonPath(rest[0]) };
 		default:
-			throw new UsageError(`unknown command ${JSON.stringify(command ?? "")}; commands: lesson new, say, answer, show`);
+			throw new UsageError(`unknown command ${JSON.stringify(command ?? "")}; commands: lesson new, say, ${QUESTION_KINDS.join(", ")}, answer, show`);
 	}
 }
 

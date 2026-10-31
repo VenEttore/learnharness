@@ -17,6 +17,14 @@ import { emit } from "../core/events.ts";
 import { ChatInputError, inputAppends, type TurnInput } from "../core/input-events.ts";
 import { danglingQuestionOf, newMessageId, newUserMessage, type LhMessage } from "../core/native-messages.ts";
 import { phaseAt3Lh, type Phase3 } from "../core/phases.ts";
+import {
+	askInputSchema,
+	askOptionProblems,
+	explainInputBase,
+	explainInputProblems,
+	probeQuizInputSchema,
+	quizInputProblems,
+} from "../core/question-core.ts";
 import { stores } from "./stores.ts";
 import { settledTurnResponse } from "./turn-runs.ts";
 
@@ -254,11 +262,15 @@ interface TurnKindRow<S extends TSchema> {
 	tool: string | null;
 	phases: readonly Phase3[];
 	schema: S;
-	/** Problems the schema cannot express; empty means valid. `raw` is the
-	 *  payload before the boundary's conversion. */
-	refine: ((payload: Static<S>, raw: Record<string, unknown>) => string[]) | null;
+	/** Problems the schema cannot express (the tool's own refinement);
+	 *  empty means valid. */
+	refine: ((payload: Static<S>) => string[]) | null;
 	needsPlanNode: boolean;
-	build: (payload: Static<S>) => Built;
+	/** Takes optional lead-in `text`, which rides the same assistant message
+	 *  ahead of the call and is not part of the tool's arguments. */
+	leadIn: boolean;
+	/** `leadIn` is the trimmed lead-in, or "" for none. */
+	build: (payload: Static<S>, leadIn: string) => Built;
 }
 
 /** A table row with its payload type closed over: `check` runs the
@@ -266,25 +278,71 @@ interface TurnKindRow<S extends TSchema> {
  *  convert then check, then the refinement) and builds the records. */
 type TurnKind = Omit<TurnKindRow<TSchema>, "refine" | "build"> & { check: (payload: Record<string, unknown>) => Checked };
 
+function jsonType(value: unknown): string {
+	return value === null ? "null" : Array.isArray(value) ? "array" : typeof value;
+}
+
+/** Where the boundary's conversion changed a value's JSON type. pi lets a
+ *  model's `42` stand for "42"; from a bot it is a caller bug, refused
+ *  rather than shown to the learner. */
+function conversionProblems(raw: unknown, checked: unknown, path: string): string[] {
+	const want = jsonType(checked);
+	const got = jsonType(raw);
+	if (want !== got) return [`${path} must be ${want === "array" || want === "object" ? "an" : "a"} ${want}, not ${got}`];
+	if (want === "array") return (checked as unknown[]).flatMap((v, i) => conversionProblems((raw as unknown[])[i], v, `${path}[${i}]`));
+	if (want === "object") {
+		return Object.entries(checked as Record<string, unknown>).flatMap(([k, v]) =>
+			conversionProblems((raw as Record<string, unknown>)[k], v, path ? `${path}.${k}` : k),
+		);
+	}
+	return [];
+}
+
 function turnKind<S extends TSchema>(name: string, row: TurnKindRow<S>): TurnKind {
 	const check = (payload: Record<string, unknown>): Checked => {
+		let args = payload;
+		let leadIn = "";
+		if (row.leadIn && Object.hasOwn(payload, "text")) {
+			const { text, ...rest } = payload;
+			if (typeof text !== "string") return { ok: false, problems: ["text (the lead-in) must be a string"] };
+			args = rest;
+			leadIn = text.trim() === "" ? "" : trimLineBreaks(text);
+		}
 		let checked: Static<S>;
 		try {
 			checked = validateToolArguments(
 				{ name: row.tool ?? name, description: name, parameters: row.schema },
 				// The body is parsed JSON, so its values are JSON values.
-				{ type: "toolCall", id: "bot_turn", name: row.tool ?? name, arguments: payload as ToolCall["arguments"] },
+				{ type: "toolCall", id: "bot_turn", name: row.tool ?? name, arguments: args as ToolCall["arguments"] },
 			) as Static<S>;
 		} catch (err) {
 			return { ok: false, problems: [err instanceof Error ? err.message : String(err)] };
 		}
-		const problems = row.refine?.(checked, payload) ?? [];
-		return problems.length ? { ok: false, problems } : { ok: true, built: row.build(checked) };
+		const problems = [...conversionProblems(args, checked, ""), ...(row.refine?.(checked) ?? [])];
+		return problems.length ? { ok: false, problems } : { ok: true, built: row.build(checked, leadIn) };
 	};
-	return { tool: row.tool, phases: row.phases, schema: row.schema, needsPlanNode: row.needsPlanNode, check };
+	return { tool: row.tool, phases: row.phases, schema: row.schema, needsPlanNode: row.needsPlanNode, leadIn: row.leadIn, check };
 }
 
 const ANY_PHASE = ["probe", "plan", "teach"] as const satisfies readonly Phase3[];
+
+function newToolCallId(): string {
+	return `call_bot_${crypto.randomUUID().replaceAll("-", "")}`;
+}
+
+/** A question kind's records: one assistant message, the lead-in text (if
+ *  any) then the call, as LearnHarness's model writes them. The call's
+ *  arguments are the checked payload. No result follows: the learner's
+ *  answer or skip is the result, and until then the call is the open
+ *  question the dock shows. */
+function questionBuild(tool: string) {
+	return (payload: object, leadIn: string): Built => {
+		const content: AssistantMessage["content"] = leadIn ? [{ type: "text", text: leadIn }] : [];
+		// The checked payload came from parsed JSON, so it is a JSON object.
+		content.push({ type: "toolCall", id: newToolCallId(), name: tool, arguments: payload as ToolCall["arguments"] });
+		return [newBotAssistantMessage(content)];
+	};
+}
 
 /** Drops trailing \n and \r by scanning back from the end. A `[\r\n]+$`
  *  regex retries at every newline, so a long run mid-text costs seconds. */
@@ -300,17 +358,50 @@ const TURN_KINDS: Readonly<Record<string, TurnKind>> = {
 		tool: null,
 		phases: ANY_PHASE,
 		schema: Type.Object({ text: Type.String({ description: "The teaching text, Markdown." }) }),
-		// The boundary converts a scalar to a string; teaching text that was
-		// null or a number is a caller bug, not text to show the learner.
-		refine: (p, raw) => (typeof raw.text !== "string" ? ["text must be a string"] : p.text.trim() === "" ? ["text must not be empty"] : []),
+		refine: (p) => (p.text.trim() === "" ? ["text must not be empty"] : []),
 		needsPlanNode: false,
+		leadIn: false,
 		// Trailing line breaks (\n and \r) go: `echo` adds one a `--file` rerun
 		// may lack, the repeat check compares exact text, and the stored text
 		// must say back to itself (show → say). Other trailing whitespace (a
 		// Markdown hard break) stays.
 		build: (p) => [newBotAssistantMessage([{ type: "text", text: trimLineBreaks(p.text) }])],
 	}),
+	// The question rows reuse the tools' own schemas and refinements
+	// (core/question-core.ts), so a call the tool would refuse is refused.
+	ask: turnKind("ask", {
+		tool: "ask_user_question",
+		phases: ANY_PHASE,
+		schema: askInputSchema,
+		refine: (p) => askOptionProblems(p.options ?? []),
+		needsPlanNode: false,
+		leadIn: true,
+		build: questionBuild("ask_user_question"),
+	}),
+	probe: turnKind("probe", {
+		tool: "probe",
+		phases: ["probe"],
+		schema: probeQuizInputSchema,
+		refine: quizInputProblems,
+		needsPlanNode: false,
+		leadIn: true,
+		build: questionBuild("probe"),
+	}),
+	recall: turnKind("recall", {
+		tool: "recall",
+		phases: ["probe"],
+		schema: explainInputBase,
+		refine: explainInputProblems,
+		needsPlanNode: false,
+		leadIn: true,
+		build: questionBuild("recall"),
+	}),
 };
+
+/** The kinds a turn may take in `phase`, for the wrong_phase refusal. */
+function kindsAllowedIn(phase: Phase3): string[] {
+	return Object.keys(TURN_KINDS).filter((k) => TURN_KINDS[k]!.phases.includes(phase));
+}
 
 /** Content with tool-call ids dropped: two turns with the same blocks are
  *  the same turn, whatever ids they were minted with. */
@@ -320,7 +411,6 @@ function turnSignature(m: AssistantMessage): string {
 
 /** Turn: `{ kind, after, ...payload }`. Checks run in the spec's order,
  *  all before any write, with no await from the read to the commit.
- *  Checks 5 and 6 (open question, phase) arrive with the question kinds.
  *  Validation runs early because the repeat check compares checked
  *  payloads, but its refusal waits for its place, check 7. */
 export function botTurn(id: string, body: unknown): Response {
@@ -359,6 +449,13 @@ export function botTurn(id: string, body: unknown): Response {
 	// 4. learner input the bot has not read
 	const unread = learnerItems(since);
 	if (unread.length > 0) return fail(409, "unread_input", { items: unread, cursor });
+
+	// 5. a question is still open: the learner answers or skips it first
+	if (danglingQuestionOf(record.messages) !== null) return fail(409, "open_question", { cursor });
+
+	// 6. the kind fits the lesson's phase (an unknown kind is check 7's)
+	const phase = phaseAt3Lh(record.messages);
+	if (row && !row.phases.includes(phase)) return fail(409, "wrong_phase", { phase, allowed: kindsAllowedIn(phase), cursor });
 
 	// 7. validation
 	if (!checked.ok) return fail(422, "invalid", { problems: checked.problems, cursor });
