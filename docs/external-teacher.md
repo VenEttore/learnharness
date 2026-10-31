@@ -62,7 +62,7 @@ lh lesson new --title "Binary search" --key binary-search-1 --prompt "I want to 
 {"ok":true,"id":"<lesson id>","title":"Binary search","existing":false,"items":[{"type":"message","id":"<message id>","text":"I want to understand why binary search is fast."}],"cursor":"<message id>"}
 ```
 
-`--key` is required (`key_required` without it). Rerunning with the same key returns the same lesson with `"existing":true` and saves nothing, so a retried create never makes a duplicate. `--prompt` is the learner's request, saved as the first message. Open `http://127.0.0.1:3000/chat/<lesson id>` in your browser. That is the page the learner uses.
+Rerunning with the same key returns the same lesson with `"existing":true` and saves nothing, so a retried create never makes a duplicate. `--prompt` is the learner's request, saved as the first message. Open `http://127.0.0.1:3000/chat/<lesson id>` in your browser. That is the page the learner uses.
 
 ### Which kinds each phase takes
 
@@ -79,7 +79,7 @@ lh lesson new --title "Binary search" --key binary-search-1 --prompt "I want to 
 | `quiz` | plan, teach | a multiple-choice teaching question tagged with a plan node |
 | `explain` | plan, teach | a free-recall teaching question tagged with a plan node |
 
-One question is open at a time. After a question, wait for the learner's answer or skip (section 4); any turn before that is refused with `open_question`. Every question kind takes an optional `text` field: lead-in text shown above the question in the same message.
+One question is open at a time. After a question, wait for the learner's answer or skip (section 4). Until then, turns are refused with `open_question`. Every question kind takes an optional `text` field: lead-in text shown above the question in the same message.
 
 ### Probe
 
@@ -173,11 +173,11 @@ When the learner can do what their goal asked for (the last node of the plan), c
 ### Items
 
 ```json
-{"ok":true,"items":[{"type":"answer","id":"...","toolCallId":"...","kind":"quiz","question":"...","answers":[{"index":1,"label":"About 10"}],"dontKnow":false,"confidence":80,"correct":true}],"openQuestion":null,"cursor":"..."}
+{"ok":true,"items":[{"type":"answer","id":"...","toolCallId":"...","kind":"quiz","question":"...","answers":[{"index":1,"label":"About 10"}],"dontKnow":false,"confidence":70,"correct":true}],"openQuestion":null,"cursor":"..."}
 ```
 
 - `{"type":"message","id","text"}` is something the learner typed.
-- `{"type":"answer",...}` is an answer. Its `kind` is `quiz` (from `probe` or `quiz`), `explain` (from `recall` or `explain`), or `ask`; `toolCallId` names the question. It carries `question`, the picked `answers` (`index` counts from 1), and `dontKnow`, plus whichever of these the page recorded: `text` (free recall), `other` (the "Other" text), `thinking` and `readingThinking` (their reasoning), `confidence` (0 to 100, multiple choice only), and `correct` (multiple choice only).
+- `{"type":"answer",...}` is an answer. Its `kind` is `quiz` (from `probe` or `quiz`), `explain` (from `recall` or `explain`), or `ask`; `toolCallId` names the question. It carries `question`, the picked `answers` (`index` counts from 1), and `dontKnow`, plus whichever of these the page recorded: `text` (a typed answer: free recall, or an `ask` without options), `other` (the "Other" text), `thinking` and `readingThinking` (their reasoning), `confidence` (0 to 100, multiple choice only), and `correct` (multiple choice only).
 - `{"type":"skip","id","toolCallId","kind"}` is a skip. Re-ask, or move on.
 
 LearnHarness never grades free recall. For an answer of kind `explain`, compare `text` with the `correctAnswer` you committed (it is in the question's call in `lh show`), and give your grade in the next `say`. Grade against the committed answer as written.
@@ -198,7 +198,7 @@ lh answer "$L" --wait --timeout 300
 
 ## 5. Refusals and recovery
 
-LearnHarness runs its checks before it saves anything, so a refused turn saved nothing. Fix it and resend. Refusals about a lesson carry the `cursor`; `not_found`, `not_bot_run`, `key_required`, `usage`, the `forbidden_*` codes and a `--wait` timeout do not.
+LearnHarness runs its checks before it saves anything, so a refused turn saved nothing. Fix it and resend. Refusals about a lesson carry the `cursor`; `not_found`, `not_bot_run`, `key_required`, `usage`, the `forbidden_*` codes, a create's `save_failed`, and a `--wait` timeout do not.
 
 | code | what to do |
 |---|---|
@@ -209,12 +209,12 @@ LearnHarness runs its checks before it saves anything, so a refused turn saved n
 | `bad_after` | `--after` is not a message in this lesson. Use the reply's `cursor`, after reading its `items`. |
 | `not_found` | No lesson with that id. |
 | `not_bot_run` | The lesson belongs to LearnHarness's own model. Create your own with `lh lesson new`. |
-| `key_required` | `lh lesson new` needs `--key`. |
+| `key_required` | `lh lesson new` needs `--key`, which makes a rerun return the same lesson. |
 | `usage` | `lh` rejected the command line before sending it: a missing flag, a misspelled flag, JSON that does not parse. |
-| `save_failed` | The disk write failed. Resend the same turn. |
+| `save_failed` | The disk write failed. Rerun the same command. |
 | `forbidden_origin`, `forbidden_host` | The request came from a browser, or through a non-loopback host name. Call through `lh` on this computer. |
 
-**A lost reply.** If a turn's reply never arrives (a timeout, a crash), run `lh show "$L"` before you resend. If your turn is in `messages`, take the cursor from that reply and carry on. If not, resend the same turn with the same `--after`. When the first send did land, the resend returns `{"ok":true,"repeat":true,...}` and saves nothing. Resend the exact same content: a reworded `say` is a new turn.
+**A lost reply.** If a turn's reply never arrives (a timeout, a crash), run `lh show "$L"` before you resend. If your turn is in `messages`, take the cursor from that reply and carry on. If not, resend the same turn with the same `--after`. When the first send did land, the resend returns `{"ok":true,"repeat":true,...}` and saves nothing. Resend the exact same content, because a reworded `say` counts as a new turn.
 
 **Resuming a lesson.** `lh show "$L"` returns `phase`, `plan`, `openQuestion`, every message (questions keep their `toolCallId`), any unread `items`, and the `cursor`. That is enough to pick up after losing your memory, or to take over from another bot.
 
