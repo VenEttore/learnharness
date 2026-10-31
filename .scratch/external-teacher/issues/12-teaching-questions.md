@@ -1,6 +1,6 @@
 # 12: Teaching questions
 
-Status: open
+Status: claimed
 Blocked by: 11
 Risk: pre-release
 Gate: none
