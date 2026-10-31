@@ -152,8 +152,11 @@ describe("plan", () => {
 		const cases: [unknown, RegExp][] = [
 			["not a graph", /line 1/i],
 			["graph TD\n  Base_Rates[Base rates] --> bayes[Bayes]", /Base_Rates/],
-			["graph TD\n  a[A] --> b[B]\n  b --> a", /cycle/],
-			["graph TD\n  a[A] --> a", /self-loop/],
+			// The tree builder's one refusal Mermaid can reach (PlanTreeError):
+			// a cycle, direct or longer. The parser catches the rest first.
+			["graph TD\n  a[A] --> b[B]\n  b --> a", /would create a cycle/],
+			["graph TD\n  a[A] --> b[B] --> c[C]\n  c --> a", /would create a cycle/],
+			["graph TD\n  a[A] --> a", /^line 2: self-loop/],
 			["", /mermaid/],
 		];
 		for (const [mermaid, problem] of cases) {
@@ -172,6 +175,22 @@ describe("plan", () => {
 		assert.equal(messages(id).length, count);
 		assert.equal(chatStore.getChat(id)!.tree, undefined);
 		assert.equal((await show(id)).body.plan, null);
+	});
+
+	it("a repeated node id is the same node, as in Mermaid: the first title wins, not a refusal", async () => {
+		const { id, cursor } = await planningLesson();
+		const { status } = await turn(id, { kind: "plan", after: cursor, mermaid: "graph TD\n  a[First] --> b[B]\n  a[Second] --> c[C]\n  a --> b" });
+		assert.equal(status, 200);
+		const tree = pageTree(id)!;
+		assert.deepEqual(tree.nodes, [
+			{ id: "a", title: "First" },
+			{ id: "b", title: "B" },
+			{ id: "c", title: "C" },
+		]);
+		assert.deepEqual(tree.edges, [
+			{ from: "a", to: "b" },
+			{ from: "a", to: "c" },
+		]);
 	});
 
 	it("a rerun with the same after is a repeat, trailing line breaks aside, and saves nothing", async () => {
