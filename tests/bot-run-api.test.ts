@@ -158,10 +158,15 @@ describe("say", () => {
 		assert.ok(events.some((e) => e.type === "chats-changed"));
 	});
 
-	it("drops one final newline and keeps a Markdown hard break", async () => {
+	it("drops trailing newlines and keeps a Markdown hard break", async () => {
 		const lesson = await create({ title: "Break", key: newKey(), prompt: "Teach me" });
-		await turn(lesson.body.id, { kind: "say", after: lesson.body.cursor, text: "See below.  \n" });
-		assert.deepEqual((chatStore.getChat(lesson.body.id)!.messages.at(-1) as { content: unknown }).content, [{ type: "text", text: "See below.  " }]);
+		await turn(lesson.body.id, { kind: "say", after: lesson.body.cursor, text: "See below.  \n\n" });
+		const said = chatStore.getChat(lesson.body.id)!.messages.at(-1) as { content: unknown };
+		assert.deepEqual(said.content, [{ type: "text", text: "See below.  " }]);
+		// The stored text says back to itself: a resume that re-sends what show returned is a repeat.
+		const shown = (await show(lesson.body.id)).body.messages.at(-1).text;
+		const again = await turn(lesson.body.id, { kind: "say", after: lesson.body.cursor, text: shown });
+		assert.equal(again.body.repeat, true);
 	});
 
 	it("drops a rerun with the same after, even after learner input arrived", async () => {
@@ -216,6 +221,8 @@ describe("say", () => {
 			{ kind: "say", after: lesson.body.cursor, text: "   " },
 			{ kind: "say", after: lesson.body.cursor },
 			{ kind: "say", after: lesson.body.cursor, text: { not: "text" } },
+			{ kind: "say", after: lesson.body.cursor, text: null },
+			{ kind: "say", after: lesson.body.cursor, text: 42 },
 			{ kind: "dance", after: lesson.body.cursor },
 		]) {
 			const res = await turn(lesson.body.id, body);

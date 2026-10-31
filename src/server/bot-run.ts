@@ -253,8 +253,9 @@ interface TurnKindRow<S extends TSchema> {
 	tool: string | null;
 	phases: readonly Phase3[];
 	schema: S;
-	/** Problems the schema cannot express; empty means valid. */
-	refine: ((payload: Static<S>) => string[]) | null;
+	/** Problems the schema cannot express; empty means valid. `raw` is the
+	 *  payload before the boundary's conversion. */
+	refine: ((payload: Static<S>, raw: Record<string, unknown>) => string[]) | null;
 	needsPlanNode: boolean;
 	build: (payload: Static<S>) => Built;
 }
@@ -276,7 +277,7 @@ function turnKind<S extends TSchema>(name: string, row: TurnKindRow<S>): TurnKin
 		} catch (err) {
 			return { ok: false, problems: [err instanceof Error ? err.message : String(err)] };
 		}
-		const problems = row.refine?.(checked) ?? [];
+		const problems = row.refine?.(checked, payload) ?? [];
 		return problems.length ? { ok: false, problems } : { ok: true, built: row.build(checked) };
 	};
 	return { tool: row.tool, phases: row.phases, schema: row.schema, needsPlanNode: row.needsPlanNode, check };
@@ -290,12 +291,15 @@ const TURN_KINDS: Readonly<Record<string, TurnKind>> = {
 		tool: null,
 		phases: ANY_PHASE,
 		schema: Type.Object({ text: Type.String({ description: "The teaching text, Markdown." }) }),
-		refine: (p) => (p.text.trim() === "" ? ["text must not be empty"] : []),
+		// The boundary converts a scalar to a string; teaching text that was
+		// null or a number is a caller bug, not text to show the learner.
+		refine: (p, raw) => (typeof raw.text !== "string" ? ["text must be a string"] : p.text.trim() === "" ? ["text must not be empty"] : []),
 		needsPlanNode: false,
-		// One final newline goes: `echo` adds one a `--file` rerun may lack,
-		// and the repeat check compares exact text. Other trailing
-		// whitespace (a Markdown hard break) stays.
-		build: (p) => [newBotAssistantMessage([{ type: "text", text: p.text.replace(/\r?\n$/, "") }])],
+		// Trailing newlines go: `echo` adds one a `--file` rerun may lack, the
+		// repeat check compares exact text, and the stored text must say
+		// back to itself (show → say). Other trailing whitespace (a Markdown
+		// hard break) stays.
+		build: (p) => [newBotAssistantMessage([{ type: "text", text: p.text.replace(/(?:\r?\n)+$/, "") }])],
 	}),
 };
 
