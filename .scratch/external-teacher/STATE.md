@@ -4,7 +4,7 @@ max_suborchestrators: 2
 destination: One LearnHarness lesson taught by a Grok Bot through lh, with no LearnHarness model calls.
 host: linuxdev, repo ~/code/learnharness, Node 22 in ~/.local/bin.
 live:
-  11 external-teacher-11-plan pending-launch - running
+  11 external-teacher-11-plan node:delegated-task:command%3Amcp%3Adc7d97fb-e4dc-4b17-af8d-41857e4e92b4%3Adelegate-task%3Aexternal-teacher-11-1 (worktree from handoff) running
   13 external-teacher-13-teacher-guide node:delegated-task:command%3Amcp%3A60d049ee-eea3-4ca9-b2c6-e887a9666300%3Adelegate-task%3Aexternal-teacher-13-1 (worktree from handoff) running
 touches-locked: 11, 13
 merged: 02 (33e1e55), 01 (0400540), 04 (8d77b94), 03 (e51624e), 05 (phase A verified; .scratch only), 08 (2e93d6c), 06 (8247cca), 07 (5929722), 09 (phase B verified; .scratch only), 10 (17ab05a); check after each code merge matches baseline
