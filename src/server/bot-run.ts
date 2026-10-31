@@ -12,11 +12,10 @@
 import type { AssistantMessage, ToolCall, ToolResultMessage, UserMessage } from "@earendil-works/pi-ai";
 import { validateToolArguments } from "@earendil-works/pi-ai";
 import { Type, type Static, type TSchema } from "typebox";
-import { titleFromPrompt, type ChatRecord } from "../core/contracts.ts";
+import { probeDoneInputSchema, titleFromPrompt, type ChatRecord } from "../core/contracts.ts";
 import { emit } from "../core/events.ts";
 import { ChatInputError, inputAppends, isQuestionTool, type TurnInput } from "../core/input-events.ts";
 import { danglingQuestionOf, newHandoffMessage, newMessageId, newUserMessage, type LhMessage } from "../core/native-messages.ts";
-import { probeDoneInputSchema } from "../core/contracts.ts";
 import { phaseAt3Lh, type Phase3 } from "../core/phases.ts";
 import {
 	askInputSchema,

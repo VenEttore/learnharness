@@ -119,8 +119,9 @@ async function readInput(flags) {
 }
 
 /** A JSON kind's payload: one JSON object, e.g. `{ "text": "lead-in",
- *  "question": "...", "options": [...] }` or `{ "assessment": {...} }`. The kind and cursor come from
- *  the command line, so the object may not carry its own. */
+ *  "question": "...", "options": [...] }` or `{ "assessment": {...} }`.
+ *  The kind and cursor come from the command line, so the object may not
+ *  carry its own. */
 async function readPayload(flags) {
 	const text = await readInput(flags);
 	let payload;
