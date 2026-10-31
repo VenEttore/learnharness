@@ -8,11 +8,13 @@
  *   lh say <lesson> --after <cursor> [--file <path>]   text from --file, else stdin
  *   lh ask|probe|recall <lesson> --after <cursor> [--file <path>]
  *                                 a JSON object from --file, else stdin
- *   lh answer <lesson>
+ *   lh answer <lesson> [--wait] [--timeout <seconds>]
+ *                                 --wait checks every 2 s until there is
+ *                                 at least one item, 600 s by default
  *   lh show <lesson>
  *
- * Exit codes: 0 ok; 1 refused or bad input; 3 LearnHarness unreachable.
- * (2 is reserved for `answer --wait` timing out.) The base URL is LH_URL,
+ * Exit codes: 0 ok; 1 refused or bad input; 2 `answer --wait` timed out;
+ * 3 LearnHarness unreachable. The base URL is LH_URL,
  * default http://127.0.0.1:3000: not localhost, which can resolve to the
  * IPv6 address while LearnHarness listens on 127.0.0.1 only. Stdin must
  * close within LH_STDIN_TIMEOUT_MS (default 30000).
@@ -25,12 +27,19 @@ const DEFAULT_URL = "http://127.0.0.1:3000";
 const GUIDE = "docs/external-teacher.md";
 const REQUEST_TIMEOUT_MS = 30_000;
 const STDIN_TIMEOUT_MS = Number(process.env.LH_STDIN_TIMEOUT_MS) || 30_000;
+/** How often `answer --wait` checks. LH_WAIT_POLL_MS is for tests. */
+const WAIT_POLL_MS = Number(process.env.LH_WAIT_POLL_MS) || 2_000;
+const WAIT_TIMEOUT_S = 600;
 
 /** Bad input on the command line: exit 1 with a usage refusal. */
 class UsageError extends Error {}
 
+/** Flags that take no value. */
+const SWITCHES = ["wait"];
+
 /** Split argv into positionals and flags, `--name value` or `--name=value`
- *  (the second form takes a value that itself starts with `--`). */
+ *  (the second form takes a value that itself starts with `--`). A switch
+ *  is `--name` alone and reads as true. */
 function parseArgs(argv) {
 	const positionals = [];
 	const flags = {};
@@ -41,6 +50,13 @@ function parseArgs(argv) {
 			continue;
 		}
 		const eq = arg.indexOf("=");
+		const name = arg.slice(2, eq > 2 ? eq : undefined);
+		if (SWITCHES.includes(name)) {
+			// `--wait=false` must not read as a wait.
+			if (eq > 2) throw new UsageError(`--${name} takes no value`);
+			flags[name] = true;
+			continue;
+		}
 		if (eq > 2) {
 			flags[arg.slice(2, eq)] = arg.slice(eq + 1);
 			continue;
@@ -128,7 +144,7 @@ const FLAGS = {
 	lesson: ["title", "key", "prompt"],
 	say: ["after", "file"],
 	...Object.fromEntries(QUESTION_KINDS.map((k) => [k, ["after", "file"]])),
-	answer: [],
+	answer: ["wait", "timeout"],
 	show: [],
 };
 
@@ -161,8 +177,14 @@ async function requestFor(argv) {
 			const after = requireAfter(flags);
 			return { method: "POST", path, body: { ...(await readPayload(flags)), kind: command, after } };
 		}
-		case "answer":
-			return { method: "GET", path: `${lessonPath(rest[0])}/answer` };
+		case "answer": {
+			const path = `${lessonPath(rest[0])}/answer`;
+			if (flags.timeout !== undefined && !flags.wait) throw new UsageError("--timeout needs --wait");
+			if (!flags.wait) return { method: "GET", path };
+			const seconds = flags.timeout === undefined ? WAIT_TIMEOUT_S : Number(flags.timeout);
+			if (!(seconds > 0) || !Number.isFinite(seconds)) throw new UsageError("--timeout takes a number of seconds above 0");
+			return { method: "GET", path, waitMs: seconds * 1000 };
+		}
 		case "show":
 			return { method: "GET", path: lessonPath(rest[0]) };
 		default:
@@ -184,6 +206,30 @@ async function main() {
 		return 1;
 	}
 	const base = process.env.LH_URL || DEFAULT_URL;
+	const deadline = Date.now() + (request.waitMs ?? 0);
+	for (;;) {
+		const reply = await send(request, base);
+		if (typeof reply === "number") return reply;
+		const { res, body } = reply;
+		const ok = res.ok && body?.ok === true;
+		// --wait: an ok reply with no items yet checks again until the deadline.
+		const waiting = request.waitMs !== undefined && ok && Array.isArray(body.items) && body.items.length === 0;
+		if (!waiting) {
+			print(body);
+			return ok ? 0 : 1;
+		}
+		const left = deadline - Date.now();
+		if (left <= 0) {
+			print({ ok: false, error: "timeout" });
+			return 2;
+		}
+		await new Promise((resolve) => setTimeout(resolve, Math.min(WAIT_POLL_MS, left)));
+	}
+}
+
+/** One request: `{ res, body }`, or exit code 3 after printing why
+ *  LearnHarness could not be reached. */
+async function send(request, base) {
 	let res;
 	let text;
 	try {
@@ -210,8 +256,7 @@ async function main() {
 	} catch {
 		body = { ok: false, code: "bad_reply", status: res.status, error: text.slice(0, 500) };
 	}
-	print(body);
-	return res.ok && body?.ok === true ? 0 : 1;
+	return { res, body };
 }
 
 // No main-module guard: the file is only ever run, and a guard comparing

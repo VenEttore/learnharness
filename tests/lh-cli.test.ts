@@ -21,14 +21,23 @@ type Seen = { method: string; url: string; body: unknown };
 const seen: Seen[] = [];
 /** The next reply the fake server sends. */
 let reply: { status: number; body: unknown } = { status: 200, body: { ok: true, cursor: "msg_1" } };
+/** Replies sent before `reply`, first one first. */
+const queued: { status: number; body: unknown }[] = [];
 
 const server = http.createServer((req, res) => {
 	let raw = "";
 	req.on("data", (chunk) => (raw += chunk));
 	req.on("end", () => {
+		// The host is shared, and something there probes local ports (GET /):
+		// only lh's own requests count or take a queued reply.
+		if (!req.url!.startsWith("/api/")) {
+			res.writeHead(404).end();
+			return;
+		}
 		seen.push({ method: req.method!, url: req.url!, body: raw ? JSON.parse(raw) : undefined });
-		res.writeHead(reply.status, { "Content-Type": "application/json" });
-		res.end(JSON.stringify(reply.body));
+		const next = queued.shift() ?? reply;
+		res.writeHead(next.status, { "Content-Type": "application/json" });
+		res.end(JSON.stringify(next.body));
 	});
 });
 let url = "";
@@ -151,6 +160,96 @@ describe("lh maps command lines to requests", () => {
 		assert.equal(code, 0);
 		assert.equal(lines.length, 1);
 		assert.deepEqual(json, { ok: true, id: "chat_a", cursor: "msg_2" });
+	});
+});
+
+describe("lh answer --wait", () => {
+	const empty = { status: 200, body: { ok: true, items: [], openQuestion: null, cursor: "msg_1" } };
+	const one = { status: 200, body: { ok: true, items: [{ type: "message", id: "msg_2", text: "hi" }], openQuestion: null, cursor: "msg_2" } };
+	const fast = { env: { LH_WAIT_POLL_MS: "50" } };
+
+	it("checks again until there is an item, then prints that reply", async () => {
+		seen.length = 0;
+		queued.push(empty, empty);
+		reply = one;
+		const { code, lines, json } = await lh(["answer", "chat_a", "--wait"], fast);
+		assert.equal(code, 0);
+		assert.equal(lines.length, 1);
+		assert.deepEqual(json, one.body);
+		assert.equal(seen.length, 3);
+		assert.ok(seen.every((r) => r.method === "GET" && r.url === "/api/external/chats/chat_a/answer"));
+	});
+
+	it("checks every 2 s by default", async () => {
+		seen.length = 0;
+		queued.push(empty);
+		reply = one;
+		const started = performance.now();
+		const { code } = await lh(["answer", "chat_a", "--wait"]);
+		const elapsed = performance.now() - started;
+		assert.equal(code, 0);
+		assert.equal(seen.length, 2);
+		assert.ok(elapsed >= 1900 && elapsed < 4000, `${elapsed} ms`);
+	});
+
+	it("prints { ok: false, error: \"timeout\" } and exits 2 when --timeout passes with no item", async () => {
+		seen.length = 0;
+		reply = empty;
+		const started = performance.now();
+		const { code, lines, json } = await lh(["answer", "chat_a", "--wait", "--timeout", "0.3"], fast);
+		assert.equal(code, 2);
+		assert.equal(lines.length, 1);
+		assert.deepEqual(json, { ok: false, error: "timeout" });
+		assert.ok(seen.length >= 2, "it checked more than once");
+		assert.ok(performance.now() - started < 3000);
+	});
+
+	it("stops at a refusal with exit 1", async () => {
+		seen.length = 0;
+		queued.push(empty);
+		reply = { status: 404, body: { ok: false, code: "not_found" } };
+		const { code, json } = await lh(["answer", "chat_a", "--wait"], fast);
+		assert.equal(code, 1);
+		assert.deepEqual(json, { ok: false, code: "not_found" });
+		assert.equal(seen.length, 2);
+	});
+
+	it("exits 3 at once when LearnHarness is unreachable", async () => {
+		const closed = http.createServer();
+		await new Promise<void>((resolve) => closed.listen(0, "127.0.0.1", resolve));
+		const dead = `http://127.0.0.1:${(closed.address() as AddressInfo).port}`;
+		await new Promise<void>((resolve) => closed.close(() => resolve()));
+		const { code, lines, json } = await lh(["answer", "chat_a", "--wait"], { env: { LH_URL: dead, LH_WAIT_POLL_MS: "50" } });
+		assert.equal(code, 3);
+		assert.equal(lines.length, 1);
+		assert.equal(json.code, "unreachable");
+	});
+
+	it("without --wait, an empty answer is printed at once", async () => {
+		seen.length = 0;
+		reply = empty;
+		const { code, json } = await lh(["answer", "chat_a"]);
+		assert.equal(code, 0);
+		assert.deepEqual(json, empty.body);
+		assert.equal(seen.length, 1);
+	});
+
+	it("refuses a bad --timeout, --timeout without --wait, or a value on --wait, with no request", async () => {
+		for (const args of [
+			["answer", "chat_a", "--wait", "--timeout", "0"],
+			["answer", "chat_a", "--wait", "--timeout", "soon"],
+			["answer", "chat_a", "--timeout", "5"],
+			["show", "chat_a", "--wait"],
+			["answer", "chat_a", "--wait=false"],
+			["answer", "chat_a", "--wait=", "--timeout", "1"],
+		]) {
+			seen.length = 0;
+			const { code, json } = await lh(args);
+			assert.equal(code, 1, args.join(" "));
+			assert.equal(json.code, "usage");
+			assert.equal(seen.length, 0);
+		}
+		reply = { status: 200, body: { ok: true, cursor: "msg_1" } };
 	});
 });
 

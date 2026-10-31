@@ -9,12 +9,12 @@
  * record read to the write, so no other writer can land in between.
  */
 
-import type { AssistantMessage, ToolCall, UserMessage } from "@earendil-works/pi-ai";
+import type { AssistantMessage, ToolCall, ToolResultMessage, UserMessage } from "@earendil-works/pi-ai";
 import { validateToolArguments } from "@earendil-works/pi-ai";
 import { Type, type Static, type TSchema } from "typebox";
 import { titleFromPrompt, type ChatRecord } from "../core/contracts.ts";
 import { emit } from "../core/events.ts";
-import { ChatInputError, inputAppends, type TurnInput } from "../core/input-events.ts";
+import { ChatInputError, inputAppends, isQuestionTool, type TurnInput } from "../core/input-events.ts";
 import { danglingQuestionOf, newMessageId, newUserMessage, type LhMessage } from "../core/native-messages.ts";
 import { phaseAt3Lh, type Phase3 } from "../core/phases.ts";
 import {
@@ -24,6 +24,8 @@ import {
 	explainInputProblems,
 	probeQuizInputSchema,
 	quizInputProblems,
+	type QuestionAnswerData,
+	type QuestionKind,
 } from "../core/question-core.ts";
 import { stores } from "./stores.ts";
 import { settledTurnResponse } from "./turn-runs.ts";
@@ -126,7 +128,7 @@ export function externalRequestRefusal(req: Request): Response | null {
 /** The newest message's id. An empty lesson has none, so its cursor is the
  *  lesson id, which `after` accepts as "before the first message". A
  *  reply whose cursor passes learner input the bot has not read (a
- *  repeat, a same-key create, bad_after) also carries those items, so
+ *  create, a repeat, bad_after, show) also carries those items, so
  *  adopting the cursor never skips them. */
 function cursorOf(record: ChatRecord): string {
 	return record.messages.at(-1)?.id ?? record.id;
@@ -141,18 +143,69 @@ function textOf(content: UserMessage["content"] | AssistantMessage["content"]): 
 	return content.flatMap((b) => (b.type === "text" ? [b.text] : [])).join("\n");
 }
 
-/** One piece of learner input as the bot reads it. Ticket 07 adds the
- *  answer and skip shapes. */
-type LearnerItem = { type: "message"; id: string; text: string };
+/** One piece of learner input as the bot reads it: a typed message, or a
+ *  question's answer or skip (the tool result the page saved). */
+type LearnerItem =
+	| { type: "message"; id: string; text: string }
+	| {
+			type: "answer";
+			id: string;
+			toolCallId: string;
+			kind: QuestionKind;
+			question: string;
+			answers: { index: number; label: string }[];
+			dontKnow: boolean;
+			text?: string;
+			other?: string;
+			thinking?: string;
+			readingThinking?: string;
+			confidence?: number;
+			correct?: boolean;
+	  }
+	| { type: "skip"; id: string; toolCallId: string; kind: QuestionKind };
 
-/** The learner input among `messages`, in order. */
-function learnerItems(messages: readonly LhMessage[]): LearnerItem[] {
-	return messages.flatMap((m) => (m.role === "user" ? [{ type: "message" as const, id: m.id, text: textOf(m.content) }] : []));
+/** A question tool's result as the bot reads it. The page saved the full
+ *  answer on `details` (newAnswerResult); the fields are the ones the
+ *  model-facing compact form reads (compactAnswerForModel), with
+ *  `thinking ?? note` the same way, and absent ones left absent. */
+function answerItem(m: LhMessage & ToolResultMessage): LearnerItem {
+	// Question results come only from the page's answer and dismiss routes,
+	// which both store the answer data whole.
+	const ad = m.details as unknown as QuestionAnswerData;
+	if (ad.dismissed) return { type: "skip", id: m.id, toolCallId: m.toolCallId, kind: ad.kind };
+	return {
+		type: "answer",
+		id: m.id,
+		toolCallId: m.toolCallId,
+		kind: ad.kind,
+		question: ad.questionText,
+		answers: Array.isArray(ad.answers) ? ad.answers.map((a) => ({ index: a.index, label: a.label })) : [],
+		dontKnow: ad.dontKnow,
+		text: ad.text,
+		other: ad.other,
+		thinking: ad.thinking ?? ad.note,
+		readingThinking: ad.readingThinking,
+		confidence: ad.confidence,
+		correct: ad.correct,
+	};
 }
 
-/** The learner input after the bot's last message: what answer returns. */
-function unreadByBot(record: ChatRecord): LearnerItem[] {
-	return learnerItems(record.messages.slice(record.messages.findLastIndex(isBotMessage) + 1));
+/** The learner input among `messages`, in order: typed messages, and the
+ *  results of question calls (answers and skips). Other tool results are
+ *  the bot's own (probe_done, plan_init), and markers are scaffolding. */
+function learnerItems(messages: readonly LhMessage[]): LearnerItem[] {
+	return messages.flatMap((m): LearnerItem[] => {
+		if (m.role === "user") return [{ type: "message", id: m.id, text: textOf(m.content) }];
+		if (m.role === "toolResult" && isQuestionTool(m.toolName)) return [answerItem(m)];
+		return [];
+	});
+}
+
+/** The learner input after the bot's last message, and after `afterIndex`
+ *  when that is later: what the bot has not replied to or read. With no
+ *  `afterIndex` it is what answer returns. */
+function unreadByBot(record: ChatRecord, afterIndex = -1): LearnerItem[] {
+	return learnerItems(record.messages.slice(Math.max(record.messages.findLastIndex(isBotMessage), afterIndex) + 1));
 }
 
 /** The record, or the refusal for check 1 (exists and is bot-run). */
@@ -188,7 +241,7 @@ export function createBotLesson(body: unknown): Response {
 		console.error("[bot-run] lesson create failed:", err);
 		return fail(500, "save_failed");
 	}
-	return Response.json({ ok: true, id: chat.id, title: chat.title, existing: false, cursor: cursorOf(chat) });
+	return Response.json({ ok: true, id: chat.id, title: chat.title, existing: false, items: unreadByBot(chat), cursor: cursorOf(chat) });
 }
 
 /** commitBotRun for the external routes: a failed save is a JSON 500 the
@@ -221,7 +274,8 @@ function compactMessage(m: LhMessage): Record<string, unknown> {
 }
 
 /** Show: the whole lesson, for a bot resuming or taking over. `plan` stays
- *  null until ticket 11. */
+ *  null until ticket 11. Its cursor passes any unread input, so the reply
+ *  carries those items, as answer's does. */
 export function showBotLesson(id: string): Response {
 	const record = botLesson(id);
 	if (record instanceof Response) return record;
@@ -233,13 +287,16 @@ export function showBotLesson(id: string): Response {
 		plan: null,
 		openQuestion: danglingQuestionOf(record.messages),
 		messages: record.messages.map(compactMessage),
+		items: unreadByBot(record),
 		cursor: cursorOf(record),
 	});
 }
 
 /** Answer: the learner input after the bot's last message, in order. Turn
- *  check 4 keeps the bot from writing past unread input, so this list is
- *  complete. Read-only, so reading twice returns the same items. */
+ *  check 4 keeps the bot from writing past input no reply has handed it
+ *  (every reply whose cursor passes unread input carries it as items), so
+ *  this list is complete. Read-only, so reading twice returns the same
+ *  items. */
 export function botAnswer(id: string): Response {
 	const record = botLesson(id);
 	if (record instanceof Response) return record;
@@ -482,8 +539,10 @@ export function botTurn(id: string, body: unknown): Response {
 		}
 	}
 
-	// 4. learner input the bot has not read
-	const unread = learnerItems(since);
+	// 4. learner input the bot has not read: past `after`, and past the
+	// bot's last message, so a stale `after` does not resurface input the
+	// bot already replied to.
+	const unread = unreadByBot(record, afterIndex);
 	if (unread.length > 0) return fail(409, "unread_input", { items: unread, cursor });
 
 	// 5. a question is still open: the learner answers or skips it first

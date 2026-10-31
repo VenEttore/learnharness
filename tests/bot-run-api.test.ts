@@ -72,6 +72,7 @@ describe("create", () => {
 		assert.equal(record.messages[0]!.role, "user");
 		assert.equal((record.messages[0] as { content: unknown }).content, "Teach me Bayes");
 		assert.equal(body.cursor, record.messages[0]!.id);
+		assert.deepEqual(body.items, [{ type: "message", id: body.cursor, text: "Teach me Bayes" }], "its cursor passes the prompt, so the reply carries it");
 	});
 
 	it("shortens a long title the way the normal create route does", async () => {
@@ -336,10 +337,10 @@ describe("show", () => {
 	it("reads an empty lesson", async () => {
 		const lesson = await create({ title: "Blank", key: newKey() });
 		const { body } = await show(lesson.body.id);
-		assert.deepEqual(body, { ok: true, id: lesson.body.id, title: "Blank", phase: "probe", plan: null, openQuestion: null, messages: [], cursor: lesson.body.id });
+		assert.deepEqual(body, { ok: true, id: lesson.body.id, title: "Blank", phase: "probe", plan: null, openQuestion: null, messages: [], items: [], cursor: lesson.body.id });
 	});
 
-	it("returns phase, a null plan, no open question, compact messages and the cursor", async () => {
+	it("returns phase, a null plan, no open question, compact messages, the unread items and the cursor", async () => {
 		const lesson = await create({ title: "Show", key: newKey(), prompt: "Teach me" });
 		const id = lesson.body.id;
 		await turn(id, { kind: "say", after: lesson.body.cursor, text: "Point." });
@@ -359,6 +360,7 @@ describe("show", () => {
 				{ id: record.messages[1]!.id, role: "assistant", text: "Point." },
 				{ id: record.messages[2]!.id, role: "user", text: "thanks" },
 			],
+			items: [{ type: "message", id: record.messages[2]!.id, text: "thanks" }],
 			cursor: record.messages[2]!.id,
 		});
 	});

@@ -24,8 +24,7 @@ import { getChat, isTurnRunning, parkDismissal, stores } from "@/src/server";
 
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }): Promise<Response> {
 	const { id } = await ctx.params;
-	const chat = getChat(id);
-	if (!chat) return Response.json({ error: "Unknown chat" }, { status: 404 });
+	if (!getChat(id)) return Response.json({ error: "Unknown chat" }, { status: 404 });
 
 	let input;
 	try {
@@ -37,6 +36,11 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
 		if (err instanceof ChatInputError) return Response.json({ error: err.message }, { status: 400 });
 		throw err;
 	}
+	// Bot-run lessons (fork, ADR 0001): the record is read after the body's
+	// await, so an answer that landed meanwhile is validated against, not
+	// overwritten.
+	const chat = getChat(id);
+	if (!chat) return Response.json({ error: "Unknown chat" }, { status: 404 });
 
 	// A running turn owns the chat's record (its messages persist at
 	// settle) — the dismissal cannot validate against stale truth, so it
@@ -61,5 +65,9 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
 	const merged = [...chat.messages, ...appends];
 	stores.chatStore.saveMessages(id, merged);
 	emit("record-changed", { chatId: id });
+	// Bot-run lessons (fork, ADR 0001), and every lesson: a skip changes the
+	// sidebar's question-waiting state, and no turn event follows to carry
+	// that refresh.
+	emit("chats-changed", {});
 	return Response.json({ ok: true });
 }
