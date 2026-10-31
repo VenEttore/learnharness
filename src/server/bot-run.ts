@@ -24,8 +24,10 @@ import {
 	askInputSchema,
 	askOptionProblems,
 	explainInputBase,
+	explainInputObject,
 	explainInputProblems,
 	probeQuizInputSchema,
+	quizInputObject,
 	quizInputProblems,
 	type QuestionAnswerData,
 	type QuestionKind,
@@ -33,6 +35,7 @@ import {
 import {
 	planInitInputSchema,
 	planInitSuccessResult,
+	planNodeProblem,
 	probeDoneSuccessResult,
 	type TeachingToolSuccess,
 } from "../core/teaching-tool-results.ts";
@@ -337,7 +340,10 @@ export function botAnswer(id: string): Response {
  *  outside the transcript (plan's tree) that runs, after every check,
  *  just before the records commit. */
 type Built = { records: [LhMessage & AssistantMessage, ...LhMessage[]]; saveFirst?: () => void };
-type Checked = { ok: true; built: Built } | { ok: false; problems: string[] };
+/** A refusal still carries `built` when the payload's only problems are
+ *  the lesson's state (the plan-node check), so the repeat check can see
+ *  a retry of a turn that landed before a plan rewrite dropped its node. */
+type Checked = { ok: true; built: Built } | { ok: false; problems: string[]; built?: Built };
 
 /** One row per turn kind, typed against its own schema's payload. */
 interface TurnKindRow<S extends TSchema> {
@@ -348,6 +354,10 @@ interface TurnKindRow<S extends TSchema> {
 	/** Problems the schema cannot express (the tool's own refinement);
 	 *  empty means valid. */
 	refine: ((payload: Static<S>) => string[]) | null;
+	/** The payload's `nodeId` must name a node of the lesson's plan (the
+	 *  shared plan-node check, after the refinement). Such a row's `build`
+	 *  also runs on a node the plan lacks (for the repeat check), so it must
+	 *  not look the node up. */
 	needsPlanNode: boolean;
 	/** Takes optional lead-in `text`, which rides the same assistant message
 	 *  ahead of the call and is not part of the tool's arguments. */
@@ -360,7 +370,8 @@ interface TurnKindRow<S extends TSchema> {
 
 /** A table row with its payload type closed over: `check` runs the
  *  validation as the tool boundary does (the schema the way pi checks it,
- *  convert then check, then the refinement) and builds the records. */
+ *  convert then check, then the refinement, then the plan-node check) and
+ *  builds the records. */
 type TurnKind = Omit<TurnKindRow<TSchema>, "refine" | "build"> & { check: (payload: Record<string, unknown>, record: ChatRecord) => Checked };
 
 function jsonType(value: unknown): string {
@@ -394,8 +405,8 @@ function conversionProblems(raw: unknown, checked: unknown, path: string): strin
  *  from a bot they are typos the page would never show (`detials`), and
  *  stored, they would make a clean retry miss the repeat check. With these
  *  and conversions refused, the dock's display parse (core/tool-parts.ts)
- *  reads every call the boundary accepts: its one extra rule is on a
- *  `type` field the probe-phase kinds do not have. */
+ *  reads every call the boundary accepts: its one extra rule heals a
+ *  quoted `type`, and quiz and explain take only the bare words. */
 function unknownFields(schema: unknown, value: unknown, path: string): string[] {
 	const s = schema as { type?: unknown; properties?: Record<string, unknown>; items?: unknown };
 	if (s.type === "object" && s.properties && jsonType(value) === "object") {
@@ -433,11 +444,28 @@ function turnKind<S extends TSchema>(name: string, row: TurnKindRow<S>): TurnKin
 		} catch (err) {
 			return { ok: false, problems: [err instanceof Error ? err.message : String(err)] };
 		}
-		let problems = conversionProblems(args, checked, "");
-		if (problems.length === 0) problems = row.refine?.(checked) ?? [];
-		return problems.length ? { ok: false, problems } : { ok: true, built: row.build(checked, leadIn, record) };
+		const converted = conversionProblems(args, checked, "");
+		if (converted.length > 0) return { ok: false, problems: converted };
+		const refined = row.refine?.(checked) ?? [];
+		const nodeProblems = row.needsPlanNode ? planNodeProblems(checked, record) : [];
+		// Reported together, as the teaching tools report them.
+		if (refined.length > 0) return { ok: false, problems: [...refined, ...nodeProblems] };
+		const built = row.build(checked, leadIn, record);
+		return nodeProblems.length > 0 ? { ok: false, problems: nodeProblems, built } : { ok: true, built };
 	};
 	return { tool: row.tool, phases: row.phases, schema: row.schema, needsPlanNode: row.needsPlanNode, takesLeadIn: row.takesLeadIn, check };
+}
+
+/** The shared plan-node check (core/teaching-tool-results.ts) against the
+ *  plan the page draws and show returns: the latest successful plan_init
+ *  in the transcript. The model's tools read the stored tree instead, but
+ *  after a failed commit that tree can be ahead of the transcript until
+ *  the plan rerun lands, and a question tagged with a node the map does
+ *  not draw would move the map nowhere. */
+function planNodeProblems(payload: unknown, record: ChatRecord): string[] {
+	// needsPlanNode rows' schemas require a string nodeId.
+	const problem = planNodeProblem(latestPlan(record.messages) ?? undefined, (payload as { nodeId: string }).nodeId);
+	return problem ? [problem] : [];
 }
 
 const ANY_PHASE = ["probe", "plan", "teach"] as const satisfies readonly Phase3[];
@@ -590,6 +618,28 @@ const TURN_KINDS: Readonly<Record<string, TurnKind>> = {
 			return { records: [message, result, ...blocks], saveFirst: () => stores.chatStore.saveTree(record.id, tree) };
 		},
 	}),
+	// The teacher's question tools (agent/tools.ts teachQuizToolFor and
+	// teachExplainToolFor): `type` (predict or check) and `nodeId` lead the
+	// schema. The first tagged call moves the phase fold to teach, and the
+	// plan map's position folds over the same tags.
+	quiz: turnKind("quiz", {
+		tool: "quiz",
+		phases: ["plan", "teach"],
+		schema: quizInputObject,
+		refine: quizInputProblems,
+		needsPlanNode: true,
+		takesLeadIn: true,
+		build: questionBuild("quiz"),
+	}),
+	explain: turnKind("explain", {
+		tool: "explain",
+		phases: ["plan", "teach"],
+		schema: explainInputObject,
+		refine: explainInputProblems,
+		needsPlanNode: true,
+		takesLeadIn: true,
+		build: questionBuild("explain"),
+	}),
 };
 
 /** The kinds a turn may take in `phase`, for the wrong_phase refusal. */
@@ -651,8 +701,10 @@ export function botTurn(id: string, body: unknown): Response {
 		return fail(500, "internal_error", { cursor });
 	}
 
-	// 3. repeat: the same turn already follows `after`
-	if (checked.ok) {
+	// 3. repeat: the same turn already follows `after`. A turn refused only
+	// by the plan-node check is built too: it may have landed before a plan
+	// rewrite dropped its node.
+	if (checked.built) {
 		const signature = turnSignature(checked.built.records[0]);
 		if (since.some((m) => isBotMessage(m) && turnSignature(m) === signature)) {
 			return Response.json({ ok: true, repeat: true, items: unreadByBot(record), cursor });

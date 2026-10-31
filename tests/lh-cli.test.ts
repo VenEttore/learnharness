@@ -123,9 +123,9 @@ describe("lh maps command lines to requests", () => {
 		assert.equal(json.code, "usage");
 	});
 
-	it("ask, probe and recall post the JSON from stdin or --file with the kind and cursor", async () => {
+	it("ask, probe, recall, quiz and explain post the JSON from stdin or --file with the kind and cursor", async () => {
 		const payload = { text: "Lead-in.", question: "Which?", options: [{ label: "A" }, { label: "B" }] };
-		for (const kind of ["ask", "probe", "recall"]) {
+		for (const kind of ["ask", "probe", "recall", "quiz", "explain"]) {
 			assert.deepEqual(await lastRequest([kind, "chat_a", "--after", "msg_9"], { stdin: JSON.stringify(payload) }), {
 				method: "POST",
 				url: "/api/external/chats/chat_a/turn",
@@ -136,7 +136,9 @@ describe("lh maps command lines to requests", () => {
 		const file = path.join(dir, "probe.json");
 		fs.writeFileSync(file, JSON.stringify(payload));
 		try {
-			assert.deepEqual((await lastRequest(["probe", "chat_a", "--after", "msg_9", "--file", file])).body, { ...payload, kind: "probe", after: "msg_9" });
+			for (const kind of ["probe", "quiz", "explain"]) {
+				assert.deepEqual((await lastRequest([kind, "chat_a", "--after", "msg_9", "--file", file])).body, { ...payload, kind, after: "msg_9" });
+			}
 		} finally {
 			fs.rmSync(dir, { recursive: true, force: true });
 		}
