@@ -12,21 +12,33 @@
 import type { AssistantMessage, ToolCall, ToolResultMessage, UserMessage } from "@earendil-works/pi-ai";
 import { validateToolArguments } from "@earendil-works/pi-ai";
 import { Type, type Static, type TSchema } from "typebox";
-import { titleFromPrompt, type ChatRecord } from "../core/contracts.ts";
+import { parseMermaidPlan } from "../agent/tools/mermaid-plan.ts";
+import { probeDoneInputSchema, titleFromPrompt, type ChatRecord, type PlanTree } from "../core/contracts.ts";
 import { emit } from "../core/events.ts";
 import { ChatInputError, inputAppends, isQuestionTool, type TurnInput } from "../core/input-events.ts";
-import { danglingQuestionOf, newMessageId, newUserMessage, type LhMessage } from "../core/native-messages.ts";
+import { danglingQuestionOf, newHandoffMessage, newMessageId, newUserMessage, type LhMessage } from "../core/native-messages.ts";
 import { phaseAt3Lh, type Phase3 } from "../core/phases.ts";
+import { planBlocksFor } from "../core/plan-blocks.ts";
+import { createTree, PlanTreeError } from "../core/plan-tree.ts";
 import {
 	askInputSchema,
 	askOptionProblems,
 	explainInputBase,
+	explainInputObject,
 	explainInputProblems,
 	probeQuizInputSchema,
+	quizInputObject,
 	quizInputProblems,
 	type QuestionAnswerData,
 	type QuestionKind,
 } from "../core/question-core.ts";
+import {
+	planInitInputSchema,
+	planInitSuccessResult,
+	planNodeProblem,
+	probeDoneSuccessResult,
+	type TeachingToolSuccess,
+} from "../core/teaching-tool-results.ts";
 import { stores } from "./stores.ts";
 import { settledTurnResponse } from "./turn-runs.ts";
 
@@ -244,11 +256,13 @@ export function createBotLesson(body: unknown): Response {
 	return Response.json({ ok: true, id: chat.id, title: chat.title, existing: false, items: unreadByBot(chat), cursor: cursorOf(chat) });
 }
 
-/** commitBotRun for the external routes: a failed save is a JSON 500 the
- *  bot can retry, never an HTML error page. Null when the save landed. */
-function commitOrFail(record: ChatRecord, appends: LhMessage[]): Response | null {
+/** commitBotRun for the external routes, after the turn's save outside
+ *  the transcript if it has one: a failed save is a JSON 500 the bot can
+ *  retry, never an HTML error page. Null when the save landed. */
+function commitOrFail(record: ChatRecord, built: Built): Response | null {
 	try {
-		commitBotRun(record.id, [...record.messages, ...appends]);
+		built.saveFirst?.();
+		commitBotRun(record.id, [...record.messages, ...built.records]);
 		return null;
 	} catch (err) {
 		console.error(`[chat ${record.id}] bot-run persist failed:`, err);
@@ -273,9 +287,22 @@ function compactMessage(m: LhMessage): Record<string, unknown> {
 	}
 }
 
-/** Show: the whole lesson, for a bot resuming or taking over. `plan` stays
- *  null until ticket 11. Its cursor passes any unread input, so the reply
- *  carries those items, as answer's does. */
+/** The tree of the latest successful plan_init in the transcript, the one
+ *  the page's plan map draws (latestTree reads the same result's details
+ *  through the view), or null before any plan. */
+function latestPlan(messages: readonly LhMessage[]): PlanTree | null {
+	for (let i = messages.length - 1; i >= 0; i--) {
+		const m = messages[i]!;
+		if (m.role !== "toolResult" || m.toolName !== "plan_init" || m.isError) continue;
+		const details = m.details as { ok?: unknown; tree?: PlanTree } | undefined;
+		if (details?.ok === true && details.tree) return details.tree;
+	}
+	return null;
+}
+
+/** Show: the whole lesson, for a bot resuming or taking over. `plan` is
+ *  the latest successful plan's tree. Its cursor passes any unread input,
+ *  so the reply carries those items, as answer's does. */
 export function showBotLesson(id: string): Response {
 	const record = botLesson(id);
 	if (record instanceof Response) return record;
@@ -284,7 +311,7 @@ export function showBotLesson(id: string): Response {
 		id: record.id,
 		title: record.title,
 		phase: phaseAt3Lh(record.messages),
-		plan: null,
+		plan: latestPlan(record.messages),
 		openQuestion: danglingQuestionOf(record.messages),
 		messages: record.messages.map(compactMessage),
 		items: unreadByBot(record),
@@ -309,9 +336,14 @@ export function botAnswer(id: string): Response {
 }
 
 /** A turn's records: the bot's assistant message first (the repeat check
- *  compares it), then any results and markers. */
-type Built = [LhMessage & AssistantMessage, ...LhMessage[]];
-type Checked = { ok: true; built: Built } | { ok: false; problems: string[] };
+ *  compares it), then any results and markers. `saveFirst` is a save
+ *  outside the transcript (plan's tree) that runs, after every check,
+ *  just before the records commit. */
+type Built = { records: [LhMessage & AssistantMessage, ...LhMessage[]]; saveFirst?: () => void };
+/** A refusal still carries `built` when the payload's only problems are
+ *  the lesson's state (the plan-node check), so the repeat check can see
+ *  a retry of a turn that landed before a plan rewrite dropped its node. */
+type Checked = { ok: true; built: Built } | { ok: false; problems: string[]; built?: Built };
 
 /** One row per turn kind, typed against its own schema's payload. */
 interface TurnKindRow<S extends TSchema> {
@@ -322,18 +354,25 @@ interface TurnKindRow<S extends TSchema> {
 	/** Problems the schema cannot express (the tool's own refinement);
 	 *  empty means valid. */
 	refine: ((payload: Static<S>) => string[]) | null;
+	/** The payload's `nodeId` must name a node of the lesson's plan (the
+	 *  shared plan-node check, after the refinement). Such a row's `build`
+	 *  also runs on a node the plan lacks (for the repeat check), so it must
+	 *  not look the node up. */
 	needsPlanNode: boolean;
 	/** Takes optional lead-in `text`, which rides the same assistant message
 	 *  ahead of the call and is not part of the tool's arguments. */
 	takesLeadIn: boolean;
-	/** `leadIn` is the trimmed lead-in, or "" for none. */
-	build: (payload: Static<S>, leadIn: string) => Built;
+	/** `leadIn` is the trimmed lead-in, or "" for none; `record` is the
+	 *  lesson as read, for records keyed by its id (the handoff marker) or
+	 *  derived from its transcript (the plan block's snapshot). */
+	build: (payload: Static<S>, leadIn: string, record: ChatRecord) => Built;
 }
 
 /** A table row with its payload type closed over: `check` runs the
  *  validation as the tool boundary does (the schema the way pi checks it,
- *  convert then check, then the refinement) and builds the records. */
-type TurnKind = Omit<TurnKindRow<TSchema>, "refine" | "build"> & { check: (payload: Record<string, unknown>) => Checked };
+ *  convert then check, then the refinement, then the plan-node check) and
+ *  builds the records. */
+type TurnKind = Omit<TurnKindRow<TSchema>, "refine" | "build"> & { check: (payload: Record<string, unknown>, record: ChatRecord) => Checked };
 
 function jsonType(value: unknown): string {
 	return value === null ? "null" : Array.isArray(value) ? "array" : typeof value;
@@ -341,16 +380,23 @@ function jsonType(value: unknown): string {
 
 /** Where the boundary's conversion changed a value's JSON type. pi lets a
  *  model's `42` stand for "42"; from a bot it is a caller bug, refused
- *  rather than shown to the learner. */
+ *  rather than shown to the learner. pi also drops an optional field sent
+ *  as null, so a raw null the checked value lacks is refused too: the
+ *  record would not hold what the bot sent. */
 function conversionProblems(raw: unknown, checked: unknown, path: string): string[] {
 	const want = jsonType(checked);
 	const got = jsonType(raw);
 	if (want !== got) return [`${path} must be ${want === "array" || want === "object" ? "an" : "a"} ${want}, not ${got}`];
 	if (want === "array") return (checked as unknown[]).flatMap((v, i) => conversionProblems((raw as unknown[])[i], v, `${path}[${i}]`));
 	if (want === "object") {
-		return Object.entries(checked as Record<string, unknown>).flatMap(([k, v]) =>
-			conversionProblems((raw as Record<string, unknown>)[k], v, path ? `${path}.${k}` : k),
+		const rawObject = raw as Record<string, unknown>;
+		const dropped = Object.keys(rawObject).flatMap((k) =>
+			rawObject[k] === null && !Object.hasOwn(checked as object, k) ? [`${path ? `${path}.${k}` : k} must not be null; leave it out`] : [],
 		);
+		return [
+			...dropped,
+			...Object.entries(checked as Record<string, unknown>).flatMap(([k, v]) => conversionProblems(rawObject[k], v, path ? `${path}.${k}` : k)),
+		];
 	}
 	return [];
 }
@@ -359,8 +405,8 @@ function conversionProblems(raw: unknown, checked: unknown, path: string): strin
  *  from a bot they are typos the page would never show (`detials`), and
  *  stored, they would make a clean retry miss the repeat check. With these
  *  and conversions refused, the dock's display parse (core/tool-parts.ts)
- *  reads every call the boundary accepts: its one extra rule is on a
- *  `type` field the probe-phase kinds do not have. */
+ *  reads every call the boundary accepts: its one extra rule heals a
+ *  quoted `type`, and quiz and explain take only the bare words. */
 function unknownFields(schema: unknown, value: unknown, path: string): string[] {
 	const s = schema as { type?: unknown; properties?: Record<string, unknown>; items?: unknown };
 	if (s.type === "object" && s.properties && jsonType(value) === "object") {
@@ -375,7 +421,7 @@ function unknownFields(schema: unknown, value: unknown, path: string): string[] 
 }
 
 function turnKind<S extends TSchema>(name: string, row: TurnKindRow<S>): TurnKind {
-	const check = (payload: Record<string, unknown>): Checked => {
+	const check = (payload: Record<string, unknown>, record: ChatRecord): Checked => {
 		let args = payload;
 		let leadIn = "";
 		if (row.takesLeadIn && Object.hasOwn(payload, "text")) {
@@ -398,11 +444,28 @@ function turnKind<S extends TSchema>(name: string, row: TurnKindRow<S>): TurnKin
 		} catch (err) {
 			return { ok: false, problems: [err instanceof Error ? err.message : String(err)] };
 		}
-		let problems = conversionProblems(args, checked, "");
-		if (problems.length === 0) problems = row.refine?.(checked) ?? [];
-		return problems.length ? { ok: false, problems } : { ok: true, built: row.build(checked, leadIn) };
+		const converted = conversionProblems(args, checked, "");
+		if (converted.length > 0) return { ok: false, problems: converted };
+		const refined = row.refine?.(checked) ?? [];
+		const nodeProblems = row.needsPlanNode ? planNodeProblems(checked, record) : [];
+		// Reported together, as the teaching tools report them.
+		if (refined.length > 0) return { ok: false, problems: [...refined, ...nodeProblems] };
+		const built = row.build(checked, leadIn, record);
+		return nodeProblems.length > 0 ? { ok: false, problems: nodeProblems, built } : { ok: true, built };
 	};
 	return { tool: row.tool, phases: row.phases, schema: row.schema, needsPlanNode: row.needsPlanNode, takesLeadIn: row.takesLeadIn, check };
+}
+
+/** The shared plan-node check (core/teaching-tool-results.ts) against the
+ *  plan the page draws and show returns: the latest successful plan_init
+ *  in the transcript. The model's tools read the stored tree instead, but
+ *  after a failed commit that tree can be ahead of the transcript until
+ *  the plan rerun lands, and a question tagged with a node the map does
+ *  not draw would move the map nowhere. */
+function planNodeProblems(payload: unknown, record: ChatRecord): string[] {
+	// needsPlanNode rows' schemas require a string nodeId.
+	const problem = planNodeProblem(latestPlan(record.messages) ?? undefined, (payload as { nodeId: string }).nodeId);
+	return problem ? [problem] : [];
 }
 
 const ANY_PHASE = ["probe", "plan", "teach"] as const satisfies readonly Phase3[];
@@ -421,7 +484,25 @@ function questionBuild(tool: string) {
 		const content: AssistantMessage["content"] = leadIn ? [{ type: "text", text: leadIn }] : [];
 		// The checked payload came from parsed JSON, so it is a JSON object.
 		content.push({ type: "toolCall", id: newToolCallId(), name: tool, arguments: payload as ToolCall["arguments"] });
-		return [newBotAssistantMessage(content)];
+		return { records: [newBotAssistantMessage(content)] };
+	};
+}
+
+/** A server-side tool's success as the record stores it: a real tool
+ *  result joined to its call by id, mapped the way serverExecute's
+ *  toToolResult (src/agent/tool-execute.ts) maps a text-only result, and
+ *  persisted with a record id. */
+function toolSuccessMessage(call: ToolCall, success: TeachingToolSuccess<unknown>): LhMessage & ToolResultMessage {
+	return {
+		id: newMessageId(),
+		role: "toolResult",
+		toolCallId: call.id,
+		toolName: call.name,
+		content: [{ type: "text", text: success.text }],
+		// The helpers' details are JSON values.
+		details: success.details as ToolResultMessage["details"],
+		isError: false,
+		timestamp: Date.now(),
 	};
 }
 
@@ -431,6 +512,20 @@ function trimLineBreaks(text: string): string {
 	let end = text.length;
 	while (end > 0 && (text[end - 1] === "\n" || text[end - 1] === "\r")) end--;
 	return text.slice(0, end);
+}
+
+/** plan_init's validation after its schema, as the tool runs it: the
+ *  Mermaid parser (every problem, by line), then the tree builder
+ *  (duplicate ids, unknown endpoints, self-loops, cycles). */
+function planTreeOf(mermaid: string): { tree: PlanTree } | { problems: string[] } {
+	const parsed = parseMermaidPlan(mermaid);
+	if (!parsed.ok || !parsed.plan) return { problems: parsed.problems };
+	try {
+		return { tree: createTree(parsed.plan.nodes, parsed.plan.edges) };
+	} catch (err) {
+		if (err instanceof PlanTreeError) return { problems: [err.message] };
+		throw err;
+	}
 }
 
 /** THE KINDS TABLE. Later tickets add a row per kind. */
@@ -446,7 +541,7 @@ const TURN_KINDS: Readonly<Record<string, TurnKind>> = {
 		// may lack, the repeat check compares exact text, and the stored text
 		// must say back to itself (show → say). Other trailing whitespace (a
 		// Markdown hard break) stays.
-		build: (p) => [newBotAssistantMessage([{ type: "text", text: trimLineBreaks(p.text) }])],
+		build: (p) => ({ records: [newBotAssistantMessage([{ type: "text", text: trimLineBreaks(p.text) }])] }),
 	}),
 	// The question rows reuse the tools' own schemas and refinements
 	// (core/question-core.ts), so a call the tool would refuse is refused.
@@ -476,6 +571,74 @@ const TURN_KINDS: Readonly<Record<string, TurnKind>> = {
 		needsPlanNode: false,
 		takesLeadIn: true,
 		build: questionBuild("recall"),
+	}),
+	// The records the probe_done tool's turn leaves (agent/tools/probe.ts),
+	// without running it: the call, the shared success result, then the
+	// handoff marker its queued steer would land as. Nothing is queued, so
+	// nothing wakes; the phase fold reads plan from the result.
+	"probe-done": turnKind("probe-done", {
+		tool: "probe_done",
+		phases: ["probe"],
+		schema: probeDoneInputSchema,
+		refine: null,
+		needsPlanNode: false,
+		takesLeadIn: false,
+		build: (p, _leadIn, record) => {
+			const call: ToolCall = { type: "toolCall", id: newToolCallId(), name: "probe_done", arguments: p };
+			return { records: [newBotAssistantMessage([call]), toolSuccessMessage(call, probeDoneSuccessResult()), newHandoffMessage(record.id)] };
+		},
+	}),
+	// The records the plan_init tool's turn leaves (agent/tools/plan.ts),
+	// without running it: the tree saved first, as the tool saves it during
+	// the turn, then the call, the shared success result carrying the tree,
+	// and the plan-block marker the turn persist appends (planBlocksFor).
+	// A later plan is a rewrite: the new tree replaces the old. Trailing
+	// line breaks go from the Mermaid, as from say's text, so a `--file`
+	// rerun of a piped plan is a repeat.
+	plan: turnKind("plan", {
+		tool: "plan_init",
+		phases: ["plan", "teach"],
+		schema: planInitInputSchema,
+		refine: (p) => {
+			const planned = planTreeOf(p.mermaid);
+			return "problems" in planned ? planned.problems : [];
+		},
+		needsPlanNode: false,
+		takesLeadIn: false,
+		build: (p, _leadIn, record) => {
+			const mermaid = trimLineBreaks(p.mermaid);
+			const planned = planTreeOf(mermaid);
+			// refine passed, so the tree builds.
+			if ("problems" in planned) throw new Error(`plan refined but did not build: ${planned.problems.join("; ")}`);
+			const { tree } = planned;
+			const call: ToolCall = { type: "toolCall", id: newToolCallId(), name: "plan_init", arguments: { mermaid } };
+			const message = newBotAssistantMessage([call]);
+			const result = toolSuccessMessage(call, planInitSuccessResult(tree));
+			const blocks = planBlocksFor(record.messages, [message, result], tree, [...record.messages, message, result]);
+			return { records: [message, result, ...blocks], saveFirst: () => stores.chatStore.saveTree(record.id, tree) };
+		},
+	}),
+	// The teacher's question tools (agent/tools.ts teachQuizToolFor and
+	// teachExplainToolFor): `type` (predict or check) and `nodeId` lead the
+	// schema. The first tagged call moves the phase fold to teach, and the
+	// plan map's position folds over the same tags.
+	quiz: turnKind("quiz", {
+		tool: "quiz",
+		phases: ["plan", "teach"],
+		schema: quizInputObject,
+		refine: quizInputProblems,
+		needsPlanNode: true,
+		takesLeadIn: true,
+		build: questionBuild("quiz"),
+	}),
+	explain: turnKind("explain", {
+		tool: "explain",
+		phases: ["plan", "teach"],
+		schema: explainInputObject,
+		refine: explainInputProblems,
+		needsPlanNode: true,
+		takesLeadIn: true,
+		build: questionBuild("explain"),
 	}),
 };
 
@@ -527,13 +690,22 @@ export function botTurn(id: string, body: unknown): Response {
 	const since = record.messages.slice(afterIndex + 1);
 
 	const row = typeof kind === "string" && Object.hasOwn(TURN_KINDS, kind) ? TURN_KINDS[kind] : undefined;
-	const checked: Checked = row
-		? row.check(payload)
-		: { ok: false, problems: [`unknown kind ${JSON.stringify(kind)}; kinds: ${Object.keys(TURN_KINDS).join(", ")}`] };
+	let checked: Checked;
+	try {
+		checked = row
+			? row.check(payload, record)
+			: { ok: false, problems: [`unknown kind ${JSON.stringify(kind)}; kinds: ${Object.keys(TURN_KINDS).join(", ")}`] };
+	} catch (err) {
+		// A row's own bug, not the bot's input: a JSON reply, nothing saved.
+		console.error(`[chat ${record.id}] bot-run ${String(kind)} build failed:`, err);
+		return fail(500, "internal_error", { cursor });
+	}
 
-	// 3. repeat: the same turn already follows `after`
-	if (checked.ok) {
-		const signature = turnSignature(checked.built[0]);
+	// 3. repeat: the same turn already follows `after`. A turn refused only
+	// by the plan-node check is built too: it may have landed before a plan
+	// rewrite dropped its node.
+	if (checked.built) {
+		const signature = turnSignature(checked.built.records[0]);
 		if (since.some((m) => isBotMessage(m) && turnSignature(m) === signature)) {
 			return Response.json({ ok: true, repeat: true, items: unreadByBot(record), cursor });
 		}
@@ -557,5 +729,5 @@ export function botTurn(id: string, body: unknown): Response {
 
 	const failed = commitOrFail(record, checked.built);
 	if (failed) return failed;
-	return Response.json({ ok: true, cursor: checked.built[checked.built.length - 1]!.id });
+	return Response.json({ ok: true, cursor: checked.built.records.at(-1)!.id });
 }
