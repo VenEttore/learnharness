@@ -1242,7 +1242,8 @@ export function Chat({
 		if (pending || compacting) return;
 		const t = textRef.current.trim();
 		if (!t) return;
-		if (busy) {
+		// A bot-run lesson has no live turn to steer: doSend keeps the text.
+		if (busy && !botRun) {
 			applyText("");
 			void steer(t);
 			return;

@@ -39,8 +39,10 @@ g.getComputedStyle ??= () => ({ getPropertyValue: () => "", overflow: "auto" });
 (dom.window as unknown as Record<string, unknown>).location ??= new URL("http://localhost/chat/chat_x");
 g.location ??= (dom.window as unknown as Record<string, unknown>).location;
 
-/** POSTs to /api/chat this test saw, by input type. */
+/** POSTs to /api/chat this test saw, by input type; "steer" for a steer. */
 const posts: string[] = [];
+/** Holds the stream attach open, so the view stays busy after a send. */
+let streamDelayMs = 0;
 const realFetch = globalThis.fetch;
 
 before(() => {
@@ -50,6 +52,12 @@ before(() => {
 			posts.push(JSON.parse(String(init?.body)).input.type);
 			return Response.json({ ok: true });
 		}
+		// Faithful to the steer route: a bot-run lesson has no live turn.
+		if (url.endsWith("/steer")) {
+			posts.push("steer");
+			return Response.json({ error: "no live turn to steer" }, { status: 409 });
+		}
+		if (url.endsWith("/stream") && streamDelayMs) await new Promise((r) => setTimeout(r, streamDelayMs));
 		// A keyless install: the catalog says no provider has a key.
 		if (url.startsWith("/api/models")) return Response.json({ providers: [{ id: "openrouter", keyPresent: false }], models: [], slots: {} });
 		return Response.json({});
@@ -126,6 +134,23 @@ describe("keyless install: the chat view", () => {
 		assert.deepEqual(posts, ["text"], "the typed text is posted, and nothing else");
 		assert.ok(!testIds().includes("setup-dialog"), "send never opens setup");
 		assert.ok(testIds().includes("user-message"), "the sent text shows in the transcript");
+		await act(async () => root.unmount());
+		host.remove();
+	});
+
+	it("a bot-run lesson keeps a second message typed while the first send settles", async () => {
+		posts.length = 0;
+		streamDelayMs = 300;
+		const { host, root } = await mount(true);
+		await typeAndSend(host, "first");
+		await typeAndSend(host, "second");
+		const box = host.querySelector('[data-testid="composer"] [role="textbox"]');
+		assert.ok(!posts.includes("steer"), "no steer: a bot-run lesson has no live turn to take one");
+		assert.equal(box?.textContent, "second", "the unsent text stays in the composer");
+		streamDelayMs = 0;
+		await act(async () => {
+			await new Promise((r) => setTimeout(r, 400));
+		});
 		await act(async () => root.unmount());
 		host.remove();
 	});
