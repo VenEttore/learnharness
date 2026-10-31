@@ -161,7 +161,7 @@ export function createBotLesson(body: unknown): Response {
 	const b = (typeof body === "object" && body !== null ? body : {}) as { title?: unknown; key?: unknown; prompt?: unknown };
 	if (typeof b.key !== "string" || b.key.trim() === "") return fail(400, "key_required");
 	const key = b.key;
-	const problems = (["title", "prompt"] as const).flatMap((f) => (b[f] !== undefined && b[f] !== null && typeof b[f] !== "string" ? [`${f} must be a string`] : []));
+	const problems = (["title", "prompt"] as const).flatMap((f) => (b[f] !== undefined && typeof b[f] !== "string" ? [`${f} must be a string`] : []));
 	if (problems.length > 0) return fail(422, "invalid", { problems });
 	const found = stores.chatStore.listChats().find((c) => c.driver !== undefined && c.externalKey === key);
 	const existing = found ? stores.chatStore.getChat(found.id) : null;
@@ -285,6 +285,14 @@ function turnKind<S extends TSchema>(name: string, row: TurnKindRow<S>): TurnKin
 
 const ANY_PHASE = ["probe", "plan", "teach"] as const satisfies readonly Phase3[];
 
+/** Drops trailing \n and \r by scanning back from the end. A `[\r\n]+$`
+ *  regex retries at every newline, so a long run mid-text costs seconds. */
+function trimLineBreaks(text: string): string {
+	let end = text.length;
+	while (end > 0 && (text[end - 1] === "\n" || text[end - 1] === "\r")) end--;
+	return text.slice(0, end);
+}
+
 /** THE KINDS TABLE. Later tickets add a row per kind. */
 const TURN_KINDS: Readonly<Record<string, TurnKind>> = {
 	say: turnKind("say", {
@@ -295,11 +303,11 @@ const TURN_KINDS: Readonly<Record<string, TurnKind>> = {
 		// null or a number is a caller bug, not text to show the learner.
 		refine: (p, raw) => (typeof raw.text !== "string" ? ["text must be a string"] : p.text.trim() === "" ? ["text must not be empty"] : []),
 		needsPlanNode: false,
-		// Trailing newlines go: `echo` adds one a `--file` rerun may lack, the
-		// repeat check compares exact text, and the stored text must say
-		// back to itself (show → say). Other trailing whitespace (a Markdown
-		// hard break) stays.
-		build: (p) => [newBotAssistantMessage([{ type: "text", text: p.text.replace(/(?:\r?\n)+$/, "") }])],
+		// Trailing line breaks (\n and \r) go: `echo` adds one a `--file` rerun
+		// may lack, the repeat check compares exact text, and the stored text
+		// must say back to itself (show → say). Other trailing whitespace (a
+		// Markdown hard break) stays.
+		build: (p) => [newBotAssistantMessage([{ type: "text", text: trimLineBreaks(p.text) }])],
 	}),
 };
 

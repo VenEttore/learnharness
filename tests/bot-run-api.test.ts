@@ -128,7 +128,8 @@ describe("create", () => {
 
 	it("refuses a title or prompt that is not a string, saving nothing", async () => {
 		const before = chatStore.listChats().length;
-		for (const body of [{ title: { x: 1 }, key: newKey() }, { title: "T", key: newKey(), prompt: 42 }]) {
+		const bodies = [{ title: { x: 1 }, key: newKey() }, { title: "T", key: newKey(), prompt: 42 }, { title: null, key: newKey() }, { title: "T", key: newKey(), prompt: null }];
+		for (const body of bodies) {
 			const res = await create(body);
 			assert.equal(res.status, 422);
 			assert.equal(res.body.code, "invalid");
@@ -167,6 +168,26 @@ describe("say", () => {
 		const shown = (await show(lesson.body.id)).body.messages.at(-1).text;
 		const again = await turn(lesson.body.id, { kind: "say", after: lesson.body.cursor, text: shown });
 		assert.equal(again.body.repeat, true);
+	});
+
+	it("drops a trailing carriage return with the newlines, so a rerun with one more newline is a repeat", async () => {
+		const lesson = await create({ title: "CR", key: newKey(), prompt: "Teach me" });
+		await turn(lesson.body.id, { kind: "say", after: lesson.body.cursor, text: "line\n\n\r" });
+		const count = chatStore.getChat(lesson.body.id)!.messages.length;
+		const again = await turn(lesson.body.id, { kind: "say", after: lesson.body.cursor, text: "line\n\n\r\n" });
+		assert.equal(again.body.repeat, true);
+		assert.equal(chatStore.getChat(lesson.body.id)!.messages.length, count);
+	});
+
+	it("trims in linear time when a long run of newlines sits mid-text", async () => {
+		const lesson = await create({ title: "Long", key: newKey(), prompt: "Teach me" });
+		const text = `a${"\n".repeat(100_000)}b`;
+		const started = performance.now();
+		const res = await turn(lesson.body.id, { kind: "say", after: lesson.body.cursor, text });
+		assert.equal(res.status, 200);
+		assert.ok(performance.now() - started < 1000, "a quadratic trim takes seconds here");
+		const said = chatStore.getChat(lesson.body.id)!.messages.at(-1) as { content: unknown };
+		assert.deepEqual(said.content, [{ type: "text", text }]);
 	});
 
 	it("drops a rerun with the same after, even after learner input arrived", async () => {
