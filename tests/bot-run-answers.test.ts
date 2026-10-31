@@ -209,6 +209,7 @@ describe("unread input in turns", () => {
 		await learnerSkips(id, "quiz", PROBE.question);
 		const skipped = await turn(id, { kind: "say", after: probed, text: "Fine." });
 		assert.equal(skipped.status, 409);
+		assert.equal(skipped.body.code, "unread_input");
 		assert.deepEqual(skipped.body.items.map((i: Json) => i.type), ["skip"]);
 	});
 

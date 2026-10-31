@@ -208,6 +208,17 @@ describe("lh answer --wait", () => {
 		assert.equal(seen.length, 2);
 	});
 
+	it("exits 3 at once when LearnHarness is unreachable", async () => {
+		const closed = http.createServer();
+		await new Promise<void>((resolve) => closed.listen(0, "127.0.0.1", resolve));
+		const dead = `http://127.0.0.1:${(closed.address() as AddressInfo).port}`;
+		await new Promise<void>((resolve) => closed.close(() => resolve()));
+		const { code, lines, json } = await lh(["answer", "chat_a", "--wait"], { env: { LH_URL: dead, LH_WAIT_POLL_MS: "50" } });
+		assert.equal(code, 3);
+		assert.equal(lines.length, 1);
+		assert.equal(json.code, "unreachable");
+	});
+
 	it("without --wait, an empty answer is printed at once", async () => {
 		seen.length = 0;
 		reply = empty;
