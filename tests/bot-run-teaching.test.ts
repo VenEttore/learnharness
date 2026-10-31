@@ -181,6 +181,7 @@ describe("teaching questions the page can show", () => {
 		// "conditional" was dropped by the rewrite; "likelihood" is new.
 		const dropped = await turn(id, { kind: "explain", after: rewrite.body.cursor, ...EXPLAIN });
 		assert.equal(dropped.status, 422);
+		assert.equal(dropped.body.code, "invalid");
 		assert.deepEqual(dropped.body.problems, [planNodeProblem(pagePlan(id), "conditional")]);
 		const added = await turn(id, { kind: "explain", after: rewrite.body.cursor, ...EXPLAIN, nodeId: "likelihood" });
 		assert.equal(added.status, 200, JSON.stringify(added.body));
@@ -203,6 +204,20 @@ describe("teaching questions the page can show", () => {
 		const again = await turn(id, { kind: "explain", after: cursor, ...EXPLAIN });
 		assert.equal(again.status, 200);
 		assert.equal(again.body.repeat, true);
+		assert.equal(messages(id).length, count);
+	});
+
+	it("a rerun is still a repeat after a plan rewrite dropped its node, saving nothing", async () => {
+		const { id, cursor } = await plannedLesson();
+		await turn(id, { kind: "quiz", after: cursor, ...QUIZ });
+		const skipped = await learnerSkips(id, pendingQuestionOf(messages(id))!.toolCallId, "quiz", QUIZ.question);
+		const rewrite = await turn(id, { kind: "plan", after: skipped, mermaid: "graph TD\n  likelihood[Likelihood] --> conditional[Conditional probability]" });
+		assert.equal(rewrite.status, 200, JSON.stringify(rewrite.body));
+		const count = messages(id).length;
+		const again = await turn(id, { kind: "quiz", after: cursor, ...QUIZ });
+		assert.equal(again.status, 200, JSON.stringify(again.body));
+		assert.equal(again.body.repeat, true);
+		assert.deepEqual(again.body.items, []);
 		assert.equal(messages(id).length, count);
 	});
 });
@@ -235,7 +250,7 @@ describe("teaching question refusals save nothing", () => {
 			const { id, cursor } = await planningLesson();
 			const { status, body } = await turn(id, { kind, after: cursor, ...payload });
 			assert.equal(status, 422);
-			assert.deepEqual(body.problems, [planNodeProblem(undefined, payload.nodeId)]);
+			assert.deepEqual(body, { ok: false, code: "invalid", problems: [planNodeProblem(undefined, payload.nodeId)], cursor });
 			assert.equal(phaseAt3Lh(messages(id)), "plan");
 		});
 

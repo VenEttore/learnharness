@@ -340,7 +340,10 @@ export function botAnswer(id: string): Response {
  *  outside the transcript (plan's tree) that runs, after every check,
  *  just before the records commit. */
 type Built = { records: [LhMessage & AssistantMessage, ...LhMessage[]]; saveFirst?: () => void };
-type Checked = { ok: true; built: Built } | { ok: false; problems: string[] };
+/** A refusal still carries `built` when the payload's only problems are
+ *  the lesson's state (the plan-node check), so the repeat check can see
+ *  a retry of a turn that landed before a plan rewrite dropped its node. */
+type Checked = { ok: true; built: Built } | { ok: false; problems: string[]; built?: Built };
 
 /** One row per turn kind, typed against its own schema's payload. */
 interface TurnKindRow<S extends TSchema> {
@@ -439,12 +442,14 @@ function turnKind<S extends TSchema>(name: string, row: TurnKindRow<S>): TurnKin
 		} catch (err) {
 			return { ok: false, problems: [err instanceof Error ? err.message : String(err)] };
 		}
-		let problems = conversionProblems(args, checked, "");
-		if (problems.length === 0) {
-			// Both reported together, as the teaching tools report them.
-			problems = [...(row.refine?.(checked) ?? []), ...(row.needsPlanNode ? planNodeProblems(checked, record) : [])];
-		}
-		return problems.length ? { ok: false, problems } : { ok: true, built: row.build(checked, leadIn, record) };
+		const converted = conversionProblems(args, checked, "");
+		if (converted.length > 0) return { ok: false, problems: converted };
+		const refined = row.refine?.(checked) ?? [];
+		// Reported together, as the teaching tools report them.
+		const nodeProblems = row.needsPlanNode ? planNodeProblems(checked, record) : [];
+		if (refined.length > 0) return { ok: false, problems: [...refined, ...nodeProblems] };
+		const built = row.build(checked, leadIn, record);
+		return nodeProblems.length > 0 ? { ok: false, problems: nodeProblems, built } : { ok: true, built };
 	};
 	return { tool: row.tool, phases: row.phases, schema: row.schema, needsPlanNode: row.needsPlanNode, takesLeadIn: row.takesLeadIn, check };
 }
@@ -695,7 +700,7 @@ export function botTurn(id: string, body: unknown): Response {
 	}
 
 	// 3. repeat: the same turn already follows `after`
-	if (checked.ok) {
+	if (checked.built) {
 		const signature = turnSignature(checked.built.records[0]);
 		if (since.some((m) => isBotMessage(m) && turnSignature(m) === signature)) {
 			return Response.json({ ok: true, repeat: true, items: unreadByBot(record), cursor });
