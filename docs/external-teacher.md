@@ -16,20 +16,21 @@ The examples assume the repo is at `/workspace/learnharness`. Use your own path 
    cd /workspace/learnharness
    unset LH_DESKTOP_SERVER LH_DESKTOP_API_SECRET
    mkdir -p /workspace/lh-data
-   LH_DATA_DIR=/workspace/lh-data LH_IGNORE_ENV_KEYS=1 nohup npx next dev -H 127.0.0.1 > /workspace/lh-server.log 2>&1 &
+   LH_DATA_DIR=/workspace/lh-data LH_IGNORE_ENV_KEYS=1 nohup npx next dev -H 127.0.0.1 -p 3000 > /workspace/lh-server.log 2>&1 &
    ```
 
-   For a production build, run `npm run build` once, then use `npx next start -H 127.0.0.1` in place of `npx next dev -H 127.0.0.1`.
+   For a production build, run `npm run build` once, then use `npx next start -H 127.0.0.1 -p 3000` in place of `npx next dev -H 127.0.0.1 -p 3000`.
 
+   - `-p 3000` makes a busy port fail the start (`EADDRINUSE` in the log). Without it, `next dev` moves to the next free port, and `lh` would talk to whatever else holds 3000.
    - `-H 127.0.0.1` is required. Next listens on every interface by default, and the `lh` routes have no login. LearnHarness checks the Host header, but a machine on the network can forge it. Only the bind keeps other machines out.
    - Browser mode: `LH_DESKTOP_SERVER` and `LH_DESKTOP_API_SECRET` stay unset. They belong to the desktop app.
    - `LH_DATA_DIR` under `/workspace` keeps lessons across restarts of the computer.
    - No API keys. `LH_IGNORE_ENV_KEYS=1` hides every key variable in the environment (`XAI_API_KEY`, `OPENROUTER_API_KEY` and the rest) from LearnHarness. Add no key in Settings either. A bot-run lesson needs none.
 
 4. Put `lh` on your PATH: `mkdir -p ~/.local/bin && ln -sf /workspace/learnharness/scripts/lh.mjs ~/.local/bin/lh`. Check that `~/.local/bin` is on `PATH`. Without the link, run `node /workspace/learnharness/scripts/lh.mjs` wherever this guide says `lh`.
-5. Check it is up: `lh show no-such-lesson`. It prints `{"ok":false,"code":"not_found"}` and exits 1 when LearnHarness answers. Exit 3 means it is not reachable yet. The first start compiles for a while, so read `/workspace/lh-server.log` and try again.
+5. Check it is up: `lh show no-such-lesson`. It prints `{"ok":false,"code":"not_found"}` and exits 1 when a LearnHarness answers. Exit 3 means it is not reachable yet. The first start compiles for a while, so read `/workspace/lh-server.log` and try again. Confirm the server is yours: its log shows `Local: http://127.0.0.1:3000`, and your first lesson appears under `/workspace/lh-data/chats`.
 
-`lh` talks to `LH_URL`, default `http://127.0.0.1:3000`. Use the IP, not `localhost`, which can resolve to the IPv6 address while the server listens on 127.0.0.1 only. If you start the server on another port (`-p 3001`), set `LH_URL=http://127.0.0.1:3001`.
+`lh` talks to `LH_URL`, default `http://127.0.0.1:3000`. Use the IP, not `localhost`, which can resolve to the IPv6 address while the server listens on 127.0.0.1 only. To use another port, change `-p` and set `LH_URL` to match, for example `-p 3001` and `LH_URL=http://127.0.0.1:3001`.
 
 ## 2. How `lh` replies
 
@@ -44,9 +45,9 @@ Every command prints one JSON line and exits with a code:
 
 A reply with `"code":"bad_reply"` means LearnHarness answered with something other than JSON, such as an error page. Read `/workspace/lh-server.log`.
 
-**The cursor.** Every reply about a lesson you can write to carries `cursor`, the id of the newest message in the lesson. A new empty lesson's cursor is the lesson id. Every turn command needs `--after <cursor>`, and you pass the cursor from the last reply you read. In the examples, `L` is the lesson id and `C` is the cursor; after each reply, set `C` to its `cursor`.
+**The cursor.** Every reply about a lesson you can write to carries `cursor`, the id of the newest message in the lesson. A new empty lesson's cursor is the lesson id. Use the lesson id only for the first turn. As `--after` it means "from the start", so later on a turn that matches any earlier turn counts as a repeat and saves nothing. Every turn command needs `--after <cursor>`, and you pass the cursor from the last reply you read. In the examples, `L` is the lesson id and `C` is the cursor; after each reply, set `C` to its `cursor`.
 
-**Items.** Learner input comes back as `items`. `lh answer` always has them. Other replies (a create, a repeat, a refusal, `lh show`) carry `items` when the learner added input after your last turn. Read the items in every reply that has them, and respond to all of them, before your next turn.
+**Items.** Learner input comes back as `items`. `lh answer` always has them. Other replies (a create, a repeat, a refusal, `lh show`) carry `items` when there is learner input you have not responded to: everything after your last turn, or since the lesson began if you have not taken one. A create with `--prompt` returns the prompt this way. Read the items in every reply that has them, and respond to all of them, before your next turn.
 
 **Input.** `say` and `plan` read plain text. `ask`, `probe`, `recall`, `probe-done`, `quiz` and `explain` read one JSON object. Both come from `--file <path>` or stdin; the examples use a quoted heredoc (`<<'EOF'`), which keeps `$` and backticks literal. The JSON never carries `kind` or `after`. Those come from the command line.
 
@@ -138,7 +139,7 @@ graph TD
 EOF
 ```
 
-A plan that does not parse, or has a cycle, is refused with `invalid` and the problems. If a node id appears twice, the first label wins. Send `plan` again whenever the map is wrong, in the plan or teach phase. The new map replaces the old one.
+A plan that does not parse, or has a cycle, is refused with `invalid` and the problems. If a node id appears twice, the first title given wins (a bare id gives no title). Send `plan` again whenever the map is wrong, in the plan or teach phase. The new map replaces the old one.
 
 Then ask, and wait for the answer:
 
@@ -178,7 +179,7 @@ When the learner can do what their goal asked for (the last node of the plan), c
 
 - `{"type":"message","id","text"}` is something the learner typed.
 - `{"type":"answer",...}` is an answer. Its `kind` is `quiz` (from `probe` or `quiz`), `explain` (from `recall` or `explain`), or `ask`; `toolCallId` names the question. It carries `question`, the picked `answers` (`index` counts from 1), and `dontKnow`, plus whichever of these the page recorded: `text` (a typed answer: free recall, or an `ask` without options), `other` (the "Other" text), `thinking` and `readingThinking` (their reasoning), `confidence` (0 to 100, multiple choice only), and `correct` (multiple choice only).
-- `{"type":"skip","id","toolCallId","kind"}` is a skip. Re-ask, or move on.
+- `{"type":"skip","id","toolCallId","kind"}` is a skip. Re-ask or move on. To re-ask, send the question again with the cursor from the reply that carried the skip. With the question's old `--after`, it counts as a repeat and posts nothing.
 
 LearnHarness never grades free recall. For an answer of kind `explain`, compare `text` with the `correctAnswer` you committed (it is in the question's call in `lh show`), and give your grade in the next `say`. Grade against the committed answer as written.
 
@@ -240,6 +241,6 @@ The cursor rules above are mechanics. For how to probe, plan and teach, read Lea
 | `quiz` (teacher prompts) | `lh quiz` |
 | `explain` (teacher prompts) | `lh explain` |
 
-The input fields match the tools' fields. Where a prompt says "end your turn" after a question, wait for the learner's input.
+The input fields match the tools' fields. The prompts describe answers as the model sees them: there a skip is `dismissed: true`, and `readingThinking` is called `thinkingWhileReading`. Where a prompt says "end your turn" after a question, wait for the learner's input.
 
 `lh` has no equivalent for these tools: `research`, `demo`, `visual`, `pdf`, `find`, `ls`, `grep`, `read`, `list_sessions`, `list_propositions`. Where a prompt relies on one, use your own tools on this computer (your browser, your shell) and put what you learn into a `say`. With no `list_sessions` or `list_propositions`, you cannot see earlier lessons, so probe every strand.
