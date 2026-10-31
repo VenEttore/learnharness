@@ -14,7 +14,7 @@ The examples assume the repo is at `/workspace/learnharness`. Use your own path 
 
    ```bash
    cd /workspace/learnharness
-   unset LH_DESKTOP_SERVER LH_DESKTOP_API_SECRET
+   unset LH_DESKTOP_SERVER LH_DESKTOP_API_SECRET ANTHROPIC_AUTH_TOKEN ANTHROPIC_OAUTH_TOKEN
    mkdir -p /workspace/lh-data
    LH_DATA_DIR=/workspace/lh-data LH_IGNORE_ENV_KEYS=1 nohup npx next dev -H 127.0.0.1 -p 3000 > /workspace/lh-server.log 2>&1 &
    ```
@@ -25,7 +25,7 @@ The examples assume the repo is at `/workspace/learnharness`. Use your own path 
    - `-H 127.0.0.1` is required. Next listens on every interface by default, and the `lh` routes have no login. LearnHarness checks the Host header, but a machine on the network can forge it. Only the bind keeps other machines out.
    - Browser mode: `LH_DESKTOP_SERVER` and `LH_DESKTOP_API_SECRET` stay unset. They belong to the desktop app.
    - `LH_DATA_DIR` under `/workspace` keeps lessons across restarts of the computer.
-   - No API keys. `LH_IGNORE_ENV_KEYS=1` hides every key variable in the environment (`XAI_API_KEY`, `OPENROUTER_API_KEY` and the rest) from LearnHarness. Add no key in Settings either. A bot-run lesson needs none.
+   - No API keys. `LH_IGNORE_ENV_KEYS=1` removes LearnHarness's key variables (`XAI_API_KEY`, `OPENROUTER_API_KEY`, `ANTHROPIC_API_KEY` and the rest) from the server's environment. It leaves `ANTHROPIC_AUTH_TOKEN` and `ANTHROPIC_OAUTH_TOKEN`, so the command unsets those. Add no key in Settings either. A bot-run lesson needs none.
 
 4. Put `lh` on your PATH: `mkdir -p ~/.local/bin && ln -sf /workspace/learnharness/scripts/lh.mjs ~/.local/bin/lh`. Check that `~/.local/bin` is on `PATH`. Without the link, run `node /workspace/learnharness/scripts/lh.mjs` wherever this guide says `lh`.
 5. Check it is up: `lh show no-such-lesson`. It prints `{"ok":false,"code":"not_found"}` and exits 1 when a LearnHarness answers. Exit 3 means it is not reachable yet. The first start compiles for a while, so read `/workspace/lh-server.log` and try again. Confirm the server is yours: its log shows `Local: http://127.0.0.1:3000`, and your first lesson appears under `/workspace/lh-data/chats`.
@@ -178,7 +178,7 @@ When the learner can do what their goal asked for (the last node of the plan), c
 ```
 
 - `{"type":"message","id","text"}` is something the learner typed.
-- `{"type":"answer",...}` is an answer. Its `kind` is `quiz` (from `probe` or `quiz`), `explain` (from `recall` or `explain`), or `ask`; `toolCallId` names the question. It carries `question`, the picked `answers` (`index` counts from 1), and `dontKnow`, plus whichever of these the page recorded: `text` (a typed answer: free recall, or an `ask` without options), `other` (the "Other" text), `thinking` and `readingThinking` (their reasoning), `confidence` (0 to 100, multiple choice only), and `correct` (multiple choice only).
+- `{"type":"answer",...}` is an answer. Its `kind` is `quiz` (from `probe` or `quiz`), `explain` (from `recall` or `explain`), or `ask`; `toolCallId` names the question. It carries `question`, `dontKnow`, and the picked `answers` as `index` and `label`, with no `value`. LearnHarness shuffles `probe` and `quiz` options, so `index` (from 1) is the order the learner saw, not your array's order: match picks by `label`. It also carries whichever of these the page recorded: `text` (a typed answer: free recall, or an `ask` without options), `other` (the "Other" text), and `thinking` and `readingThinking` (their reasoning). A `probe` or `quiz` answer that picked an option has `correct` and `confidence` (one of 0, 30, 50, 70, 90, 100). With `dontKnow` true, `correct` is false and `confidence` is absent: the learner declined, which is not a wrong pick.
 - `{"type":"skip","id","toolCallId","kind"}` is a skip. Re-ask or move on. To re-ask, send the question again with the cursor from the reply that carried the skip. With the question's old `--after`, it counts as a repeat and posts nothing.
 
 LearnHarness never grades free recall. For an answer of kind `explain`, compare `text` with the `correctAnswer` you committed (it is in the question's call in `lh show`), and give your grade in the next `say`. Grade against the committed answer as written.
@@ -227,7 +227,7 @@ The cursor rules above are mechanics. For how to probe, plan and teach, read Lea
 
 - `src/agent/system-prompt.md`: the shared base, voice and philosophy.
 - `src/agent/prompts/prober/10-probe-doctrine.md`: the probe.
-- `src/agent/prompts/teacher/`: `05-method.md`, `10-planning.md`, `20-teaching.md`, `28-predictions.md`, `30-question-principles.md`. Skip `40-jobs.md` and `50-demos.md`, which cover tools you lack.
+- `src/agent/prompts/teacher/`: `05-method.md`, `10-planning.md`, `20-teaching.md`, `28-predictions.md`, `30-question-principles.md`. Skip `40-jobs.md` and `50-demos.md`, which cover tools you lack. `20-teaching.md` says `ask_user_question` arrives behind the "Check your understanding" button. On the page it arrives open; only a teach-phase `quiz` or `explain` of type `check` sits behind the button.
 - `src/agent/prompts/shared/`: `10-voice.md`, `15-accuracy.md`, `16-mental-model.md`, `20-question-tools.md`, `25-confidence.md`, `40-formatting.md`. `30-learner-files.md` covers tools you lack.
 
 | LearnHarness tool | `lh` command |
