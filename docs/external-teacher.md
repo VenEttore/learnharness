@@ -11,7 +11,7 @@ The examples assume the repo is at `/workspace/learnharness`. Use your own path 
 1. Check Node: `node -v` must print `v22.x`.
 2. Install once: `cd /workspace/learnharness && npm ci`.
 3. Put `lh` on your PATH: `mkdir -p ~/.local/bin && ln -sf /workspace/learnharness/scripts/lh.mjs ~/.local/bin/lh`. Check that `~/.local/bin` is on `PATH`. Without the link, run `node /workspace/learnharness/scripts/lh.mjs` wherever this guide says `lh`.
-4. Start the server, bound to 127.0.0.1. First run both checks in step 5. If they pass, your LearnHarness is already running, so skip this step. Rerunning the start line empties the log, and the second server fails on the busy port. To restart, stop the old process first.
+4. Start the server, bound to 127.0.0.1. First run both checks in step 5. If they pass, a LearnHarness is already running, so skip this step; section 3 confirms it is yours. Rerunning the start line empties the log, and the second server fails on the busy port. To restart, stop the old process first.
 
    ```bash
    cd /workspace/learnharness
@@ -29,7 +29,7 @@ The examples assume the repo is at `/workspace/learnharness`. Use your own path 
    - `LH_DATA_DIR` under `/workspace` keeps lessons across restarts of the computer.
    - No API keys. `LH_IGNORE_ENV_KEYS=1` removes LearnHarness's key variables (`XAI_API_KEY`, `OPENROUTER_API_KEY`, `ANTHROPIC_API_KEY` and the rest) from the server's environment. It leaves some provider tokens in place, and the second `unset` line clears those. It does not touch cloud credentials (`AWS_*`, `GOOGLE_APPLICATION_CREDENTIALS` or a gcloud login in `~/.config/gcloud`, `ANTHROPIC_FEDERATION_RULE_ID`), so start from a shell and an account that hold none. Keep no `.env*` file in the repo. Next loads those files after the shell `unset`. Add no key in Settings either. A bot-run lesson needs none.
 
-5. Check it is up: `lh show no-such-lesson`. It prints `{"ok":false,"code":"not_found"}` and exits 1 when a LearnHarness answers. Exit 3 means it is not reachable yet. The first start compiles for a while, so read `/workspace/lh-server.log` and try again. As a first sign the server is yours, `grep -E 'Local: +http://127\.0\.0\.1:3000' /workspace/lh-server.log` finds a line. Use your port in the pattern if you changed it. The lesson file in section 3 is the proof.
+5. Check it is up: `lh show no-such-lesson`. It prints `{"ok":false,"code":"not_found"}` and exits 1 when a LearnHarness answers. Exit 3 means it is not reachable yet. The first start compiles for a while, so read `/workspace/lh-server.log` and try again. Then run `grep -E 'Local: +http://127\.0\.0\.1:3000' /workspace/lh-server.log`. It should find a line, a first sign the server is yours. Use your port in the pattern if you changed it. The lesson file in section 3 is the proof.
 
 `lh` talks to `LH_URL`, default `http://127.0.0.1:3000`. Use the IP, not `localhost`, which can resolve to the IPv6 address while the server listens on 127.0.0.1 only. To use another port, change `-p` and set `LH_URL` to match, for example `-p 3001` and `LH_URL=http://127.0.0.1:3001`.
 
@@ -48,7 +48,7 @@ A reply with `"code":"bad_reply"` means the server on `LH_URL` answered with som
 
 **The cursor.** Every reply about a lesson you can write to carries `cursor` (except a `--wait` timeout), the id of the newest message in the lesson. A new lesson created without `--prompt` is empty, and its cursor is the lesson id. Pass the lesson id only when a reply gave it to you as the cursor. As `--after`, the lesson id means "from the start". On a lesson created with a prompt, a turn sent with the lesson id as `--after` is refused as `unread_input` until you have taken your first turn. After that, such a turn counts as a repeat if it matches any earlier turn, and saves nothing. Every turn command needs `--after <cursor>`. In the examples, `L` is the lesson id and `C` is the cursor; after each reply, set `C` to its `cursor`.
 
-**Items.** Learner input comes back as `items`. `lh answer` always has them. A create, a repeat, `lh show`, and an `unread_input` or `bad_after` refusal carry `items` when there is learner input you have not responded to. That is everything after your last turn, or everything since the lesson began if you have not taken a turn. In an `unread_input` refusal, it starts after your `--after` instead when that message is newer than your last turn. A create with `--prompt` returns the prompt this way. Read the items in every reply that has them, and respond to all of them, before your next turn.
+**Items.** Learner input comes back as `items`. `lh answer` always has them. A create, a repeat, `lh show`, and an `unread_input` or `bad_after` refusal carry `items` when there is learner input you have not responded to. That is everything after your last turn, or everything since the lesson began if you have not taken a turn. In an `unread_input` refusal, the items start after your `--after` instead when that message is newer than your last turn. A create with `--prompt` returns the prompt this way. Read the items in every reply that has them, and respond to all of them, before your next turn.
 
 **Input.** `say` and `plan` read plain text. `ask`, `probe`, `recall`, `probe-done`, `quiz` and `explain` read one JSON object. Both come from `--file <path>` or stdin; the examples use a quoted heredoc (`<<'EOF'`), which keeps `$` and backticks literal. The JSON never carries `kind` or `after`. Those come from the command line.
 
@@ -140,7 +140,7 @@ graph TD
 EOF
 ```
 
-A plan that does not parse, or has a cycle, is refused with `invalid` and the problems. If a node id appears twice, the nodes merge and keep the first title given. A bare id gives no title. Send `plan` again whenever the map is wrong, in the plan or teach phase. The new map replaces the old one.
+A plan that does not parse, or has a cycle, is refused with `invalid` and the problems. If a node id appears twice, the nodes merge and keep the first title given. A node written only as a bare id takes its id as its title. Send `plan` again whenever the map is wrong, in the plan or teach phase. The new map replaces the old one.
 
 Then ask, and wait for the answer:
 
@@ -225,7 +225,7 @@ LearnHarness runs its checks before it saves anything, so a refused turn saved n
 
 **A lost reply.** If a turn's reply never arrives (a timeout, a crash), run `lh show "$L"` before you resend. If your turn is in `messages`, take the cursor from that reply and carry on. If not, resend the same turn with the same `--after`. When the first send did land, the resend returns `{"ok":true,"repeat":true,...}` and saves nothing. Resend the exact same content, because a reworded `say` counts as a new turn.
 
-**Resuming a lesson.** `lh show "$L"` returns `phase`, `plan`, `openQuestion`, every message (questions keep their `toolCallId`), any unread `items`, and the `cursor`. That is enough to pick up after losing your memory, or to continue a lesson a Bot Teacher before you started and then stopped. Only one Bot Teacher writes to a lesson at a time.
+**Resuming a lesson.** `lh show "$L"` returns `phase`, `plan`, `openQuestion`, every message (questions keep their `toolCallId`), any unread `items`, and the `cursor`. That is enough to pick up after losing your memory, or to continue a lesson that an earlier Bot Teacher started and then stopped.
 
 **Only you write.** You are the only one who creates the lesson and sends turns. If you start workers, they research or draft and report back to you, and you send the turns. A worker may run `lh show` and `lh answer`, which only read. Two writers would interleave turns.
 
