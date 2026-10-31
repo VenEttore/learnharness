@@ -6,6 +6,7 @@
  *
  *   lh lesson new --title <t> --key <k> [--prompt <p>]
  *   lh say <lesson> --after <cursor> [--file <path>]   text from --file, else stdin
+ *   lh plan <lesson> --after <cursor> [--file <path>]  Mermaid from --file, else stdin
  *   lh ask|probe|recall|probe-done <lesson> --after <cursor> [--file <path>]
  *                                 a JSON object from --file, else stdin
  *   lh answer <lesson> [--wait] [--timeout <seconds>]
@@ -145,6 +146,7 @@ const JSON_KINDS = ["ask", "probe", "recall", "probe-done"];
 const FLAGS = {
 	lesson: ["title", "key", "prompt"],
 	say: ["after", "file"],
+	plan: ["after", "file"],
 	...Object.fromEntries(JSON_KINDS.map((k) => [k, ["after", "file"]])),
 	answer: ["wait", "timeout"],
 	show: [],
@@ -172,6 +174,11 @@ async function requestFor(argv) {
 			const after = requireAfter(flags);
 			return { method: "POST", path, body: { kind: "say", after, text: await readInput(flags) } };
 		}
+		case "plan": {
+			const path = `${lessonPath(rest[0])}/turn`;
+			const after = requireAfter(flags);
+			return { method: "POST", path, body: { kind: "plan", after, mermaid: await readInput(flags) } };
+		}
 		case "ask":
 		case "probe":
 		case "recall":
@@ -191,7 +198,7 @@ async function requestFor(argv) {
 		case "show":
 			return { method: "GET", path: lessonPath(rest[0]) };
 		default:
-			throw new UsageError(`unknown command ${JSON.stringify(command ?? "")}; commands: lesson new, say, ${JSON_KINDS.join(", ")}, answer, show`);
+			throw new UsageError(`unknown command ${JSON.stringify(command ?? "")}; commands: lesson new, say, plan, ${JSON_KINDS.join(", ")}, answer, show`);
 	}
 }
 

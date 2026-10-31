@@ -103,6 +103,26 @@ describe("lh maps command lines to requests", () => {
 		}
 	});
 
+	it("plan posts the Mermaid from stdin or --file with the cursor", async () => {
+		const mermaid = "graph TD\n  a[A] --> b[B]\n";
+		assert.deepEqual(await lastRequest(["plan", "chat_a", "--after", "msg_9"], { stdin: mermaid }), {
+			method: "POST",
+			url: "/api/external/chats/chat_a/turn",
+			body: { kind: "plan", after: "msg_9", mermaid },
+		});
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "lh-cli-"));
+		const file = path.join(dir, "plan.mmd");
+		fs.writeFileSync(file, mermaid);
+		try {
+			assert.deepEqual((await lastRequest(["plan", "chat_a", "--after", "msg_9", "--file", file])).body, { kind: "plan", after: "msg_9", mermaid });
+		} finally {
+			fs.rmSync(dir, { recursive: true, force: true });
+		}
+		const { code, json } = await lh(["plan", "chat_a"], { stdin: mermaid });
+		assert.equal(code, 1);
+		assert.equal(json.code, "usage");
+	});
+
 	it("ask, probe and recall post the JSON from stdin or --file with the kind and cursor", async () => {
 		const payload = { text: "Lead-in.", question: "Which?", options: [{ label: "A" }, { label: "B" }] };
 		for (const kind of ["ask", "probe", "recall"]) {

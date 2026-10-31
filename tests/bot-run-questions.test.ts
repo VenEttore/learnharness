@@ -150,7 +150,7 @@ describe("question turns the page can show", () => {
 		] as const) {
 			const res = await turn(id, { kind, after: cursor, ...payload });
 			assert.equal(res.status, 409);
-			assert.deepEqual(res.body, { ok: false, code: "wrong_phase", phase: "plan", allowed: ["say", "ask"], cursor });
+			assert.deepEqual(res.body, { ok: false, code: "wrong_phase", phase: "plan", allowed: ["say", "ask", "plan"], cursor });
 		}
 		assert.equal(messages(id).length, 3);
 		const asked = await turn(id, { kind: "ask", after: cursor, ...ASK });
