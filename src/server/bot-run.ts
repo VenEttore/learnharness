@@ -268,7 +268,7 @@ interface TurnKindRow<S extends TSchema> {
 	needsPlanNode: boolean;
 	/** Takes optional lead-in `text`, which rides the same assistant message
 	 *  ahead of the call and is not part of the tool's arguments. */
-	leadIn: boolean;
+	takesLeadIn: boolean;
 	/** `leadIn` is the trimmed lead-in, or "" for none. */
 	build: (payload: Static<S>, leadIn: string) => Built;
 }
@@ -302,7 +302,7 @@ function turnKind<S extends TSchema>(name: string, row: TurnKindRow<S>): TurnKin
 	const check = (payload: Record<string, unknown>): Checked => {
 		let args = payload;
 		let leadIn = "";
-		if (row.leadIn && Object.hasOwn(payload, "text")) {
+		if (row.takesLeadIn && Object.hasOwn(payload, "text")) {
 			const { text, ...rest } = payload;
 			if (typeof text !== "string") return { ok: false, problems: ["text (the lead-in) must be a string"] };
 			args = rest;
@@ -321,7 +321,7 @@ function turnKind<S extends TSchema>(name: string, row: TurnKindRow<S>): TurnKin
 		const problems = [...conversionProblems(args, checked, ""), ...(row.refine?.(checked) ?? [])];
 		return problems.length ? { ok: false, problems } : { ok: true, built: row.build(checked, leadIn) };
 	};
-	return { tool: row.tool, phases: row.phases, schema: row.schema, needsPlanNode: row.needsPlanNode, leadIn: row.leadIn, check };
+	return { tool: row.tool, phases: row.phases, schema: row.schema, needsPlanNode: row.needsPlanNode, takesLeadIn: row.takesLeadIn, check };
 }
 
 const ANY_PHASE = ["probe", "plan", "teach"] as const satisfies readonly Phase3[];
@@ -360,7 +360,7 @@ const TURN_KINDS: Readonly<Record<string, TurnKind>> = {
 		schema: Type.Object({ text: Type.String({ description: "The teaching text, Markdown." }) }),
 		refine: (p) => (p.text.trim() === "" ? ["text must not be empty"] : []),
 		needsPlanNode: false,
-		leadIn: false,
+		takesLeadIn: false,
 		// Trailing line breaks (\n and \r) go: `echo` adds one a `--file` rerun
 		// may lack, the repeat check compares exact text, and the stored text
 		// must say back to itself (show → say). Other trailing whitespace (a
@@ -375,7 +375,7 @@ const TURN_KINDS: Readonly<Record<string, TurnKind>> = {
 		schema: askInputSchema,
 		refine: (p) => askOptionProblems(p.options ?? []),
 		needsPlanNode: false,
-		leadIn: true,
+		takesLeadIn: true,
 		build: questionBuild("ask_user_question"),
 	}),
 	probe: turnKind("probe", {
@@ -384,7 +384,7 @@ const TURN_KINDS: Readonly<Record<string, TurnKind>> = {
 		schema: probeQuizInputSchema,
 		refine: quizInputProblems,
 		needsPlanNode: false,
-		leadIn: true,
+		takesLeadIn: true,
 		build: questionBuild("probe"),
 	}),
 	recall: turnKind("recall", {
@@ -393,7 +393,7 @@ const TURN_KINDS: Readonly<Record<string, TurnKind>> = {
 		schema: explainInputBase,
 		refine: explainInputProblems,
 		needsPlanNode: false,
-		leadIn: true,
+		takesLeadIn: true,
 		build: questionBuild("recall"),
 	}),
 };
@@ -403,10 +403,21 @@ function kindsAllowedIn(phase: Phase3): string[] {
 	return Object.keys(TURN_KINDS).filter((k) => TURN_KINDS[k]!.phases.includes(phase));
 }
 
+/** JSON with object keys sorted at every level, so key order is not
+ *  meaning: `{a, b}` and `{b, a}` sign the same. */
+function canonicalJson(value: unknown): string {
+	return JSON.stringify(value, (_key, v: unknown) =>
+		typeof v === "object" && v !== null && !Array.isArray(v)
+			? Object.fromEntries(Object.entries(v).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
+			: v,
+	);
+}
+
 /** Content with tool-call ids dropped: two turns with the same blocks are
- *  the same turn, whatever ids they were minted with. */
+ *  the same turn, whatever ids they were minted with and whatever order
+ *  the bot's JSON listed the keys in. */
 function turnSignature(m: AssistantMessage): string {
-	return JSON.stringify(m.content.map((b) => (b.type === "toolCall" ? { ...b, id: undefined } : b)));
+	return canonicalJson(m.content.map((b) => (b.type === "toolCall" ? { ...b, id: undefined } : b)));
 }
 
 /** Turn: `{ kind, after, ...payload }`. Checks run in the spec's order,

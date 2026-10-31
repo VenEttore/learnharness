@@ -247,6 +247,25 @@ describe("repeats", () => {
 		assert.equal(messages(id).length, count);
 	});
 
+	it("a rerun whose JSON lists the same keys in another order is a repeat, after the learner answered", async () => {
+		const { id, cursor } = await lesson();
+		const options = [
+			{ label: "Intuition", value: "intuition" },
+			{ label: "Exam prep", value: "exam" },
+		];
+		await turn(id, { kind: "ask", after: cursor, question: ASK.question, options });
+		// Top-level and nested keys both reordered.
+		const reordered = { options: options.map(({ label, value }) => ({ value, label })), question: ASK.question, after: cursor, kind: "ask" };
+		const open = await turn(id, reordered);
+		assert.equal(open.body.repeat, true, "while the question is open");
+		await learnerAnswers(id, pendingQuestionOf(messages(id))!.toolCallId);
+		const count = messages(id).length;
+		const answered = await turn(id, reordered);
+		assert.equal(answered.status, 200);
+		assert.equal(answered.body.repeat, true, "after the learner answered");
+		assert.equal(messages(id).length, count);
+	});
+
 	it("the same question asked again after a skip, with the newer after, is saved", async () => {
 		const { id, cursor } = await lesson();
 		await turn(id, { kind: "probe", after: cursor, ...PROBE });
