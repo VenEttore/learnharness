@@ -1,6 +1,6 @@
 # 11: Plan
 
-Status: open
+Status: claimed
 Blocked by: 10
 Risk: pre-release
 Gate: none
