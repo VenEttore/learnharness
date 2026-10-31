@@ -41,7 +41,7 @@ function createChat(title: string, kind?: "practice", init?: ChatDriverInit): Ch
 		title: title.trim() || "Untitled session",
 		createdAt: now,
 		updatedAt: now,
-		messages: [],
+		messages: init?.messages ?? [],
 		// Practice sessions carry the marker; teach stays ABSENT (absence
 		// reads as teach — pre-practice records never migrate).
 		...(kind === "practice" ? { kind: "practice" as const } : {}),
