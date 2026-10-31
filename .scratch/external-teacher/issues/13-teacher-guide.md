@@ -1,6 +1,6 @@
 # 13: Teacher guide
 
-Status: open
+Status: claimed
 Blocked by: 09
 Risk: pre-release
 Gate: none

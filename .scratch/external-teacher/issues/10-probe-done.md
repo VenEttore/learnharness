@@ -1,6 +1,6 @@
 # 10: Probe-done
 
-Status: open
+Status: claimed
 Blocked by: 09
 Risk: pre-release
 Gate: none
