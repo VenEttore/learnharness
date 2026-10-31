@@ -49,6 +49,11 @@ function lh(
 			const lines = stdout.split("\n").filter(Boolean);
 			resolve({ code: err ? ((err as { code?: number }).code ?? -1) : 0, lines, json: lines[0] ? JSON.parse(lines[0]) : undefined });
 		});
+		// lh may exit on bad input before reading stdin; under load the write
+		// then lands on a closed pipe. That EPIPE is expected, nothing else is.
+		child.stdin!.on("error", (err: NodeJS.ErrnoException) => {
+			if (err.code !== "EPIPE") throw err;
+		});
 		const write = () => child.stdin!.end(opts.stdin ?? "");
 		if (opts.stdinDelayMs) setTimeout(write, opts.stdinDelayMs);
 		else write();
@@ -84,6 +89,25 @@ describe("lh maps command lines to requests", () => {
 		fs.writeFileSync(file, "From a file.");
 		try {
 			assert.deepEqual((await lastRequest(["say", "chat_a", "--after", "msg_9", "--file", file])).body, { kind: "say", after: "msg_9", text: "From a file." });
+		} finally {
+			fs.rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("ask, probe and recall post the JSON from stdin or --file with the kind and cursor", async () => {
+		const payload = { text: "Lead-in.", question: "Which?", options: [{ label: "A" }, { label: "B" }] };
+		for (const kind of ["ask", "probe", "recall"]) {
+			assert.deepEqual(await lastRequest([kind, "chat_a", "--after", "msg_9"], { stdin: JSON.stringify(payload) }), {
+				method: "POST",
+				url: "/api/external/chats/chat_a/turn",
+				body: { ...payload, kind, after: "msg_9" },
+			});
+		}
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "lh-cli-"));
+		const file = path.join(dir, "probe.json");
+		fs.writeFileSync(file, JSON.stringify(payload));
+		try {
+			assert.deepEqual((await lastRequest(["probe", "chat_a", "--after", "msg_9", "--file", file])).body, { ...payload, kind: "probe", after: "msg_9" });
 		} finally {
 			fs.rmSync(dir, { recursive: true, force: true });
 		}
@@ -156,6 +180,25 @@ describe("lh refusals and exit codes", () => {
 			assert.equal(code, 1, args.join(" "));
 			assert.equal(lines.length, 1);
 			assert.equal(json.ok, false);
+			assert.equal(seen.length, 0);
+		}
+	});
+
+	it("exits 1 with no request when a question's input is not one JSON object without kind or after", async () => {
+		for (const [args, stdin] of [
+			[["ask", "chat_a", "--after", "msg_1"], "not json"],
+			[["probe", "chat_a", "--after", "msg_1"], "[1, 2]"],
+			[["recall", "chat_a", "--after", "msg_1"], "null"],
+			[["ask", "chat_a", "--after", "msg_1"], '{"kind":"say","question":"Q?"}'],
+			[["ask", "chat_a", "--after", "msg_1"], '{"after":"msg_0","question":"Q?"}'],
+			[["ask", "chat_a"], '{"question":"Q?"}'],
+			[["ask", "chat_a", "--after", "msg_1", "--text", "x"], '{"question":"Q?"}'],
+		] as const) {
+			seen.length = 0;
+			const { code, lines, json } = await lh([...args], { stdin });
+			assert.equal(code, 1, `${args.join(" ")} <<< ${stdin}`);
+			assert.equal(lines.length, 1);
+			assert.equal(json.code, "usage");
 			assert.equal(seen.length, 0);
 		}
 	});
