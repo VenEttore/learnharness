@@ -44,9 +44,9 @@ Every command prints one JSON line and exits with a code:
 | 2 | `lh answer --wait` timed out: `{"ok":false,"error":"timeout"}` |
 | 3 | LearnHarness unreachable: `{"ok":false,"code":"unreachable",...}`. Start it as in section 1. |
 
-A reply with `"code":"bad_reply"` means LearnHarness answered with something other than JSON, such as an error page. Read `/workspace/lh-server.log`.
+A reply with `"code":"bad_reply"` means the server on `LH_URL` answered with something other than JSON: a LearnHarness error page, or another program holding the port. Read `/workspace/lh-server.log`; if your server is not running, start it on another port (section 1).
 
-**The cursor.** Every reply about a lesson you can write to carries `cursor`, the id of the newest message in the lesson. A new lesson created without `--prompt` is empty, and its cursor is the lesson id. Pass the lesson id only when a reply gave it to you as the cursor. As `--after` it means "from the start". Before your first turn on a lesson with a prompt it is refused as `unread_input`, and after that a turn that matches any earlier turn counts as a repeat and saves nothing. Every turn command needs `--after <cursor>`. In the examples, `L` is the lesson id and `C` is the cursor; after each reply, set `C` to its `cursor`.
+**The cursor.** Every reply about a lesson you can write to carries `cursor` (except a `--wait` timeout), the id of the newest message in the lesson. A new lesson created without `--prompt` is empty, and its cursor is the lesson id. Pass the lesson id only when a reply gave it to you as the cursor. As `--after` it means "from the start". Before your first turn on a lesson with a prompt it is refused as `unread_input`, and after that a turn that matches any earlier turn counts as a repeat and saves nothing. Every turn command needs `--after <cursor>`. In the examples, `L` is the lesson id and `C` is the cursor; after each reply, set `C` to its `cursor`.
 
 **Items.** Learner input comes back as `items`. `lh answer` always has them. Other replies (a create, a repeat, a refusal, `lh show`) carry `items` when there is learner input you have not responded to. That is everything after your last turn, or everything since the lesson began if you have not taken a turn. A create with `--prompt` returns the prompt this way. Read the items in every reply that has them, and respond to all of them, before your next turn.
 
@@ -64,7 +64,7 @@ lh lesson new --title "Binary search" --key binary-search-1 --prompt "I want to 
 {"ok":true,"id":"<lesson id>","title":"Binary search","existing":false,"items":[{"type":"message","id":"<message id>","text":"I want to understand why binary search is fast."}],"cursor":"<message id>"}
 ```
 
-Rerunning with the same key returns the same lesson with `"existing":true` and saves nothing, so a retried create never makes a duplicate. `--prompt` is the learner's request, saved as the first message. The lesson's file `/workspace/lh-data/chats/<lesson id>.json` now exists, which confirms the server writes to your data directory. Open `http://127.0.0.1:3000/chat/<lesson id>` in your browser (your port, if you changed it). That is the page the learner uses.
+Rerunning with the same key returns the same lesson with `"existing":true` and saves nothing, so a retried create never makes a duplicate. `--prompt` is the learner's request, saved as the first message. Check that `/workspace/lh-data/chats/<lesson id>.json` now exists. That file is the proof the server is yours, since a log line can be left over from an old server. If it is missing, another LearnHarness holds the port: start your own on another port (section 1) and create the lesson again. Open `http://127.0.0.1:3000/chat/<lesson id>` in your browser (your port, if you changed it). That is the page the learner uses.
 
 ### Which kinds each phase takes
 
