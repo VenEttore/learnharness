@@ -29,7 +29,7 @@ The examples assume the repo is at `/workspace/learnharness`. Use your own path 
    - `LH_DATA_DIR` under `/workspace` keeps lessons across restarts of the computer.
    - No API keys. `LH_IGNORE_ENV_KEYS=1` removes LearnHarness's key variables (`XAI_API_KEY`, `OPENROUTER_API_KEY`, `ANTHROPIC_API_KEY` and the rest) from the server's environment. It leaves some provider tokens in place, and the second `unset` line clears those. It does not touch cloud credentials (`AWS_*`, `GOOGLE_APPLICATION_CREDENTIALS` or a gcloud login in `~/.config/gcloud`, `ANTHROPIC_FEDERATION_RULE_ID`), so start from a shell and an account that hold none. Keep no `.env*` file in the repo. Next loads those files after the shell `unset`. Add no key in Settings either. A bot-run lesson needs none.
 
-5. Check it is up: `lh show no-such-lesson`. It prints `{"ok":false,"code":"not_found"}` and exits 1 when a LearnHarness answers. Exit 3 means it is not reachable yet. The first start compiles for a while, so read `/workspace/lh-server.log` and try again. Confirm the server is yours. `grep -E 'Local: +http://127\.0\.0\.1:3000' /workspace/lh-server.log` finds a line. Use your port in the pattern if you changed it.
+5. Check it is up: `lh show no-such-lesson`. It prints `{"ok":false,"code":"not_found"}` and exits 1 when a LearnHarness answers. Exit 3 means it is not reachable yet. The first start compiles for a while, so read `/workspace/lh-server.log` and try again. As a first sign the server is yours, `grep -E 'Local: +http://127\.0\.0\.1:3000' /workspace/lh-server.log` finds a line. Use your port in the pattern if you changed it. The lesson file in section 3 is the proof.
 
 `lh` talks to `LH_URL`, default `http://127.0.0.1:3000`. Use the IP, not `localhost`, which can resolve to the IPv6 address while the server listens on 127.0.0.1 only. To use another port, change `-p` and set `LH_URL` to match, for example `-p 3001` and `LH_URL=http://127.0.0.1:3001`.
 
@@ -42,7 +42,7 @@ Every command prints one JSON line and exits with a code:
 | 0 | ok: `{"ok":true,...}` |
 | 1 | refused or bad input: `{"ok":false,"code":"...",...}` |
 | 2 | `lh answer --wait` timed out: `{"ok":false,"error":"timeout"}` |
-| 3 | LearnHarness unreachable, or no answer within 30 s: `{"ok":false,"code":"unreachable","error":"..."}`. If `error` says "is not reachable", start it as in section 1. If it says "did not answer", the turn may have landed, so follow "A lost reply" in section 5. |
+| 3 | LearnHarness unreachable, or no answer within 30 s: `{"ok":false,"code":"unreachable","error":"...","guide":"docs/external-teacher.md"}`. If `error` says "is not reachable", start it as in section 1. If it says "did not answer", the turn may have landed, so follow "A lost reply" in section 5. |
 
 A reply with `"code":"bad_reply"` means the server on `LH_URL` answered with something other than JSON: a LearnHarness error page, or another program holding the port. Read `/workspace/lh-server.log`; if your server is not running, start it on another port (section 1).
 
@@ -81,7 +81,7 @@ Rerunning with the same key returns the same lesson with `"existing":true` and s
 | `quiz` | plan, teach | a multiple-choice teaching question tagged with a plan node |
 | `explain` | plan, teach | a free-recall teaching question tagged with a plan node |
 
-One question is open at a time. After a question, wait for the learner's answer or skip (section 4). Until then, turns are refused with `open_question`. Every question kind takes an optional `text` field: lead-in text shown above the question in the same message.
+One question is open at a time. After a question, wait for the learner's answer or skip (section 4). Until then, turns are refused with `open_question`. `ask`, `probe`, `recall`, `quiz` and `explain` take an optional `text` field, lead-in text shown above the question in the same message. `probe-done` refuses it.
 
 ### Probe
 
@@ -225,7 +225,7 @@ LearnHarness runs its checks before it saves anything, so a refused turn saved n
 
 **A lost reply.** If a turn's reply never arrives (a timeout, a crash), run `lh show "$L"` before you resend. If your turn is in `messages`, take the cursor from that reply and carry on. If not, resend the same turn with the same `--after`. When the first send did land, the resend returns `{"ok":true,"repeat":true,...}` and saves nothing. Resend the exact same content, because a reworded `say` counts as a new turn.
 
-**Resuming a lesson.** `lh show "$L"` returns `phase`, `plan`, `openQuestion`, every message (questions keep their `toolCallId`), any unread `items`, and the `cursor`. That is enough to pick up after losing your memory, or to continue a lesson another bot started.
+**Resuming a lesson.** `lh show "$L"` returns `phase`, `plan`, `openQuestion`, every message (questions keep their `toolCallId`), any unread `items`, and the `cursor`. That is enough to pick up after losing your memory, or to continue a lesson a Bot Teacher before you started and then stopped. Only one Bot Teacher writes to a lesson at a time.
 
 **Only you write.** You are the only one who creates the lesson and sends turns. If you start workers, they research or draft and report back to you, and you send the turns. A worker may run `lh show` and `lh answer`, which only read. Two writers would interleave turns.
 
