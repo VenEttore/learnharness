@@ -1,6 +1,7 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { serverExecute } from "../tool-execute.ts";
-import { probeDoneInputSchema, PROBE_DONE_ACK_TEXT } from "../../core/contracts.ts";
+import { probeDoneInputSchema } from "../../core/contracts.ts";
+import { probeDoneSuccessResult } from "../../core/teaching-tool-results.ts";
 import { danglingQuestionOf, hasProbeDone, type LhMessage } from "../../core/native-messages.ts";
 import type { ChatStore } from "../../core/ports.ts";
 import { buildProbeHandoffSteer, type SteerMessage } from "../../core/contracts.ts";
@@ -85,14 +86,9 @@ export function probeDoneTool(ctx: ProbeDoneContext): Record<string, AgentTool<a
 					// constructs the teacher off the transcript seam) — record the
 					// assessment anyway; the wake is an optimization, not a gate.
 				}
-				// Context diet (owner, 2026-10-09): the assessment lives ONCE — as
-				// this call's arguments. content is the fixed ack (the agent never
-				// sees an echo); details = {ok:true} for the record/UI — the
+				// The fixed ack + {ok:true} (src/core/teaching-tool-results.ts). The
 				// probe-done card reads the call's input, which it always preferred.
-				return {
-					text: PROBE_DONE_ACK_TEXT,
-					details: { ok: true },
-				};
+				return probeDoneSuccessResult();
 			}),
 		},
 	};

@@ -13,6 +13,7 @@ import {
 	quizInputProblems,
 } from "../core/question-core.ts";
 import { filterEnabledTools, type EnabledTools } from "../core/pending.ts";
+import { planNodeProblem } from "../core/teaching-tool-results.ts";
 import type { JobRecord } from "../core/contracts.ts";
 import type { JobStore } from "../core/ports.ts";
 import { jobTools, type DemoInput, type PdfInput, type ResearchInput, type VisualInput } from "./tools/jobs.ts";
@@ -349,20 +350,11 @@ export function createProberTools(
 
 // ─── the teacher's question tools (quiz carries the position field) ──────────
 
-/** The nodeId-against-live-tree check the teacher's quiz chains after the
- *  shared authoring contract (the old superRefine, verbatim). */
+/** The nodeId-against-live-tree check the teacher's quiz and explain chain
+ *  after the shared authoring contract: planNodeProblem on the record's
+ *  current tree (src/core/teaching-tool-results.ts). */
 function nodeIdProblem(ctx: Pick<PlanToolContext, "chatId" | "chatStore">, nodeId: string): string | null {
-	const record = ctx.chatStore.getChat(ctx.chatId);
-	const known = record?.tree?.nodes.map((n) => n.id) ?? [];
-	if (!known.includes(nodeId)) {
-		return (
-			`nodeId "${nodeId}" matches no node in this session's plan map. ` +
-			(known.length > 0
-				? `Copy one of your plan_init slugs exactly (${known.slice(0, 5).join(", ")}${known.length > 5 ? ", …" : ""}).`
-				: "No plan map exists yet — call plan_init before posing quizzes.")
-		);
-	}
-	return null;
+	return planNodeProblem(ctx.chatStore.getChat(ctx.chatId)?.tree, nodeId);
 }
 
 /** Build the teach-side quiz tool for one request (exported for tests): the authoring contract
