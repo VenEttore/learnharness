@@ -217,12 +217,14 @@ describe("lh answer --wait", () => {
 		assert.equal(seen.length, 1);
 	});
 
-	it("refuses a bad --timeout, or --timeout without --wait, with no request", async () => {
+	it("refuses a bad --timeout, --timeout without --wait, or a value on --wait, with no request", async () => {
 		for (const args of [
 			["answer", "chat_a", "--wait", "--timeout", "0"],
 			["answer", "chat_a", "--wait", "--timeout", "soon"],
 			["answer", "chat_a", "--timeout", "5"],
 			["show", "chat_a", "--wait"],
+			["answer", "chat_a", "--wait=false"],
+			["answer", "chat_a", "--wait=", "--timeout", "1"],
 		]) {
 			seen.length = 0;
 			const { code, json } = await lh(args);

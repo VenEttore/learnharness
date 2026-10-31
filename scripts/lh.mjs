@@ -50,8 +50,11 @@ function parseArgs(argv) {
 			continue;
 		}
 		const eq = arg.indexOf("=");
-		if (SWITCHES.includes(arg.slice(2))) {
-			flags[arg.slice(2)] = true;
+		const name = arg.slice(2, eq > 2 ? eq : undefined);
+		if (SWITCHES.includes(name)) {
+			// `--wait=false` must not read as a wait.
+			if (eq > 2) throw new UsageError(`--${name} takes no value`);
+			flags[name] = true;
 			continue;
 		}
 		if (eq > 2) {

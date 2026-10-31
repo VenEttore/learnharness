@@ -247,6 +247,33 @@ describe("unread input in turns", () => {
 	});
 });
 
+describe("a skip racing an answer", () => {
+	it("is checked against the record as it is once its body arrives, so the answer stays", async () => {
+		const { id, cursor } = await lesson();
+		await asks(id, cursor, "ask", ASK);
+		const toolCallId = pendingQuestionOf(messages(id))!.toolCallId;
+		const body = JSON.stringify({ input: { type: "dismiss", toolCallId, answer: dismissedAnswer("ask", ASK.question) } });
+		// The skip's body is still on the wire when the answer lands.
+		let send!: () => void;
+		const stream = new ReadableStream<Uint8Array>({
+			start(controller) {
+				send = () => {
+					controller.enqueue(new TextEncoder().encode(body));
+					controller.close();
+				};
+			},
+		});
+		const skipping = dismissRoute.POST(
+			new Request(`http://test/api/chats/${id}/dismiss`, { method: "POST", headers: { "Content-Type": "application/json" }, body: stream, duplex: "half" } as RequestInit),
+			ctx(id),
+		);
+		await learnerAnswers(id, { kind: "ask", questionText: ASK.question, dontKnow: false, answers: [{ index: 1, label: "Intuition", value: "Intuition" }], answeredAt });
+		send();
+		assert.equal((await skipping).status, 400, "nothing is left to skip");
+		assert.deepEqual((await answer(id)).body.items.map((i: Json) => i.type), ["answer"]);
+	});
+});
+
 describe("skip refreshes the sidebar", () => {
 	/** Events emitted while `act` runs. */
 	async function eventsDuring(act: () => Promise<Response>): Promise<{ status: number; events: ServerEvent["type"][] }> {
