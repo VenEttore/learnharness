@@ -4,7 +4,7 @@ max_suborchestrators: 2
 destination: One LearnHarness lesson taught by a Grok Bot through lh, with no LearnHarness model calls.
 host: linuxdev, repo ~/code/learnharness, Node 22 in ~/.local/bin.
 live:
-  13 external-teacher-13-teacher-guide stopped for fleet update; tip 38de61e pushed; worktree /home/matt/.t3/worktrees/learnharness/t3-b2552b3a (clean); Status claimed
+  13 external-teacher-13-teacher-guide node:delegated-task:command%3Amcp%3Af3ac2e17-bdcd-4886-bd61-bf365b215c00%3Adelegate-task%3Aexternal-teacher-13-3 (attempt 3, from 38de61e, review round 3) running
 touches-locked: 13
 merged: 02 (33e1e55), 01 (0400540), 04 (8d77b94), 03 (e51624e), 05 (phase A verified; .scratch only), 08 (2e93d6c), 06 (8247cca), 07 (5929722), 09 (phase B verified; .scratch only), 10 (17ab05a), 11 (439f106), 12 (4c38b64); check after each code merge matches baseline
 notes: 03 round 5 code-review did not run (Grok 4.7 provider error twice, no substitute); last code-review was round 4 on a6b7044, ~25 lines of bot-run.ts changed after it and were covered only by round-5 interrogate (3 seats).
@@ -15,4 +15,4 @@ proposed new ticket (from 11): writeChat in src/store/chats.ts is a plain file w
 proposed new ticket (from 13): GLOSSARY.md entries for cursor, turn, item, repeat, takeover (outside 13's Touches)
 models (this project only, Matt 2026-10-31): code-review runs on claudeAgent | claude-opus-5-5 | effort=xhigh, fastMode=false (also set globally in models.md, 1338527); the interrogate panel replaces its Grok 4.7 seat with the same Opus 5.5 xhigh seat (NOT in models.md; state it in every brief). Other seats per models.md.
 review rounds: Matt lifted the round cap for the rest of this project (2026-10-31). Children loop until clean; no "Continue" needed at a cap.
-next: PAUSED for Matt's fleet update (2026-10-31). 13 handed off stopped at 38de61e (rounds used 5; round 2 code-review Pass; round-2 interrogate Act On applied but unreviewed). On resume: remove worktree t3-b2552b3a, relaunch 13 (attempt 3, clientRequestId external-teacher-13-3) at review round 3 on 38de61e: code-review Opus 5.5 xhigh (native Agent tool if T3 Claude launches time out on MCP registration), then interrogate with Opus 5.5 xhigh in place of Grok 4.7 + GLM 5.3 Flash + Haiku 5.5 + Composer 2.5; interrogate brief saved at .scratch/external-teacher/et13-interrogate-brief.md (update SHA; seats may use npm run build + next start); seat A owes a full lesson walk; repo check must run at ship. Then 14 (verify phase C), then queue 15 for Matt's laptop bench, then the final spec review. Do not push feat/external-teacher or main until Matt says "ship it".
+next: resumed after fleet update. 13 attempt 3 running (review round 3 on 38de61e; seat A owes a full lesson walk; no round cap). Then 14 (verify phase C), then queue 15 for Matt's laptop bench, then the final spec review. Do not push feat/external-teacher or main until Matt says "ship it".
