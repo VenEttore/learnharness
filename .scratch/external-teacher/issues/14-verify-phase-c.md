@@ -1,11 +1,11 @@
 # 14: Verify phase C
 
-Status: open
+Status: claimed
 Blocked by: 10, 11, 12, 13
 Risk: pre-release
 Gate: none
 Host: linuxdev
-Touches: unknown
+Touches: .scratch/external-teacher/phase-c-smoke.sh, .scratch/external-teacher/phase-c-smoke.log, this ticket
 
 Phase C verification.
 
