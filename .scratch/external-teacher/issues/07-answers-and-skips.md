@@ -1,6 +1,6 @@
 # 07: Reading answers and skips
 
-Status: open
+Status: claimed
 Blocked by: 06
 Risk: pre-release
 Gate: none
