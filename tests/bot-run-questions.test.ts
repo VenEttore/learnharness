@@ -219,6 +219,8 @@ describe("refusals save nothing", () => {
 		for (const body of [
 			{ kind: "probe", after: cursor, ...PROBE, type: { a: 1 } },
 			{ kind: "recall", after: cursor, ...RECALL, type: ["x"] },
+			{ kind: "probe", after: cursor, ...PROBE, type: 42 },
+			{ kind: "recall", after: cursor, ...RECALL, type: null },
 		]) {
 			const res = await turn(id, body);
 			assert.equal(res.status, 422, JSON.stringify(body));
@@ -241,6 +243,15 @@ describe("refusals save nothing", () => {
 			assert.equal(res.body.code, "invalid");
 			assert.ok(res.body.problems.some((p: string) => problem.test(p)), res.body.problems.join("; "));
 		}
+		// A deep unknown value is refused at its top, never walked: no stack
+		// overflow. Sent as raw JSON, which JSON.stringify could not write.
+		const deep = "[".repeat(5000) + "]".repeat(5000);
+		const raw = `{"kind":"say","after":${JSON.stringify(cursor)},"text":"Hi","deep":${deep}}`;
+		const res = await json(
+			await turnRoute.POST(new Request(`http://test/api/external/chats/${id}/turn`, { method: "POST", headers: { "Content-Type": "application/json" }, body: raw }), ctx(id)),
+		);
+		assert.equal(res.status, 422);
+		assert.deepEqual(res.body.problems, ["deep is not a field of this kind; fields: text"]);
 		assert.equal(messages(id).length, 1);
 	});
 

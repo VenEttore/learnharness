@@ -327,6 +327,10 @@ function turnKind<S extends TSchema>(name: string, row: TurnKindRow<S>): TurnKin
 			args = rest;
 			leadIn = text.trim() === "" ? "" : trimLineBreaks(text);
 		}
+		// Unknown fields first, on the raw payload: refused by name, and a
+		// deep value under one is never walked, here or by pi.
+		const unknown = unknownFields(row.schema, args, "");
+		if (unknown.length > 0) return { ok: false, problems: unknown };
 		let checked: Static<S>;
 		try {
 			checked = validateToolArguments(
@@ -337,8 +341,8 @@ function turnKind<S extends TSchema>(name: string, row: TurnKindRow<S>): TurnKin
 		} catch (err) {
 			return { ok: false, problems: [err instanceof Error ? err.message : String(err)] };
 		}
-		const problems = [...unknownFields(row.schema, checked, ""), ...conversionProblems(args, checked, "")];
-		if (problems.length === 0) problems.push(...(row.refine?.(checked) ?? []));
+		let problems = conversionProblems(args, checked, "");
+		if (problems.length === 0) problems = row.refine?.(checked) ?? [];
 		return problems.length ? { ok: false, problems } : { ok: true, built: row.build(checked, leadIn) };
 	};
 	return { tool: row.tool, phases: row.phases, schema: row.schema, needsPlanNode: row.needsPlanNode, takesLeadIn: row.takesLeadIn, check };
