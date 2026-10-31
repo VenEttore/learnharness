@@ -26,14 +26,16 @@ export interface UseChatSessionOptions {
 	initialError?: string;
 	/** Reattach on mount: a turn is running server-side with no live view. */
 	initiallyInFlight?: boolean;
+	/** Bot-run lesson (fork, ADR 0001): no automatic `continue`. */
+	botRun?: boolean;
 }
 
-export function useChatSession({ chatId, initialMessages, initialError, initiallyInFlight }: UseChatSessionOptions) {
+export function useChatSession({ chatId, initialMessages, initialError, initiallyInFlight, botRun }: UseChatSessionOptions) {
 	// The model is per-mount (chatId-keyed component); onChange forces the
 	// re-render. The ref pattern keeps it stable across renders.
 	const modelRef = useRef<SessionModel | null>(null);
 	if (modelRef.current === null) {
-		modelRef.current = new SessionModel({ chatId, initialMessages, initialError });
+		modelRef.current = new SessionModel({ chatId, initialMessages, initialError, botRun });
 	}
 	const model = modelRef.current;
 	// The render VERSION — bumped by every model change, so the state memo
