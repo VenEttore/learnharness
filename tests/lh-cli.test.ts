@@ -122,6 +122,23 @@ describe("lh maps command lines to requests", () => {
 		}
 	});
 
+	it("probe-done posts the assessment JSON from stdin or --file with the kind and cursor", async () => {
+		const payload = { assessment: { strands: [{ strand: "limits", assessment: "Solid floor." }], summary: "Ready." } };
+		assert.deepEqual(await lastRequest(["probe-done", "chat_a", "--after", "msg_9"], { stdin: JSON.stringify(payload) }), {
+			method: "POST",
+			url: "/api/external/chats/chat_a/turn",
+			body: { ...payload, kind: "probe-done", after: "msg_9" },
+		});
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "lh-cli-"));
+		const file = path.join(dir, "done.json");
+		fs.writeFileSync(file, JSON.stringify(payload));
+		try {
+			assert.deepEqual((await lastRequest(["probe-done", "chat_a", "--after", "msg_9", "--file", file])).body, { ...payload, kind: "probe-done", after: "msg_9" });
+		} finally {
+			fs.rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
 	it("say waits for a slow stdin writer", async () => {
 		assert.deepEqual((await lastRequest(["say", "chat_a", "--after", "msg_9"], { stdin: "Late text.", stdinDelayMs: 300 })).body, {
 			kind: "say",
