@@ -1111,6 +1111,9 @@ export function createExtractionPipeline(deps: ExtractionPipelineDeps): Extracti
 		try {
 			const record = chatStore.getChat(chatId);
 			if (!record) throw new Error(`Chat not found: ${chatId}`);
+			// Fork, ADR 0001: a bot-run lesson (any driver; isBotRun in
+			// server/bot-run.ts) never calls a LearnHarness model.
+			if (record.driver !== undefined) return { nodes: 0, chains: 0 };
 			// BYOK per-need gate (owner, 2026-09-22) + key presence
 			// (2026-09-25): the write channel needs extractor + auditor
 			// engines AND their providers' keys; a refusal lands BEFORE any
