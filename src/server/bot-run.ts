@@ -15,7 +15,8 @@ import { Type, type Static, type TSchema } from "typebox";
 import { titleFromPrompt, type ChatRecord } from "../core/contracts.ts";
 import { emit } from "../core/events.ts";
 import { ChatInputError, inputAppends, isQuestionTool, type TurnInput } from "../core/input-events.ts";
-import { danglingQuestionOf, newMessageId, newUserMessage, type LhMessage } from "../core/native-messages.ts";
+import { danglingQuestionOf, newHandoffMessage, newMessageId, newUserMessage, type LhMessage } from "../core/native-messages.ts";
+import { probeDoneInputSchema } from "../core/contracts.ts";
 import { phaseAt3Lh, type Phase3 } from "../core/phases.ts";
 import {
 	askInputSchema,
@@ -27,6 +28,7 @@ import {
 	type QuestionAnswerData,
 	type QuestionKind,
 } from "../core/question-core.ts";
+import { probeDoneSuccessResult, type TeachingToolSuccess } from "../core/teaching-tool-results.ts";
 import { stores } from "./stores.ts";
 import { settledTurnResponse } from "./turn-runs.ts";
 
@@ -326,14 +328,15 @@ interface TurnKindRow<S extends TSchema> {
 	/** Takes optional lead-in `text`, which rides the same assistant message
 	 *  ahead of the call and is not part of the tool's arguments. */
 	takesLeadIn: boolean;
-	/** `leadIn` is the trimmed lead-in, or "" for none. */
-	build: (payload: Static<S>, leadIn: string) => Built;
+	/** `leadIn` is the trimmed lead-in, or "" for none; `chatId` is the
+	 *  lesson's, for records keyed by it (the handoff marker). */
+	build: (payload: Static<S>, leadIn: string, chatId: string) => Built;
 }
 
 /** A table row with its payload type closed over: `check` runs the
  *  validation as the tool boundary does (the schema the way pi checks it,
  *  convert then check, then the refinement) and builds the records. */
-type TurnKind = Omit<TurnKindRow<TSchema>, "refine" | "build"> & { check: (payload: Record<string, unknown>) => Checked };
+type TurnKind = Omit<TurnKindRow<TSchema>, "refine" | "build"> & { check: (payload: Record<string, unknown>, chatId: string) => Checked };
 
 function jsonType(value: unknown): string {
 	return value === null ? "null" : Array.isArray(value) ? "array" : typeof value;
@@ -375,7 +378,7 @@ function unknownFields(schema: unknown, value: unknown, path: string): string[] 
 }
 
 function turnKind<S extends TSchema>(name: string, row: TurnKindRow<S>): TurnKind {
-	const check = (payload: Record<string, unknown>): Checked => {
+	const check = (payload: Record<string, unknown>, chatId: string): Checked => {
 		let args = payload;
 		let leadIn = "";
 		if (row.takesLeadIn && Object.hasOwn(payload, "text")) {
@@ -400,7 +403,7 @@ function turnKind<S extends TSchema>(name: string, row: TurnKindRow<S>): TurnKin
 		}
 		let problems = conversionProblems(args, checked, "");
 		if (problems.length === 0) problems = row.refine?.(checked) ?? [];
-		return problems.length ? { ok: false, problems } : { ok: true, built: row.build(checked, leadIn) };
+		return problems.length ? { ok: false, problems } : { ok: true, built: row.build(checked, leadIn, chatId) };
 	};
 	return { tool: row.tool, phases: row.phases, schema: row.schema, needsPlanNode: row.needsPlanNode, takesLeadIn: row.takesLeadIn, check };
 }
@@ -422,6 +425,24 @@ function questionBuild(tool: string) {
 		// The checked payload came from parsed JSON, so it is a JSON object.
 		content.push({ type: "toolCall", id: newToolCallId(), name: tool, arguments: payload as ToolCall["arguments"] });
 		return [newBotAssistantMessage(content)];
+	};
+}
+
+/** A server-side tool's success as the record stores it: a real tool
+ *  result joined to its call by id, mapped the way serverExecute's
+ *  toToolResult (src/agent/tool-execute.ts) maps a text-only result, and
+ *  persisted with a record id. */
+function toolSuccessMessage(call: ToolCall, success: TeachingToolSuccess<unknown>): LhMessage & ToolResultMessage {
+	return {
+		id: newMessageId(),
+		role: "toolResult",
+		toolCallId: call.id,
+		toolName: call.name,
+		content: [{ type: "text", text: success.text }],
+		// The helpers' details are JSON values.
+		details: success.details as ToolResultMessage["details"],
+		isError: false,
+		timestamp: Date.now(),
 	};
 }
 
@@ -477,6 +498,22 @@ const TURN_KINDS: Readonly<Record<string, TurnKind>> = {
 		takesLeadIn: true,
 		build: questionBuild("recall"),
 	}),
+	// The records the probe_done tool's turn leaves (agent/tools/probe.ts),
+	// without running it: the call, the shared success result, then the
+	// handoff marker its queued steer would land as. Nothing is queued, so
+	// nothing wakes; the phase fold reads plan from the result.
+	"probe-done": turnKind("probe-done", {
+		tool: "probe_done",
+		phases: ["probe"],
+		schema: probeDoneInputSchema,
+		refine: null,
+		needsPlanNode: false,
+		takesLeadIn: false,
+		build: (p, _leadIn, chatId) => {
+			const call: ToolCall = { type: "toolCall", id: newToolCallId(), name: "probe_done", arguments: p };
+			return [newBotAssistantMessage([call]), toolSuccessMessage(call, probeDoneSuccessResult()), newHandoffMessage(chatId)];
+		},
+	}),
 };
 
 /** The kinds a turn may take in `phase`, for the wrong_phase refusal. */
@@ -528,7 +565,7 @@ export function botTurn(id: string, body: unknown): Response {
 
 	const row = typeof kind === "string" && Object.hasOwn(TURN_KINDS, kind) ? TURN_KINDS[kind] : undefined;
 	const checked: Checked = row
-		? row.check(payload)
+		? row.check(payload, record.id)
 		: { ok: false, problems: [`unknown kind ${JSON.stringify(kind)}; kinds: ${Object.keys(TURN_KINDS).join(", ")}`] };
 
 	// 3. repeat: the same turn already follows `after`
