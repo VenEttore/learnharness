@@ -98,10 +98,12 @@ async function plannedLesson(): Promise<{ id: string; cursor: string }> {
 }
 
 const messages = (id: string) => chatStore.getChat(id)!.messages;
+/** The plan the page's map draws. */
+const pagePlan = (id: string) => latestTree(projectView(messages(id)) as any)!;
 /** The teaching progress the plan popup draws: statuses over the page's view. */
 function mapProgress(id: string): { current: string | null; visited: string[] } {
 	const view = projectView(messages(id)) as any;
-	const statuses = derivePlanStatuses(latestTree(view)!, view);
+	const statuses = derivePlanStatuses(pagePlan(id), view);
 	return { current: statuses.current, visited: [...statuses.visited] };
 }
 
@@ -143,16 +145,21 @@ describe("teaching questions the page can show", () => {
 		});
 	}
 
-	it("puts lead-in text in the same assistant message, ahead of the call", async () => {
-		const { id, cursor } = await plannedLesson();
-		const res = await turn(id, { kind: "quiz", after: cursor, text: "Start with a guess.\n", ...QUIZ });
-		assert.equal(res.status, 200);
-		const content = (messages(id).at(-1) as any).content;
-		assert.equal(content.length, 2);
-		assert.deepEqual(content[0], { type: "text", text: "Start with a guess." });
-		assert.equal(content[1].type, "toolCall");
-		assert.deepEqual(content[1].arguments, QUIZ);
-	});
+	for (const [kind, payload] of [
+		["quiz", QUIZ],
+		["explain", EXPLAIN],
+	] as const) {
+		it(`${kind} puts lead-in text in the same assistant message, ahead of the call`, async () => {
+			const { id, cursor } = await plannedLesson();
+			const res = await turn(id, { kind, after: cursor, text: "Start with a guess.\n", ...payload });
+			assert.equal(res.status, 200);
+			const content = (messages(id).at(-1) as any).content;
+			assert.equal(content.length, 2);
+			assert.deepEqual(content[0], { type: "text", text: "Start with a guess." });
+			assert.equal(content[1].type, "toolCall");
+			assert.deepEqual(content[1].arguments, payload);
+		});
+	}
 
 	it("a question on the next node moves the map: the earlier node reads visited", async () => {
 		const { id, cursor } = await plannedLesson();
@@ -174,7 +181,7 @@ describe("teaching questions the page can show", () => {
 		// "conditional" was dropped by the rewrite; "likelihood" is new.
 		const dropped = await turn(id, { kind: "explain", after: rewrite.body.cursor, ...EXPLAIN });
 		assert.equal(dropped.status, 422);
-		assert.deepEqual(dropped.body.problems, [planNodeProblem(latestTree(projectView(messages(id)) as any)!, "conditional")]);
+		assert.deepEqual(dropped.body.problems, [planNodeProblem(pagePlan(id), "conditional")]);
 		const added = await turn(id, { kind: "explain", after: rewrite.body.cursor, ...EXPLAIN, nodeId: "likelihood" });
 		assert.equal(added.status, 200, JSON.stringify(added.body));
 		assert.equal(mapProgress(id).current, "likelihood");
@@ -218,7 +225,7 @@ describe("teaching question refusals save nothing", () => {
 			const count = messages(id).length;
 			const { status, body } = await turn(id, { kind, after: cursor, ...payload, nodeId: "priors" });
 			assert.equal(status, 422);
-			assert.deepEqual(body, { ok: false, code: "invalid", problems: [planNodeProblem(chatStore.getChat(id)!.tree, "priors")], cursor });
+			assert.deepEqual(body, { ok: false, code: "invalid", problems: [planNodeProblem(pagePlan(id), "priors")], cursor });
 			assert.match(String(body.problems[0]), /base-rates, conditional, bayes/);
 			assert.equal(messages(id).length, count);
 			assert.equal(phaseAt3Lh(messages(id)), "plan");
@@ -245,6 +252,7 @@ describe("teaching question refusals save nothing", () => {
 				const res = await turn(id, { kind, after: cursor, ...bad });
 				assert.equal(res.status, 422, JSON.stringify(bad));
 				assert.equal(res.body.code, "invalid");
+				assert.equal(res.body.ok, false);
 				assert.ok(res.body.problems.some((p: string) => problem.test(p)), res.body.problems.join("; "));
 			}
 			assert.equal(messages(id).length, count);
@@ -256,9 +264,13 @@ describe("teaching question refusals save nothing", () => {
 		const quiz = await turn(id, { kind: "quiz", after: cursor, ...QUIZ, correctAnswer: "thousand", nodeId: "priors" });
 		assert.equal(quiz.status, 422);
 		assert.ok(quiz.body.problems.some((p: string) => /correctAnswer/.test(p)), quiz.body.problems.join("; "));
-		assert.equal(quiz.body.problems.at(-1), planNodeProblem(chatStore.getChat(id)!.tree, "priors"));
+		assert.equal(quiz.body.code, "invalid");
+		assert.equal(quiz.body.ok, false);
+		assert.equal(quiz.body.problems.at(-1), planNodeProblem(pagePlan(id), "priors"));
 		const explain = await turn(id, { kind: "explain", after: cursor, ...EXPLAIN, correctAnswer: "  " });
 		assert.equal(explain.status, 422);
+		assert.equal(explain.body.code, "invalid");
+		assert.equal(explain.body.ok, false);
 		assert.ok(explain.body.problems.some((p: string) => /correctAnswer is required/.test(p)), explain.body.problems.join("; "));
 		assert.equal(phaseAt3Lh(messages(id)), "plan");
 	});
@@ -278,13 +290,13 @@ describe("teaching question refusals save nothing", () => {
 		}
 		assert.equal(failed.status, 500);
 		assert.ok(chatStore.getChat(id)!.tree!.nodes.some((n) => n.id === "likelihood"));
-		const pagePlan = latestTree(projectView(messages(id)) as any)!;
-		assert.deepEqual((await show(id)).body.plan, pagePlan);
+		const drawnPlan = pagePlan(id);
+		assert.deepEqual((await show(id)).body.plan, drawnPlan);
 
 		// "likelihood" is only in the stored tree: refused, with the page's ids.
 		const ahead = await turn(id, { kind: "quiz", after: cursor, ...QUIZ, nodeId: "likelihood" });
 		assert.equal(ahead.status, 422);
-		assert.deepEqual(ahead.body.problems, [planNodeProblem(pagePlan, "likelihood")]);
+		assert.deepEqual(ahead.body.problems, [planNodeProblem(drawnPlan, "likelihood")]);
 		// "conditional" is only in the page's plan: accepted, and the map shows it.
 		const drawn = await turn(id, { kind: "explain", after: cursor, ...EXPLAIN });
 		assert.equal(drawn.status, 200, JSON.stringify(drawn.body));

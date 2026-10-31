@@ -5,7 +5,7 @@ Blocked by: 11
 Risk: pre-release
 Gate: none
 Host: linuxdev
-Touches: src/server/bot-run.ts, scripts/lh.mjs, new test files
+Touches: src/server/bot-run.ts, scripts/lh.mjs, new test files, tests/lh-cli.test.ts, tests/bot-run-questions.test.ts
 
 Phase C. Uses ticket 01's shared plan-node check.
 
