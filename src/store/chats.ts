@@ -31,9 +31,10 @@ function chatFile(id: string): string {
  *  spam the bus, and every list-visible change it causes (title, order,
  *  phase, busy, pendingQuestion) is already announced by turn-started /
  *  turn-settled, which the sidebar refetches on. Silence here is law,
- *  not oversight. The one exception (fork): bot-run writes have no turn
- *  events, so server/bot-run.ts's commit helper emits chats-changed after
- *  its saveMessages. The store itself stays silent. */
+ *  not oversight. The exceptions (fork): bot-run writes and the silent
+ *  dismissal (Skip) have no turn events, so server/bot-run.ts's commit
+ *  helper and the dismiss route emit chats-changed after their
+ *  saveMessages. The store itself stays silent. */
 function createChat(title: string, kind?: "practice", init?: ChatDriverInit): ChatRecord {
 	const now = new Date().toISOString();
 	const record: ChatRecord = {
