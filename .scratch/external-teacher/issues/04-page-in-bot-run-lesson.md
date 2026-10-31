@@ -1,6 +1,6 @@
 # 04: The page in a bot-run lesson
 
-Status: open
+Status: claimed
 Blocked by: 02
 Risk: pre-release
 Gate: none
