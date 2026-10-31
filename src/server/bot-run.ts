@@ -343,16 +343,23 @@ function jsonType(value: unknown): string {
 
 /** Where the boundary's conversion changed a value's JSON type. pi lets a
  *  model's `42` stand for "42"; from a bot it is a caller bug, refused
- *  rather than shown to the learner. */
+ *  rather than shown to the learner. pi also drops an optional field sent
+ *  as null, so a raw null the checked value lacks is refused too: the
+ *  record would not hold what the bot sent. */
 function conversionProblems(raw: unknown, checked: unknown, path: string): string[] {
 	const want = jsonType(checked);
 	const got = jsonType(raw);
 	if (want !== got) return [`${path} must be ${want === "array" || want === "object" ? "an" : "a"} ${want}, not ${got}`];
 	if (want === "array") return (checked as unknown[]).flatMap((v, i) => conversionProblems((raw as unknown[])[i], v, `${path}[${i}]`));
 	if (want === "object") {
-		return Object.entries(checked as Record<string, unknown>).flatMap(([k, v]) =>
-			conversionProblems((raw as Record<string, unknown>)[k], v, path ? `${path}.${k}` : k),
+		const rawObject = raw as Record<string, unknown>;
+		const dropped = Object.keys(rawObject).flatMap((k) =>
+			rawObject[k] === null && !Object.hasOwn(checked as object, k) ? [`${path ? `${path}.${k}` : k} must not be null; leave it out`] : [],
 		);
+		return [
+			...dropped,
+			...Object.entries(checked as Record<string, unknown>).flatMap(([k, v]) => conversionProblems(rawObject[k], v, path ? `${path}.${k}` : k)),
+		];
 	}
 	return [];
 }

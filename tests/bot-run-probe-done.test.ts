@@ -163,7 +163,7 @@ describe("probe-done", () => {
 	it("refuses an assessment that fails the tool's schema, saving nothing", async () => {
 		const { id, cursor } = await lesson();
 		const count = messages(id).length;
-		for (const bad of [{ assessment: { strands: [] } }, { assessment: "free text" }, { ...ASSESSMENT, text: "Lead-in." }]) {
+		for (const bad of [{ assessment: { strands: [] } }, { assessment: "free text" }, { ...ASSESSMENT, text: "Lead-in." }, { assessment: { ...ASSESSMENT.assessment, summary: null } }]) {
 			const { status, body } = await turn(id, { kind: "probe-done", after: cursor, ...bad });
 			assert.equal(status, 422, JSON.stringify(bad));
 			assert.equal(body.code, "invalid");
