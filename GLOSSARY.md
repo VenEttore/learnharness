@@ -17,15 +17,15 @@ The outside agent that plays both the prober and the teacher in a bot-run lesson
 _Avoid_: External model, driver
 
 **Learner input**:
-Everything the learner did since the Bot Teacher's last saved turn: answers, skips, and typed messages.
-_Avoid_: Reply, response
+Everything the learner did since the last saved Bot Teacher turn, or since the lesson began if there is none: answers, skips, and typed messages. Any Bot Teacher's turn counts, not only the current one's.
+_Avoid_: Reply (what LearnHarness or `lh` sends back), response
 
 **Item**:
 One piece of learner input, as the Bot Teacher receives it.
 _Avoid_: Event, entry
 
 **Phase**:
-One of a lesson's three parts, in order: probe (find what the learner already knows), plan (lay out the path), teach (walk it). LearnHarness allows only some kinds of turn, and some of its model's tools, in each phase.
+One of a lesson's three parts, in order: probe (find what the learner already knows), plan (lay out the path), teach (walk it). In each phase LearnHarness saves only some kinds of turn and gives its model only some of its tools.
 _Avoid_: Stage, mode
 
 **Strand**:
@@ -43,7 +43,7 @@ One go at a lesson by whoever teaches it: one run of LearnHarness's own model, o
 _Avoid_: Message (one turn can store several)
 
 **Cursor**:
-The newest point in a lesson's transcript at the moment LearnHarness sent the reply that carried it. The Bot Teacher sends a cursor with each turn, and LearnHarness refuses any turn that is not a repeat while learner input is newer than both that cursor and the Bot Teacher's last saved turn.
+The newest point in a lesson's transcript at the moment LearnHarness sent the reply that carried it. The Bot Teacher sends a cursor with each turn, and LearnHarness refuses any turn that is not a repeat while learner input is newer than both that cursor and the last saved Bot Teacher turn.
 _Avoid_: Offset, position
 
 **Repeat**:
