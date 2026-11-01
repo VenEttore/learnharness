@@ -25,7 +25,7 @@ One piece of learner input, as the Bot Teacher receives it.
 _Avoid_: Event, entry
 
 **Phase**:
-One of a lesson's three stages, in order: probe (find what the learner already knows), plan (lay out the path), teach (walk it). Each phase has its own kinds of question.
+One of a lesson's three stages, in order: probe (find what the learner already knows), plan (lay out the path), teach (walk it). Each phase limits which kinds of turn the teacher may take.
 _Avoid_: Stage, mode
 
 **Strand**:
@@ -39,19 +39,19 @@ _Avoid_: Pending question, dangling question
 ## Turns
 
 **Turn**:
-One step by a lesson's teacher, the Bot Teacher or LearnHarness's own model. Each Bot Teacher turn has one kind: teaching text, a question, a plan, or the assessment that ends the probe.
+One step by whoever teaches a lesson: the Bot Teacher, or LearnHarness's own model. A Bot Teacher turn is one of: teaching text, a question, a plan, or the assessment that ends the probe.
 _Avoid_: Message (one turn can store several), post
 
 **Cursor**:
-The newest point in a lesson's transcript, as of LearnHarness's latest reply to the Bot Teacher. Each Bot Teacher turn carries a cursor back, and LearnHarness refuses the turn if learner input the Bot Teacher has not been shown came after it.
-_Avoid_: Offset, position (capitalized, Cursor is the product the Bot Teacher runs in)
+The newest point in a lesson's transcript, as of LearnHarness's latest reply to the Bot Teacher. Each Bot Teacher turn carries a cursor back, and LearnHarness refuses any turn that is not a repeat while learner input is newer than both that cursor and the last Bot Teacher turn.
+_Avoid_: Offset, position, Cursor with a capital C (the product the Bot Teacher runs in)
 
 **Repeat**:
-A Bot Teacher turn that matches a turn the lesson already holds past the cursor it was sent with. LearnHarness accepts it and saves nothing.
+A Bot Teacher turn that matches one already in the lesson after the new turn's cursor. LearnHarness accepts it and saves nothing.
 _Avoid_: Duplicate, retry
 
 **Refusal**:
-LearnHarness, or the lh command, declining a request and saying why. A refused turn adds nothing to the lesson's transcript.
+LearnHarness, or the lh command, not carrying out a request and saying why. A refused turn adds nothing to the lesson's transcript.
 _Avoid_: Error, rejection
 
 ## Bots
@@ -62,4 +62,4 @@ _Avoid_: Subagent, child bot
 
 **Takeover**:
 The learner taking control of the Bot Teacher's browser to use the lesson page, until they hand control back. The Bot Teacher is paused while the learner has control.
-_Avoid_: Handoff
+_Avoid_: Handoff, taking over (for a Bot Teacher resuming a lesson)
