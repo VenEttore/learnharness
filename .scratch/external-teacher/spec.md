@@ -10,7 +10,7 @@ LearnHarness teaches only through its own models, which need API keys and bill p
 
 A Bot Teacher (a Grok Bot) runs a whole lesson, probe then plan then teach, through a small `lh` command on the shared computer. `lh` calls new LearnHarness HTTP routes. Each lesson the bot creates is a bot-run lesson. For those lessons, LearnHarness saves learner input and never calls a model. The bot's turns are stored in the same records LearnHarness's own model writes (see ADR 0001), so the existing page shows them unchanged: the question dock, Skip, the phase display and the plan map.
 
-The owner answers on the normal page by taking over the bot's browser with Cursor's "Take over", then clicks Cursor's "I'm done". The bot reads the learner input with `lh answer`. A short guide tells the bot how to start LearnHarness and how to run a lesson, and points it at LearnHarness's own teaching prompts for method.
+The owner answers on the normal page by taking over the bot's browser with the Cursor app's "Take over", then clicks the Cursor app's "I'm done". The bot reads the learner input with `lh answer`. A short guide tells the bot how to start LearnHarness and how to run a lesson, and points it at LearnHarness's own teaching prompts for method.
 
 The work comes in four phases:
 - **Phase A, Talk.** A bot can create a lesson, say things, and read what the learner types.
@@ -133,7 +133,7 @@ The work comes in four phases:
 - **`lh`.** One Node 22 script with no dependencies.
   - Base URL comes from `LH_URL`, default `http://127.0.0.1:3000`. Not `localhost`, which can resolve to the IPv6 address while the server listens on 127.0.0.1 only.
   - It prints one JSON line per command, with the cursor when there is one.
-  - Exit codes: 0 ok; 1 any reply that is not ok (a refusal, `bad_reply`, or another program's JSON); 2 `--wait` timed out; 3 LearnHarness unreachable or no answer within 30 s, naming `LH_URL` and printing the guide's path, `docs/external-teacher.md`.
+  - Exit codes: 0 ok; 1 any reply that is not ok (a refusal, `bad_reply`, or another program's JSON without `"ok":true`); 2 `--wait` timed out; 3 LearnHarness unreachable or no answer within 30 s, naming `LH_URL` and printing the guide's path, `docs/external-teacher.md`.
   - Commands, lesson id first:
     - `lesson new --title --key [--prompt]`
     - `say` and `plan`, which read text
