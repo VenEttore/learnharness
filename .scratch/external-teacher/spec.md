@@ -133,7 +133,7 @@ The work comes in four phases:
 - **`lh`.** One Node 22 script with no dependencies.
   - Base URL comes from `LH_URL`, default `http://127.0.0.1:3000`. Not `localhost`, which can resolve to the IPv6 address while the server listens on 127.0.0.1 only.
   - It prints one JSON line per command, with the cursor when there is one.
-  - Exit codes: 0 ok; 1 any reply that is not ok (a refusal, `bad_reply`, or another program's JSON without `"ok":true`); 2 `--wait` timed out; 3 LearnHarness unreachable or no answer within 30 s, naming `LH_URL` and printing the guide's path, `docs/external-teacher.md`.
+  - Exit codes: 0 ok; 1 any reply that is not ok (a refusal, `bad_reply`, or JSON without `"ok":true`); 2 `--wait` timed out; 3 LearnHarness unreachable or no answer within 30 s, naming `LH_URL` and printing the guide's path, `docs/external-teacher.md`.
   - Commands, lesson id first:
     - `lesson new --title --key [--prompt]`
     - `say` and `plan`, which read text
