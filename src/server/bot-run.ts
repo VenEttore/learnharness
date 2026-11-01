@@ -42,7 +42,8 @@ import {
 import { stores } from "./stores.ts";
 import { settledTurnResponse } from "./turn-runs.ts";
 
-/** The refusal code of page input that a bot-run lesson turns down. */
+/** The refusal code of chat input that a bot-run lesson turns down
+ *  (handleBotRunInput). */
 export const BOT_RUN_LESSON_CODE = "bot_run_lesson";
 
 /** Any driver at all means someone other than LearnHarness teaches, so an
@@ -301,9 +302,9 @@ function latestPlan(messages: readonly LhMessage[]): PlanTree | null {
 }
 
 /** Show: the whole lesson, for a bot resuming a lesson, its own or one
- *  an earlier bot started. `plan` is
- *  the latest successful plan's tree. Its cursor passes any unread input,
- *  so the reply carries those items, as answer's does. */
+ *  an earlier bot started. `plan` is the latest successful plan's tree.
+ *  Its cursor passes any unread input, so the reply carries those items,
+ *  as answer's does. */
 export function showBotLesson(id: string): Response {
 	const record = botLesson(id);
 	if (record instanceof Response) return record;
