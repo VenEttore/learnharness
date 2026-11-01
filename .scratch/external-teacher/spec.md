@@ -191,7 +191,7 @@ Deferred in the grill or the reviews:
 - summarizing long lessons;
 - practice sessions;
 - the Researcher, Illustrator and Librarian bots;
-- a full guard against two bots writing one lesson (the cursor already refuses a writer that missed learner input);
+- a full guard against two bots writing one lesson (the cursor refuses a writer that missed learner input sent after the bot's last message; input before that message counts as read);
 - auth on the API (LearnHarness listens on 127.0.0.1 only);
 - a "bot is thinking" indicator;
 - LearnHarness grading free recall;
