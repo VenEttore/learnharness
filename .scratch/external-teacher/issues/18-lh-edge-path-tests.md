@@ -1,6 +1,6 @@
 # 18: Tests for untested lh paths
 
-Status: open
+Status: claimed
 Blocked by: none
 Risk: pre-release
 Gate: none
