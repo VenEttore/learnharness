@@ -1,6 +1,6 @@
 # 16: Atomic chat file writes
 
-Status: open
+Status: claimed
 Blocked by: none
 Risk: pre-release
 Gate: none

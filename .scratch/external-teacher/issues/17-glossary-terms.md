@@ -1,6 +1,6 @@
 # 17: Glossary terms for bot-run lessons
 
-Status: open
+Status: claimed
 Blocked by: none
 Risk: pre-release
 Gate: none
