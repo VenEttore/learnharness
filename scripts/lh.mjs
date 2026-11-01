@@ -14,8 +14,9 @@
  *                                 at least one item, 600 s by default
  *   lh show <lesson>
  *
- * Exit codes: 0 ok; 1 a refusal, or a reply that is not JSON (bad_reply);
- * 2 `answer --wait` timed out; 3 LearnHarness unreachable or no answer.
+ * Exit codes: 0 ok; 1 any reply that is not ok (a refusal, bad_reply, or
+ * another program's JSON); 2 `answer --wait` timed out; 3 LearnHarness
+ * unreachable or no answer.
  * The base URL is LH_URL, default http://127.0.0.1:3000: not localhost,
  * which can resolve to the IPv6 address while LearnHarness listens on
  * 127.0.0.1 only. Stdin must close within LH_STDIN_TIMEOUT_MS (default

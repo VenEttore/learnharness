@@ -42,8 +42,9 @@ import {
 import { stores } from "./stores.ts";
 import { settledTurnResponse } from "./turn-runs.ts";
 
-/** The refusal code of chat input that a bot-run lesson turns down
- *  (handleBotRunInput). */
+/** The refusal code for input a bot-run lesson cannot take: `continue`
+ *  and `retry` (no model turn to run) and server-origin input such as
+ *  steers (handleBotRunInput). */
 export const BOT_RUN_LESSON_CODE = "bot_run_lesson";
 
 /** Any driver at all means someone other than LearnHarness teaches, so an

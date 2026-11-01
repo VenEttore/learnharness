@@ -45,7 +45,7 @@ The work comes in four phases:
 23. As a Bot Teacher, I want a turn refused if the learner added input I haven't read, with that input in the refusal, so that I never miss a message.
 24. As a Bot Teacher, I want rerunning a turn I already posted to return success and save nothing, so that a lost reply never duplicates a turn.
 25. As a Bot Teacher, I want a re-asked question saved when the learner has answered or skipped since, so that re-asking after a skip works.
-26. As a Bot Teacher, I want a cursor in each LearnHarness reply about a lesson I may write to, so that I can pass it back with my next turn.
+26. As a Bot Teacher, I want a cursor in each LearnHarness reply about a lesson I may write to (except the `forbidden_*` refusals), so that I can pass it back with my next turn.
 27. As a Bot Teacher, I want to read all learner input since the last saved Bot Teacher turn, in order, so that I respond to everything.
 28. As a Bot Teacher, I want each answer with everything the page recorded (picks, correctness, confidence, "I don't know", free text, "Other" text, and the learner's reasoning), so that I can grade and respond properly.
 29. As a Bot Teacher, I want skips reported as skips, so that I can decide whether to re-ask or move on.
@@ -133,7 +133,7 @@ The work comes in four phases:
 - **`lh`.** One Node 22 script with no dependencies.
   - Base URL comes from `LH_URL`, default `http://127.0.0.1:3000`. Not `localhost`, which can resolve to the IPv6 address while the server listens on 127.0.0.1 only.
   - It prints one JSON line per command, with the cursor when there is one.
-  - Exit codes: 0 ok; 1 a refusal, or a reply that is not JSON (`bad_reply`); 2 `--wait` timed out; 3 LearnHarness unreachable or no answer within 30 s, naming `LH_URL` and printing the guide's path, `docs/external-teacher.md`.
+  - Exit codes: 0 ok; 1 any reply that is not ok (a refusal, `bad_reply`, or another program's JSON); 2 `--wait` timed out; 3 LearnHarness unreachable or no answer within 30 s, naming `LH_URL` and printing the guide's path, `docs/external-teacher.md`.
   - Commands, lesson id first:
     - `lesson new --title --key [--prompt]`
     - `say` and `plan`, which read text

@@ -40,11 +40,11 @@ Every command prints one JSON line and exits with a code:
 | exit | meaning |
 |---|---|
 | 0 | ok: `{"ok":true,...}` |
-| 1 | a refusal, or a reply that is not JSON (`bad_reply`, below): `{"ok":false,"code":"...",...}` |
+| 1 | not ok: a refusal (`{"ok":false,"code":"...",...}`), a `bad_reply`, or another program's JSON (below) |
 | 2 | `lh answer --wait` timed out: `{"ok":false,"error":"timeout"}` |
 | 3 | LearnHarness unreachable, or no answer within 30 s: `{"ok":false,"code":"unreachable","error":"...","guide":"docs/external-teacher.md"}`. This is not a refusal. If `error` says "is not reachable", start it as in section 1. If it says "did not answer", the server may be busy compiling. After a turn command, the turn may have landed, so follow "A lost reply" in section 5. After `lh lesson new`, rerun it with the same `--key`. After `lh show` or `lh answer`, rerun it. |
 
-A reply with `"code":"bad_reply"` means the server on `LH_URL` answered with something other than JSON: a LearnHarness error page, or another program holding the port. Read `/workspace/lh-server.log`; if your server is not running, start it on another port (section 1).
+A reply with `"code":"bad_reply"` means the server on `LH_URL` answered with something other than JSON: a LearnHarness error page, or another program holding the port. JSON with no `"ok"` field means another program holds the port. Read `/workspace/lh-server.log`; if your server is not running, start it on another port (section 1).
 
 **The cursor.** Every reply from LearnHarness about a lesson you can write to carries `cursor`, the id of the newest message in the lesson, except the `forbidden_*` refusals. Replies made by `lh` itself (`usage`, `unreachable`, `bad_reply`, a `--wait` timeout) carry none. A new lesson created without `--prompt` is empty, and its cursor is the lesson id. Pass the lesson id only when a reply gave it to you as the cursor. As `--after`, the lesson id means "from the start". On a lesson created with a prompt, a turn sent with the lesson id as `--after` is refused as `unread_input` until a Bot Teacher turn is saved. After that, such a turn counts as a repeat if it matches any saved Bot Teacher turn, and saves nothing. Every turn command needs `--after <cursor>`. In the examples, `L` is the lesson id and `C` is the cursor; after each reply, set `C` to its `cursor`.
 
