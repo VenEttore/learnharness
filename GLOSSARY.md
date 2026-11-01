@@ -20,6 +20,10 @@ _Avoid_: External model, driver
 Everything the learner did since the Bot Teacher's last turn: answers, skips, and typed messages.
 _Avoid_: Reply, response
 
+**Item**:
+One piece of learner input, as the Bot Teacher receives it.
+_Avoid_: Event, entry
+
 **Phase**:
 One of a lesson's three stages, in order: probe (find what the learner already knows), plan (lay out the path), teach (walk it). Each phase has its own kinds of question.
 _Avoid_: Stage, mode
@@ -35,31 +39,27 @@ _Avoid_: Pending question, dangling question
 ## Turns
 
 **Turn**:
-What the Bot Teacher adds to a lesson with one command, of a single kind: teaching text, a question, a plan, or the assessment that ends the probe.
+One step by a lesson's teacher, the Bot Teacher or LearnHarness's own model. A Bot Teacher turn adds one thing of a single kind: teaching text, a question, a plan, or the assessment that ends the probe.
 _Avoid_: Message (one turn can store several), post
 
 **Cursor**:
-The id of a lesson's newest message, or the lesson's own id while it is empty. The Bot Teacher sends the cursor it last received with each turn, to show what it has read.
+The Bot Teacher's marker for the newest message it has seen in a lesson. Each Bot Teacher turn carries one, so LearnHarness can tell whether the Bot Teacher has read all learner input before it.
 _Avoid_: Offset, position
 
-**Item**:
-One piece of learner input as the Bot Teacher receives it: a typed message, an answer, or a skip.
-_Avoid_: Event, entry
-
 **Repeat**:
-A turn sent again that matches a Bot Teacher turn already posted after the cursor it carries. LearnHarness reports success and saves nothing.
+A Bot Teacher turn that matches one already in the lesson after the cursor it carries. LearnHarness accepts it and saves nothing.
 _Avoid_: Duplicate, retry
 
 **Refusal**:
-A reply that turns down a command and names the reason with a code. A refused turn saves nothing.
+LearnHarness turning down a Bot Teacher's turn or command, with a code that names the reason. A refused turn adds nothing to the lesson's transcript.
 _Avoid_: Error, rejection
-
-**Takeover**:
-The learner taking control of the Bot Teacher's browser to use the lesson page. The Bot Teacher is paused until the learner hands control back.
-_Avoid_: Handoff, session
 
 ## Bots
 
 **Worker**:
 A short-lived helper a bot starts for part of its own work. A worker reports to the bot that started it and never writes to a lesson.
 _Avoid_: Subagent, child bot
+
+**Takeover**:
+The learner taking control of the Bot Teacher's browser to use the lesson page, until they hand control back. The Bot Teacher waits while the learner has control.
+_Avoid_: Handoff
