@@ -39,11 +39,11 @@ _Avoid_: Pending question, dangling question
 ## Turns
 
 **Turn**:
-One go at a lesson by whoever teaches it: one teaching command from the Bot Teacher (`lh say`, `lh ask` and the like), or one full run of LearnHarness's own model. A Bot Teacher turn is one of: teaching text, a question, a plan, or the assessment that ends the probe.
+One go at a lesson by whoever teaches it: one run of LearnHarness's own model, or one `lh` turn command from the Bot Teacher (`say`, `ask`, `probe`, `recall`, `probe-done`, `plan`, `quiz` or `explain`). The command names the Bot Teacher turn's kind.
 _Avoid_: Message (one turn can store several)
 
 **Cursor**:
-The newest point in a lesson's transcript, as of LearnHarness's latest reply to the Bot Teacher. The Bot Teacher sends a cursor with each turn, and LearnHarness refuses any turn that is not a repeat while learner input is newer than both that cursor and the Bot Teacher's last saved turn.
+The newest point in a lesson's transcript at the moment LearnHarness sent the reply that carried it. The Bot Teacher sends a cursor with each turn, and LearnHarness refuses any turn that is not a repeat while learner input is newer than both that cursor and the Bot Teacher's last saved turn.
 _Avoid_: Offset, position
 
 **Repeat**:
@@ -51,7 +51,7 @@ A Bot Teacher turn that matches a turn saved after the cursor it was sent with. 
 _Avoid_: Duplicate, retry (the resend, which may or may not be a repeat)
 
 **Refusal**:
-LearnHarness answering a request with a failure instead of doing it, and saying why, or `lh` turning down a command line before sending it. A refused turn adds nothing to the lesson's transcript.
+A reply with a failure code that says why: from LearnHarness when it did not do what a request asked, or from `lh` when it turns down a command line before sending it. A refused turn adds nothing to the lesson's transcript.
 _Avoid_: Error, rejection
 
 ## Bots
@@ -61,5 +61,5 @@ A short-lived helper a bot starts for part of its own work. A worker reports to 
 _Avoid_: Subagent, child bot
 
 **Takeover**:
-The learner taking control of the Bot Teacher's browser to use the lesson page, until they hand control back. The Bot Teacher is paused while the learner has control.
-_Avoid_: Handoff, taking over (for a Bot Teacher resuming a lesson)
+The learner taking control of the Bot Teacher's browser to use the lesson page, until they give control back. The Bot Teacher is paused while the learner has control.
+_Avoid_: Handoff (the code's name for the marker the end of the probe leaves), taking over (for a Bot Teacher resuming a lesson)
