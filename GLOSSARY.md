@@ -35,7 +35,7 @@ _Avoid_: Pending question, dangling question
 ## Turns
 
 **Turn**:
-One post the Bot Teacher makes to a lesson, of a single kind: teaching text, a question, a plan, or the assessment that ends the probe.
+What the Bot Teacher adds to a lesson with one command, of a single kind: teaching text, a question, a plan, or the assessment that ends the probe.
 _Avoid_: Message (one turn can store several), post
 
 **Cursor**:
