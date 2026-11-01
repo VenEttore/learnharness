@@ -58,9 +58,24 @@ function createChat(title: string, kind?: "practice", init?: ChatDriverInit): Ch
 /** THE WRITE CHOKE POINT (schema-versioning wave, owner 2026-10-10): every
  *  record persist goes through here and carries the CURRENT version stamp —
  *  lazy migration means existing files only get stamped on their next write.
- *  A future-version guard lives on the read side (getChat). */
+ *  A future-version guard lives on the read side (getChat).
+ *  Tmp + rename (fork, external-teacher 16), the pattern graph.ts uses: a
+ *  write cut off partway leaves the previous file whole. The tmp name does
+ *  not end in .json, so listChats never sees it. */
 function writeChat(record: ChatRecord): void {
-	fs.writeFileSync(chatFile(record.id), JSON.stringify({ ...record, version: CURRENT_CHAT_VERSION }, null, "\t"), "utf-8");
+	const file = chatFile(record.id);
+	const tmp = `${file}.tmp-${crypto.randomUUID().slice(0, 8)}`;
+	try {
+		fs.writeFileSync(tmp, JSON.stringify({ ...record, version: CURRENT_CHAT_VERSION }, null, "\t"), "utf-8");
+		fs.renameSync(tmp, file);
+	} catch (err) {
+		try {
+			fs.unlinkSync(tmp);
+		} catch {
+			/* the rename either already happened or the tmp never existed */
+		}
+		throw err;
+	}
 }
 
 function getChat(id: string): ChatRecord | null {
