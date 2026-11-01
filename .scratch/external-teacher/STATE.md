@@ -4,7 +4,7 @@ max_suborchestrators: 2
 destination: One LearnHarness lesson taught by a Grok Bot through lh, with no LearnHarness model calls.
 host: linuxdev, repo ~/code/learnharness, Node 22 in ~/.local/bin.
 live:
-  19 external-teacher-19-guide-wording (launching)
+  19 external-teacher-19-guide-wording node:delegated-task:command%3Amcp%3A3385c0f6-0ccd-47b3-b8db-2649f6ca400c%3Adelegate-task%3Aexternal-teacher-19-1 running
 touches-locked: 19 (docs/external-teacher.md, spec.md, GLOSSARY.md, comments in lh.mjs and bot-run.ts)
 merged: 02 (33e1e55), 01 (0400540), 04 (8d77b94), 03 (e51624e), 05 (phase A verified; .scratch only), 08 (2e93d6c), 06 (8247cca), 07 (5929722), 09 (phase B verified; .scratch only), 10 (17ab05a), 11 (439f106), 12 (4c38b64), 13 (815aa6d; docs only, child check at the same code tree matched baseline); check after each code merge matches baseline, 14 (b2d80fc; phase C verified; .scratch only), 16 (merged; review skipped under small-diff rule, 19 lines, test red then green), 18 (tests only; review skipped under small-diff rule), 17 (675e146; 9 rounds; GLM and Composer seats skipped: Cursor usage limit until 2026-11-19)
 notes: 03 round 5 code-review did not run (Grok 4.7 provider error twice, no substitute); last code-review was round 4 on a6b7044, ~25 lines of bot-run.ts changed after it and were covered only by round-5 interrogate (3 seats).
