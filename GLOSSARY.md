@@ -39,19 +39,19 @@ _Avoid_: Pending question, dangling question
 ## Turns
 
 **Turn**:
-One step by a lesson's teacher, the Bot Teacher or LearnHarness's own model. A Bot Teacher turn adds one thing of a single kind: teaching text, a question, a plan, or the assessment that ends the probe.
+One step by a lesson's teacher, the Bot Teacher or LearnHarness's own model. Each Bot Teacher turn has one kind: teaching text, a question, a plan, or the assessment that ends the probe.
 _Avoid_: Message (one turn can store several), post
 
 **Cursor**:
-The Bot Teacher's marker for the newest message it has seen in a lesson. Each Bot Teacher turn carries one, so LearnHarness can tell whether the Bot Teacher has read all learner input before it.
-_Avoid_: Offset, position
+The newest point in a lesson's transcript, as of LearnHarness's latest reply to the Bot Teacher. Each Bot Teacher turn carries a cursor back, and LearnHarness refuses the turn if learner input the Bot Teacher has not been shown came after it.
+_Avoid_: Offset, position (capitalized, Cursor is the product the Bot Teacher runs in)
 
 **Repeat**:
-A Bot Teacher turn that matches one already in the lesson after the cursor it carries. LearnHarness accepts it and saves nothing.
+A Bot Teacher turn that matches a turn the lesson already holds past the cursor it was sent with. LearnHarness accepts it and saves nothing.
 _Avoid_: Duplicate, retry
 
 **Refusal**:
-LearnHarness turning down a Bot Teacher's turn or command, with a code that names the reason. A refused turn adds nothing to the lesson's transcript.
+LearnHarness, or the lh command, declining a request and saying why. A refused turn adds nothing to the lesson's transcript.
 _Avoid_: Error, rejection
 
 ## Bots
@@ -61,5 +61,5 @@ A short-lived helper a bot starts for part of its own work. A worker reports to 
 _Avoid_: Subagent, child bot
 
 **Takeover**:
-The learner taking control of the Bot Teacher's browser to use the lesson page, until they hand control back. The Bot Teacher waits while the learner has control.
+The learner taking control of the Bot Teacher's browser to use the lesson page, until they hand control back. The Bot Teacher is paused while the learner has control.
 _Avoid_: Handoff
