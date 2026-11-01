@@ -24,9 +24,39 @@ _Avoid_: Reply, response
 One of a lesson's three stages, in order: probe (find what the learner already knows), plan (lay out the path), teach (walk it). Each phase has its own kinds of question.
 _Avoid_: Stage, mode
 
+**Strand**:
+One piece of background a lesson depends on. The probe ends with an assessment of how far the learner gets on each strand.
+_Avoid_: Topic, prerequisite
+
 **Open question**:
 A question in a lesson that the learner has not yet answered or skipped.
 _Avoid_: Pending question, dangling question
+
+## Turns
+
+**Turn**:
+One post the Bot Teacher makes to a lesson, of a single kind: teaching text, a question, a plan, or the assessment that ends the probe.
+_Avoid_: Message (one turn can store several), post
+
+**Cursor**:
+The id of a lesson's newest message, or the lesson's own id while it is empty. The Bot Teacher sends the cursor it last received with each turn, to show what it has read.
+_Avoid_: Offset, position
+
+**Item**:
+One piece of learner input as the Bot Teacher receives it: a typed message, an answer, or a skip.
+_Avoid_: Event, entry
+
+**Repeat**:
+A turn sent again that matches a Bot Teacher turn already posted after the cursor it carries. LearnHarness reports success and saves nothing.
+_Avoid_: Duplicate, retry
+
+**Refusal**:
+A reply that turns down a command and names the reason with a code. A refused turn saves nothing.
+_Avoid_: Error, rejection
+
+**Takeover**:
+The learner taking control of the Bot Teacher's browser to use the lesson page. The Bot Teacher is paused until the learner hands control back.
+_Avoid_: Handoff, session
 
 ## Bots
 
