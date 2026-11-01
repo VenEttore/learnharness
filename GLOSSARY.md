@@ -14,7 +14,7 @@ _Avoid_: External chat (the code marks these lessons `driver: "external"`), agen
 
 **Bot Teacher**:
 The outside agent that plays both the prober and the teacher in a bot-run lesson.
-_Avoid_: External model, driver
+_Avoid_: External model, driver (the code's name for the lesson field that marks who teaches)
 
 **Learner input**:
 Everything the learner did since the last saved Bot Teacher turn, or since the lesson began if there is none: answers, skips, and typed messages. Any Bot Teacher's turn counts, not only the current one's.

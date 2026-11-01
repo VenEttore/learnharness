@@ -42,7 +42,7 @@ import {
 import { stores } from "./stores.ts";
 import { settledTurnResponse } from "./turn-runs.ts";
 
-/** The refusal code every bot-run refusal carries. */
+/** The refusal code of page input that a bot-run lesson turns down. */
 export const BOT_RUN_LESSON_CODE = "bot_run_lesson";
 
 /** Any driver at all means someone other than LearnHarness teaches, so an
@@ -300,7 +300,8 @@ function latestPlan(messages: readonly LhMessage[]): PlanTree | null {
 	return null;
 }
 
-/** Show: the whole lesson, for a bot resuming or taking over. `plan` is
+/** Show: the whole lesson, for a bot resuming a lesson, its own or one
+ *  an earlier bot started. `plan` is
  *  the latest successful plan's tree. Its cursor passes any unread input,
  *  so the reply carries those items, as answer's does. */
 export function showBotLesson(id: string): Response {
@@ -340,7 +341,7 @@ export function botAnswer(id: string): Response {
  *  outside the transcript (plan's tree) that runs, after every check,
  *  just before the records commit. */
 type Built = { records: [LhMessage & AssistantMessage, ...LhMessage[]]; saveFirst?: () => void };
-/** A refusal still carries `built` when the payload's only problems are
+/** A failed check still carries `built` when the payload's only problems are
  *  the lesson's state (the plan-node check), so the repeat check can see
  *  a retry of a turn that landed before a plan rewrite dropped its node. */
 type Checked = { ok: true; built: Built } | { ok: false; problems: string[]; built?: Built };

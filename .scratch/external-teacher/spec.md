@@ -45,13 +45,13 @@ The work comes in four phases:
 23. As a Bot Teacher, I want a turn refused if the learner added input I haven't read, with that input in the refusal, so that I never miss a message.
 24. As a Bot Teacher, I want rerunning a turn I already posted to return success and save nothing, so that a lost reply never duplicates a turn.
 25. As a Bot Teacher, I want a re-asked question saved when the learner has answered or skipped since, so that re-asking after a skip works.
-26. As a Bot Teacher, I want every command to return a cursor, so that I can pass it back with my next turn.
-27. As a Bot Teacher, I want to read all learner input since my last turn, in order, so that I respond to everything.
+26. As a Bot Teacher, I want a cursor in each LearnHarness reply about a lesson I may write to, so that I can pass it back with my next turn.
+27. As a Bot Teacher, I want to read all learner input since the last saved Bot Teacher turn, in order, so that I respond to everything.
 28. As a Bot Teacher, I want each answer with everything the page recorded (picks, correctness, confidence, "I don't know", free text, "Other" text, and the learner's reasoning), so that I can grade and respond properly.
 29. As a Bot Teacher, I want skips reported as skips, so that I can decide whether to re-ask or move on.
-30. As a Bot Teacher, I want reading learner input to be safe to repeat, so that a retry never loses input.
+30. As a Bot Teacher, I want reading learner input to change nothing, so that reading it again never loses input.
 31. As a Bot Teacher, I want to wait for learner input with a timeout that does not look like success, so that I never act as if the learner answered when they didn't.
-32. As a Bot Teacher, I want to read the whole lesson back (phase, plan, open question, every turn and all learner input), so that I can resume after losing my memory, or take a lesson over from another bot.
+32. As a Bot Teacher, I want to read the whole lesson back (phase, plan, open question, every turn and all learner input), so that I can resume after losing my memory, or continue a lesson another bot started.
 33. As a Bot Teacher, I want `lh` to say clearly when LearnHarness isn't running, and point me at how to start it, so that I can recover on my own.
 34. As a Bot Teacher, I want one JSON line per command and distinct exit codes, so that I can script my loop.
 35. As a Bot Teacher, I want a short guide to the commands per phase, with JSON examples, so that I can run a lesson without reading LearnHarness's code.
@@ -117,7 +117,7 @@ The work comes in four phases:
     1. the lesson exists and is bot-run;
     2. `after` names a message in the lesson;
     3. repeat: if a bot turn of the same kind and checked payload already follows `after`, return `repeat: true` and save nothing;
-    4. unread input: if learner input follows `after`, refuse with code `unread_input`, the items, and the cursor;
+    4. unread input: if learner input is newer than both `after` and the last saved Bot Teacher turn, refuse with code `unread_input`, the items, and the cursor;
     5. an open question exists: refuse;
     6. the kind isn't allowed in this phase: refuse, listing the kinds allowed now;
     7. validation fails: refuse with the problem text.
@@ -201,6 +201,6 @@ Deferred in the grill or the reviews:
 ## Further Notes
 
 - The grill ran across three threads. It was checked by two interrogate passes, with four reviewers each, against the code. The owner chose no third design pass, so the real diff gets `code-review` and `interrogate` per ticket.
-- Glossary terms: Lesson, Bot-run lesson, Bot Teacher, Learner input, Phase, Open question, Worker (`GLOSSARY.md`). Decision record: ADR 0001.
+- Glossary terms: Lesson, Bot-run lesson, Bot Teacher, Learner input, Item, Phase, Strand, Open question, Turn, Cursor, Repeat, Refusal, Worker, Takeover (`GLOSSARY.md`). Decision record: ADR 0001.
 - No code ticket is tied to the laptop, so they are `Host: linuxdev`, and development runs on linuxdev: the repo is `~/code/learnharness`, and Node 22 is in `~/.local/bin`. linuxdev has no GitHub credentials, so ticket branches stay in that repo until GitHub access is added there. Only the bench ticket is `Host: laptop`.
 - The final spec ship needs the owner's "ship it" after the final spec review.

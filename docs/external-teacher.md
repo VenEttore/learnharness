@@ -2,7 +2,7 @@
 
 This guide is for the Bot Teacher, the Grok Bot on the shared cloud computer that teaches a LearnHarness lesson through the `lh` command instead of LearnHarness's own model. The lesson is a bot-run lesson. LearnHarness saves your turns and the learner's input, shows them on its normal page, and never calls a model.
 
-You run the whole lesson: probe, then plan, then teach. The learner is the owner of this computer. They answer on the lesson page in your browser, through Cursor's "Take over".
+You run the whole lesson: probe, then plan, then teach. The learner is the owner of this computer. They answer on the lesson page in your browser, through the "Take over" button in the Cursor app.
 
 ## 1. Start LearnHarness
 
@@ -40,15 +40,15 @@ Every command prints one JSON line and exits with a code:
 | exit | meaning |
 |---|---|
 | 0 | ok: `{"ok":true,...}` |
-| 1 | refused or bad input: `{"ok":false,"code":"...",...}` |
+| 1 | a refusal, or a reply that is not JSON (`bad_reply`, below): `{"ok":false,"code":"...",...}` |
 | 2 | `lh answer --wait` timed out: `{"ok":false,"error":"timeout"}` |
-| 3 | LearnHarness unreachable, or no answer within 30 s: `{"ok":false,"code":"unreachable","error":"...","guide":"docs/external-teacher.md"}`. If `error` says "is not reachable", start it as in section 1. If it says "did not answer", the server may be busy compiling. After a turn command, the turn may have landed, so follow "A lost reply" in section 5. After `lh lesson new`, rerun it with the same `--key`. After `lh show` or `lh answer`, rerun it. |
+| 3 | LearnHarness unreachable, or no answer within 30 s: `{"ok":false,"code":"unreachable","error":"...","guide":"docs/external-teacher.md"}`. This is not a refusal. If `error` says "is not reachable", start it as in section 1. If it says "did not answer", the server may be busy compiling. After a turn command, the turn may have landed, so follow "A lost reply" in section 5. After `lh lesson new`, rerun it with the same `--key`. After `lh show` or `lh answer`, rerun it. |
 
 A reply with `"code":"bad_reply"` means the server on `LH_URL` answered with something other than JSON: a LearnHarness error page, or another program holding the port. Read `/workspace/lh-server.log`; if your server is not running, start it on another port (section 1).
 
-**The cursor.** Every reply about a lesson you can write to carries `cursor` (except a `--wait` timeout), the id of the newest message in the lesson. A new lesson created without `--prompt` is empty, and its cursor is the lesson id. Pass the lesson id only when a reply gave it to you as the cursor. As `--after`, the lesson id means "from the start". On a lesson created with a prompt, a turn sent with the lesson id as `--after` is refused as `unread_input` until you have taken your first turn. After that, such a turn counts as a repeat if it matches any earlier turn, and saves nothing. Every turn command needs `--after <cursor>`. In the examples, `L` is the lesson id and `C` is the cursor; after each reply, set `C` to its `cursor`.
+**The cursor.** Every reply from LearnHarness about a lesson you can write to carries `cursor`, the id of the newest message in the lesson. Replies made by `lh` itself (`usage`, `unreachable`, `bad_reply`, a `--wait` timeout) carry none. A new lesson created without `--prompt` is empty, and its cursor is the lesson id. Pass the lesson id only when a reply gave it to you as the cursor. As `--after`, the lesson id means "from the start". On a lesson created with a prompt, a turn sent with the lesson id as `--after` is refused as `unread_input` until a Bot Teacher turn is saved. After that, such a turn counts as a repeat if it matches any saved Bot Teacher turn, and saves nothing. Every turn command needs `--after <cursor>`. In the examples, `L` is the lesson id and `C` is the cursor; after each reply, set `C` to its `cursor`.
 
-**Items.** Learner input comes back as `items`. `lh answer` always has them. A create, a repeat, `lh show`, and an `unread_input` or `bad_after` refusal carry `items` when there is learner input you have not responded to. That is everything after your last turn, or everything since the lesson began if you have not taken a turn. In an `unread_input` refusal, the items start after your `--after` instead when that message is newer than your last turn. A create with `--prompt` returns the prompt this way. Read the items in every reply that has them, and respond to all of them, before your next turn.
+**Items.** Learner input comes back as `items`. `lh answer` always has them. A create, a repeat, `lh show`, and an `unread_input` or `bad_after` refusal carry `items` when there is learner input you have not responded to. That is everything after the last saved Bot Teacher turn, yours or an earlier Bot Teacher's, or everything since the lesson began if there is none. In an `unread_input` refusal, the items start after your `--after` instead when that message is newer than that turn. A create with `--prompt` returns the prompt this way. Read the items in every reply that has them, and respond to all of them, before your next turn.
 
 **Input.** `say` and `plan` read plain text. `ask`, `probe`, `recall`, `probe-done`, `quiz` and `explain` read one JSON object. Both come from `--file <path>` or stdin; the examples use a quoted heredoc (`<<'EOF'`), which keeps `$` and backticks literal. The JSON never carries `kind` or `after`. Those come from the command line.
 
@@ -68,7 +68,7 @@ Rerunning with the same key returns the same lesson with `"existing":true` and s
 
 ### Which kinds each phase takes
 
-`lh show` reports the phase. A turn that does not fit is refused with `wrong_phase`, the current `phase`, and the kinds `allowed` now (section 5).
+`lh show` reports the phase. A turn that does not fit is refused with `wrong_phase`, the current `phase`, and the kinds `allowed` now (section 5). A repeat is accepted in any phase.
 
 | kind | phases | what it posts |
 |---|---|---|
@@ -194,7 +194,7 @@ LearnHarness never grades free recall. For an answer of kind `explain`, compare 
 
 ### Takeover
 
-While the learner has taken over your browser, you are paused. They answer, skip, or type on the page, then click "I'm done", and you resume. On resume, run `lh answer "$L"` once and act on its items. Empty items mean they did nothing. Ask them in the Cursor chat what they want.
+While the learner has taken over your browser, you are paused. They answer, skip, or type on the page, then click "I'm done", and you resume. On resume, run `lh answer "$L"` once and act on its items. Empty items mean they did nothing. Ask them in the Cursor app's chat what they want.
 
 Use `--wait` only when the learner answers outside a takeover, while you keep running:
 
@@ -202,15 +202,15 @@ Use `--wait` only when the learner answers outside a takeover, while you keep ru
 lh answer "$L" --wait --timeout 300
 ```
 
-`--wait` takes no value. It checks every 2 s until there is at least one item, for 600 s unless `--timeout <seconds>` says otherwise. A timeout (exit 2) means the learner has not answered. Wait again, or ask them in the Cursor chat.
+`--wait` takes no value. It checks every 2 s until there is at least one item, for 600 s unless `--timeout <seconds>` says otherwise. A timeout (exit 2) means the learner has not answered. Wait again, or ask them in the Cursor app's chat.
 
 ## 5. Refusals and recovery
 
-LearnHarness runs its checks before it saves anything, so a refused turn saved nothing. Fix it and resend. Refusals about a lesson carry the `cursor`; `not_found`, `not_bot_run`, `key_required`, `usage`, the `forbidden_*` codes, a create's `save_failed`, and a `--wait` timeout do not.
+LearnHarness runs its checks before it saves anything, so a refused turn adds nothing to the lesson's transcript. Fix it and resend. Refusals about a lesson carry the `cursor`; `not_found`, `not_bot_run`, `key_required`, `usage`, the `forbidden_*` codes, and a create's `save_failed` do not.
 
 | code | what to do |
 |---|---|
-| `unread_input` | The learner added input after your cursor. Read `items`, take the new `cursor`, and respond to that input. |
+| `unread_input` | The learner added input after your cursor and after the last saved Bot Teacher turn. Read `items`, take the new `cursor`, and respond to that input. |
 | `open_question` | Wait for the open question's answer or skip. |
 | `wrong_phase` | Use one of the kinds in `allowed`. |
 | `invalid` | The payload failed the tool's checks. `problems` says what to fix. |
@@ -219,7 +219,7 @@ LearnHarness runs its checks before it saves anything, so a refused turn saved n
 | `not_bot_run` | The lesson belongs to LearnHarness's own model. Create your own with `lh lesson new`. |
 | `key_required` | `lh lesson new` needs `--key`, which makes a rerun return the same lesson. |
 | `usage` | `lh` refused the command line before sending it: a missing flag, a misspelled flag, JSON that does not parse. |
-| `save_failed` | The disk write failed. Rerun the same command. |
+| `save_failed` | The disk write failed. Rerun the same command. On a `plan` turn, the map may already be stored, but the turn is not in the transcript. |
 | `internal_error` | LearnHarness failed on its own bug and saved nothing. Read `/workspace/lh-server.log`. Resending the same turn fails the same way. |
 | `forbidden_origin`, `forbidden_host` | The request came from a browser, or through a non-loopback host name. Call through `lh` on this computer. |
 
