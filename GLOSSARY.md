@@ -17,7 +17,7 @@ The outside agent that plays both the prober and the teacher in a bot-run lesson
 _Avoid_: External model, driver
 
 **Learner input**:
-Everything the learner did since the Bot Teacher's last turn: answers, skips, and typed messages.
+Everything the learner did since the Bot Teacher's last saved turn: answers, skips, and typed messages.
 _Avoid_: Reply, response
 
 **Item**:
@@ -25,7 +25,7 @@ One piece of learner input, as the Bot Teacher receives it.
 _Avoid_: Event, entry
 
 **Phase**:
-One of a lesson's three stages, in order: probe (find what the learner already knows), plan (lay out the path), teach (walk it). Each phase limits which kinds of turn are allowed.
+One of a lesson's three parts, in order: probe (find what the learner already knows), plan (lay out the path), teach (walk it). LearnHarness allows only some kinds of turn, and some of its model's tools, in each phase.
 _Avoid_: Stage, mode
 
 **Strand**:
@@ -43,15 +43,15 @@ One go at a lesson by whoever teaches it: one lh turn command from the Bot Teach
 _Avoid_: Message (one turn can store several)
 
 **Cursor**:
-The newest point in a lesson's transcript, as of LearnHarness's latest reply to the Bot Teacher. The Bot Teacher sends a cursor with each turn, and LearnHarness refuses any turn that is not a repeat while learner input is newer than both that cursor and the Bot Teacher's last turn.
+The newest point in a lesson's transcript, as of LearnHarness's latest reply to the Bot Teacher. The Bot Teacher sends a cursor with each turn, and LearnHarness refuses any turn that is not a repeat while learner input is newer than both that cursor and the Bot Teacher's last saved turn.
 _Avoid_: Offset, position
 
 **Repeat**:
 A Bot Teacher turn that matches a turn already in the lesson past the cursor sent with it. LearnHarness accepts it and saves nothing.
-_Avoid_: Duplicate, retry
+_Avoid_: Duplicate, retry (the resend, which may or may not be a repeat)
 
 **Refusal**:
-LearnHarness turning down a request and saying why, or lh turning down a command line before sending it. A refused turn adds nothing to the lesson's transcript.
+LearnHarness not doing what a request asked and saying why, or lh turning down a command line before sending it. A refused turn adds nothing to the lesson's transcript.
 _Avoid_: Error, rejection
 
 ## Bots

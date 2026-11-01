@@ -218,7 +218,7 @@ LearnHarness runs its checks before it saves anything, so a refused turn saved n
 | `not_found` | No lesson with that id. |
 | `not_bot_run` | The lesson belongs to LearnHarness's own model. Create your own with `lh lesson new`. |
 | `key_required` | `lh lesson new` needs `--key`, which makes a rerun return the same lesson. |
-| `usage` | `lh` rejected the command line before sending it: a missing flag, a misspelled flag, JSON that does not parse. |
+| `usage` | `lh` refused the command line before sending it: a missing flag, a misspelled flag, JSON that does not parse. |
 | `save_failed` | The disk write failed. Rerun the same command. |
 | `internal_error` | LearnHarness failed on its own bug and saved nothing. Read `/workspace/lh-server.log`. Resending the same turn fails the same way. |
 | `forbidden_origin`, `forbidden_host` | The request came from a browser, or through a non-loopback host name. Call through `lh` on this computer. |
