@@ -39,7 +39,7 @@ _Avoid_: Pending question, dangling question
 ## Turns
 
 **Turn**:
-One go at a lesson by whoever teaches it: one lh turn command from the Bot Teacher, or one full run of LearnHarness's own model. A Bot Teacher turn is one of: teaching text, a question, a plan, or the assessment that ends the probe.
+One go at a lesson by whoever teaches it: one teaching command from the Bot Teacher (`lh say`, `lh ask` and the like), or one full run of LearnHarness's own model. A Bot Teacher turn is one of: teaching text, a question, a plan, or the assessment that ends the probe.
 _Avoid_: Message (one turn can store several)
 
 **Cursor**:
@@ -47,11 +47,11 @@ The newest point in a lesson's transcript, as of LearnHarness's latest reply to 
 _Avoid_: Offset, position
 
 **Repeat**:
-A Bot Teacher turn that matches a turn already in the lesson past the cursor sent with it. LearnHarness accepts it and saves nothing.
+A Bot Teacher turn that matches a turn saved after the cursor it was sent with. LearnHarness accepts it and saves nothing.
 _Avoid_: Duplicate, retry (the resend, which may or may not be a repeat)
 
 **Refusal**:
-LearnHarness not doing what a request asked and saying why, or lh turning down a command line before sending it. A refused turn adds nothing to the lesson's transcript.
+LearnHarness answering a request with a failure instead of doing it, and saying why, or `lh` turning down a command line before sending it. A refused turn adds nothing to the lesson's transcript.
 _Avoid_: Error, rejection
 
 ## Bots
