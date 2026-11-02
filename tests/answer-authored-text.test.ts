@@ -332,7 +332,8 @@ describe("ordinary lessons, and which order a hand-built answer used", () => {
 			answers: [{ index: 2, label: "$" }],
 			correct: false, correctIndices: [3], answeredAt: new Date().toISOString(),
 		};
-		const details = stored(CALL, "quiz", { question: "Which?", options: OPTS, correctAnswer: "two" }, sent);
+		const details = stored(CALL, "quiz", { question: "Which?", options: OPTS, explanation: "e", correctAnswer: "two" }, sent);
+		assert.equal(details.questionText, "Which?", "the call parsed");
 		assert.deepEqual(details.options, sent.options);
 		assert.deepEqual(details.answers, sent.answers);
 	});
@@ -400,7 +401,7 @@ describe("ordinary lessons, and which order a hand-built answer used", () => {
 		}
 	});
 
-	it("a pick's value binds its own row even when the row's label could be two options", () => {
+	it("a pick's value binds its own row even when the row's label could be two options, and settles the other", () => {
 		const OPTS = [{ label: "$n$", value: "n" }, { label: "$k$", value: "k" }, { label: "$2$", value: "two" }];
 		const sent = {
 			kind: "quiz", tool: "quiz", questionText: "q", dontKnow: false,
@@ -409,8 +410,20 @@ describe("ordinary lessons, and which order a hand-built answer used", () => {
 			correct: false, correctIndices: [3], answeredAt: new Date().toISOString(),
 		};
 		const details = stored(CALL, "quiz", { question: "Which?", options: OPTS, explanation: "e", correctAnswer: "two" }, sent);
-		assert.deepEqual(details.options, [{ index: 1, label: "$" }, { index: 2, label: "$k$" }, { index: 3, label: "$2$" }]);
+		// Row 1's `$` could be `$n$`, `$k$` or `$2$`; the pick takes `$k$` and row 3 is `$2$`.
+		assert.deepEqual(details.options, [{ index: 1, label: "$n$" }, { index: 2, label: "$k$" }, { index: 3, label: "$2$" }]);
 		assert.deepEqual(details.answers, [{ index: 2, label: "$k$", value: "k" }]);
+	});
+
+	it("two rows left with the same option contradict each other, so neither binds", () => {
+		const OPTS = [{ label: "$n$", value: "n" }, { label: "$k$", value: "k" }, { label: "plain", value: "p" }];
+		const sent = {
+			kind: "quiz", tool: "quiz", questionText: "q", dontKnow: false,
+			options: [{ index: 1, label: "$" }, { index: 2, label: "$" }, { index: 3, label: "$k$" }],
+			answers: [], correct: false, correctIndices: [3], answeredAt: new Date().toISOString(),
+		};
+		const details = stored(CALL, "quiz", { question: "Which?", options: OPTS, explanation: "e", correctAnswer: "p" }, sent);
+		assert.deepEqual(details.options, [{ index: 1, label: "$" }, { index: 2, label: "$" }, { index: 3, label: "$k$" }]);
 	});
 
 	it("two rows naming the same option both stay as sent; the rest still bind", () => {
@@ -465,6 +478,39 @@ describe("backslash TeX through a real double-quoted bash string", () => {
 		const sent = viaBash({ labels: TEX.options.map((o) => o.label) }) as { labels: string[] };
 		// "\f" and "\t" here are the form feed and tab JSON made of `\frac`, `\times`, `\theta`.
 		assert.deepEqual(sent.labels, ["$\frac{n}{2^k}$", " \times k$", "$\theta$ items"]);
+	});
+
+	it("a bash-mangled answer whose picked value settles the last ambiguous row gets every row back", () => {
+		const OPTS = [{ label: "$n/2^k$", value: "halved" }, { label: "$n$", value: "n" }, { label: "$k$", value: "k" }];
+		const call = { question: "Which?", options: OPTS, explanation: "e", correctAnswer: "halved" };
+		const answer = viaBash({
+			kind: "quiz", tool: "quiz", questionText: "Which?", dontKnow: false,
+			options: OPTS.map((o, i) => ({ index: i + 1, label: o.label })),
+			answers: [{ index: 3, label: "$k$", value: "k" }],
+			correct: false, correctIndices: [1], answeredAt: new Date().toISOString(),
+		}) as QuestionAnswerData;
+		assert.deepEqual(answer.options!.map((o) => o.label), ["/2^k$", "$", "$"], "what bash sent");
+		const details = stored(CALL, "quiz", call, answer);
+		assert.deepEqual(details.options!.map((o) => o.label), ["$n/2^k$", "$n$", "$k$"]);
+	});
+
+	it("through the bot-run route: a probe with the bench strings and backslash TeX, sent through bash", async () => {
+		const { id, cursor } = await lesson();
+		const BENCH = { ...PROBE, options: [...PROBE.options, { label: "$\\frac{n}{2^k}$ rounded", value: "frac" }] };
+		await asks(id, cursor, "probe", BENCH);
+		const pending = pendingQuestionOf(messages(id))!;
+		const order = pageOrder(pending.toolCallId, BENCH.options);
+		const sent = viaBash(quizAnswer("probe", BENCH, order, "frac", (x) => x)) as Json;
+		assert.equal(sent.questionText, "After $ halvings starting from $ items, about how many items remain?", "bash mangled it");
+		assert.equal(sent.answers[0].label, "$\frac{n}{2^k}$ rounded", "a form feed where \\f was");
+		await postAnswer(id, pending.toolCallId, sent);
+		const details = lastDetails(id);
+		assert.equal(details.questionText, PROBE.question);
+		assert.equal(details.explanation, PROBE.explanation);
+		assert.deepEqual(details.options, order.map((o, i) => ({ index: i + 1, label: o.label })));
+		assert.deepEqual(details.answers.map((a) => a.label), ["$\\frac{n}{2^k}$ rounded"]);
+		const [item] = (await answer(id)).body.items;
+		assert.deepEqual(item.answers.map((a: Json) => a.label), ["$\\frac{n}{2^k}$ rounded"]);
 	});
 
 	it("an answer sent that way gets every row and the pick back", () => {

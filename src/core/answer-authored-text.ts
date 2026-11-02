@@ -21,13 +21,17 @@
  * page's: one row per option, indexed 1..n, and picks pointing at those
  * rows. Anything else keeps its rows and picks exactly as sent. Ticket 21's
  * `lh submit` is the boundary that refuses malformed answers; this guard
- * only has to restore text and never make a request worse. */
+ * only has to restore text and never make a request worse.
+ *
+ * Upstream's answerForPresentation (answer-presentation.ts) binds rows for
+ * display only; this guard binds them for the stored record, so it keeps
+ * its own copy rather than editing that upstream file. */
 import { normalizeOptions, type QuestionAnswerData, type QuizOption } from "./question-core.ts";
 import { toolQuestionKind } from "./pending.ts";
 import { parseAskInput, parseExplainInput, parseQuizInput } from "./tool-parts.ts";
 
 type Row = { index: number; label: string };
-type Pick = { index: number; label: string; value?: string };
+type SentPick = { index: number; label: string; value?: string };
 
 export function withAuthoredText(
 	answer: QuestionAnswerData,
@@ -52,7 +56,7 @@ export function withAuthoredText(
 	const authored = normalizeOptions(options);
 	const rows = pageShaped(answer, authored.length);
 	if (!rows) return out;
-	const picks = answer.answers as Pick[];
+	const picks = answer.answers as SentPick[];
 
 	// Each pick's value names its option; each row's label names its own.
 	const pickOption = picks.map((a) => (a.value === undefined ? undefined : only(authored, (o) => names(a.value!, o.value))));
@@ -84,9 +88,10 @@ function pageShaped(answer: QuestionAnswerData, n: number): Row[] | undefined {
  *  it. A pick's value claims the row it points at; a row's label claims its
  *  option when it names just one. A label that names several (`$n$` and
  *  `$k$` both arrive as `$`) claims nothing but still rules out options it
- *  cannot be. A binding is kept only when it is unique both ways (one
- *  option per row, one row per option). */
-function bindRows(rows: Row[], picks: Pick[], pickOption: (QuizOption | undefined)[], authored: QuizOption[]): (QuizOption | undefined)[] {
+ *  cannot be, and once every other option it names is bound elsewhere,
+ *  it names the one left. A binding is kept only when it is unique both
+ *  ways (one option per row, one row per option). */
+function bindRows(rows: Row[], picks: SentPick[], pickOption: (QuizOption | undefined)[], authored: QuizOption[]): (QuizOption | undefined)[] {
 	const claims = rows.map(() => new Set<QuizOption>());
 	picks.forEach((a, i) => {
 		if (pickOption[i]) claims[a.index - 1]!.add(pickOption[i]!);
@@ -97,12 +102,30 @@ function bindRows(rows: Row[], picks: Pick[], pickOption: (QuizOption | undefine
 	});
 	const claimants = new Map<QuizOption, number>();
 	for (const set of claims) for (const option of set) claimants.set(option, (claimants.get(option) ?? 0) + 1);
-	return claims.map((set, i) => {
+	const bound = claims.map((set, i) => {
 		if (set.size !== 1) return undefined;
 		const option = [...set][0]!;
 		if (possible[i]!.length > 0 && !possible[i]!.includes(option)) return undefined; // the row's label says otherwise
 		return claimants.get(option) === 1 ? option : undefined;
 	});
+	// Rows with no claim whose label names several options: drop the options
+	// claimed anywhere; one left is that row's. Two rows left with the same
+	// one contradict each other, so neither binds. Repeat until nothing moves.
+	for (let moved = true; moved; ) {
+		moved = false;
+		const deduced = new Map<QuizOption, number[]>();
+		possible.forEach((named, i) => {
+			if (bound[i] || claims[i]!.size > 0 || named.length < 2) return;
+			const left = named.filter((o) => !claimants.has(o) && !bound.includes(o));
+			if (left.length === 1) deduced.set(left[0]!, [...(deduced.get(left[0]!) ?? []), i]);
+		});
+		for (const [option, at] of deduced) {
+			if (at.length !== 1) continue;
+			bound[at[0]!] = option;
+			moved = true;
+		}
+	}
+	return bound;
 }
 
 /** Does `sent` name `authored`: the same text, or what a bot's JSON body
