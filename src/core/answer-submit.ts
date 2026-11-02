@@ -258,6 +258,9 @@ export function planSubmit(lessonId: string, show: ShowReply, after: string, inp
 	}
 	const result = messages.find((m): m is Extract<ShownMessage, { role: "toolResult" }> => m.role === "toolResult" && "toolCallId" in m && m.toolCallId === call.toolCallId);
 	if (result) {
+		// The bot has posted since --after (the next question, or its reply
+		// to this answer): the cursor is stale, and this question is behind it.
+		if (messages.slice(at + 1).some((m) => m.role === "assistant")) return refuse("no_open_question", { error: "you posted after --after, so its question is closed; use the cursor from your latest reply", cursor, items });
 		let saved: Record<string, unknown> = {};
 		try {
 			saved = JSON.parse(result.text) as Record<string, unknown>;

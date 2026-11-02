@@ -248,13 +248,34 @@ describe("lh submit", () => {
 		assert.equal(other.json.code, "answered");
 		assert.deepEqual(other.json.saved.answers.map((a: Json) => a.index), [2]);
 		assert.equal(other.json.saved.confidence, 30);
+		const skip = await lh(["submit", id, "--after", cursor, "--skip"]);
+		assert.equal(skip.json.code, "answered");
 		const replied = await lh(["say", id, "--after", first.json.cursor], "Noted.");
 		assert.equal(replied.code, 0, JSON.stringify(replied.json));
 		const afterReply = await lh(["submit", id, "--after", replied.json.cursor], payload);
 		assert.equal(afterReply.json.code, "no_open_question", "once the bot replied, the question is behind it");
-		const skip = await lh(["submit", id, "--after", cursor, "--skip"]);
-		assert.equal(skip.json.code, "answered");
 		assert.equal(storedAnswers(id).length, 1);
+	});
+
+	it("a stale --after from before the next question is refused, and the open question still takes its answer", async () => {
+		const { id, cursor } = await asked("probe", PROBE);
+		const payload = JSON.stringify({ picks: [1], confidence: 50 });
+		const first = await lh(["submit", id, "--after", cursor], payload);
+		assert.equal(first.code, 0, JSON.stringify(first.json));
+		const next = await lh(["probe", id, "--after", first.json.cursor], JSON.stringify({ ...PROBE, text: "One more." }));
+		assert.equal(next.code, 0, JSON.stringify(next.json));
+		const posts = chatPosts();
+		for (const body of [payload, JSON.stringify({ picks: [2], confidence: 50 })]) {
+			const stale = await lh(["submit", id, "--after", first.json.cursor], body);
+			assert.equal(stale.code, 1, JSON.stringify(stale.json));
+			assert.equal(stale.json.code, "no_open_question");
+			assert.equal(stale.json.cursor, next.json.cursor);
+		}
+		assert.equal(chatPosts(), posts);
+		const fresh = await lh(["submit", id, "--after", next.json.cursor], payload);
+		assert.equal(fresh.code, 0, JSON.stringify(fresh.json));
+		assert.equal(fresh.json.repeat, false);
+		assert.equal(storedAnswers(id).length, 2);
 	});
 
 	it("a retried skip and a retried \"I don't know\" are repeats", async () => {

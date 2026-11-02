@@ -169,7 +169,8 @@ const FLAGS = {
 	submit: ["after", "file", "skip"],
 };
 
-/** The HTTP request a command line makes: `{ method, path, body? }`. */
+/** The HTTP request a command line makes, `{ method, path, body? }`, or
+ *  for `submit` the answer to save, `{ submit: { lesson, after, input | raw } }`. */
 async function requestFor(argv) {
 	const { positionals, flags } = parseArgs(argv);
 	const [command, ...rest] = positionals;
@@ -337,7 +338,7 @@ async function submit({ lesson, after, input, raw }, base) {
 			if (typeof sent === "number") return sent;
 			if (!sent.res.ok) {
 				if (attempt === 0) continue;
-				print({ ok: false, code: "refused", status: sent.res.status, error: sent.body?.error ?? sent.body });
+				print({ ok: false, code: "refused", status: sent.res.status, error: sent.body?.error ?? sent.body, cursor: shown.body.cursor });
 				return 1;
 			}
 		}
