@@ -1,5 +1,9 @@
 # Ticket 22 card screenshots
 
+The card at `/chat/<lesson id>/card` shows the same view for ordinary lessons as for bot-run lessons. Practice sessions get a note that the card covers lessons only.
+
+To retake every image: `bash .scratch/external-teacher/card-22/retake.sh` from the repo root (it starts and stops its own `next dev` on port 3722 and prints the capture report to /tmp/lh22-shot.txt).
+
 Made 2026-11-02 on linuxdev, retaken after the round-7 fixes (zoom steps undershoot so wide math, tables and inline formulas fit exactly; inline formulas shrink to their box; links render as plain links; a code block that would need less than half size wraps instead) (the card is in the page flow and hides the app shell; wide content, code blocks included, shrinks to fit the column; long words and inline code break; the renderers' copy buttons are hidden). The probe lesson's call id is new each run, so its shuffle differs between captures.
 
 - Server: `LH_DATA_DIR=<temp dir> LH_IGNORE_ENV_KEYS=1 npx next dev -H 127.0.0.1 -p 3722`, with the desktop variables unset and no keys.
