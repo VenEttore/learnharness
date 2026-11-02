@@ -12,7 +12,7 @@ import * as path from "node:path";
 import { PATHS } from "../../config.ts";
 import { emit } from "../core/events.ts";
 import type { ChatStore } from "../core/ports.ts";
-import type { ChatRecord, ChatSettings, ChatSummary, ExtractionRunUsage, PlanTree, TurnUsage } from "../core/contracts.ts";
+import type { ChatDriverInit, ChatRecord, ChatSettings, ChatSummary, ExtractionRunUsage, PlanTree, TurnUsage } from "../core/contracts.ts";
 import { CURRENT_CHAT_VERSION } from "../core/contracts.ts";
 import type { LhMessage } from "../core/native-messages.ts";
 import { activeProblemOf, danglingQuestionOf } from "../core/native-messages.ts";
@@ -31,18 +31,23 @@ function chatFile(id: string): string {
  *  spam the bus, and every list-visible change it causes (title, order,
  *  phase, busy, pendingQuestion) is already announced by turn-started /
  *  turn-settled, which the sidebar refetches on. Silence here is law,
- *  not oversight. */
-function createChat(title: string, kind?: "practice"): ChatRecord {
+ *  not oversight. The exceptions (fork): bot-run writes and the silent
+ *  dismissal (Skip) have no turn events, so server/bot-run.ts's commit
+ *  helper and the dismiss route emit chats-changed after their
+ *  saveMessages. The store itself stays silent. */
+function createChat(title: string, kind?: "practice", init?: ChatDriverInit): ChatRecord {
 	const now = new Date().toISOString();
 	const record: ChatRecord = {
 		id: `chat_${Date.now().toString(36)}_${crypto.randomUUID().slice(0, 8)}`,
 		title: title.trim() || "Untitled session",
 		createdAt: now,
 		updatedAt: now,
-		messages: [],
+		messages: init?.messages ?? [],
 		// Practice sessions carry the marker; teach stays ABSENT (absence
 		// reads as teach — pre-practice records never migrate).
 		...(kind === "practice" ? { kind: "practice" as const } : {}),
+		...(init ? { driver: init.driver } : {}),
+		...(init?.externalKey !== undefined ? { externalKey: init.externalKey } : {}),
 	};
 	fs.mkdirSync(PATHS.chats, { recursive: true });
 	writeChat(record);
@@ -53,9 +58,24 @@ function createChat(title: string, kind?: "practice"): ChatRecord {
 /** THE WRITE CHOKE POINT (schema-versioning wave, owner 2026-10-10): every
  *  record persist goes through here and carries the CURRENT version stamp —
  *  lazy migration means existing files only get stamped on their next write.
- *  A future-version guard lives on the read side (getChat). */
+ *  A future-version guard lives on the read side (getChat).
+ *  Tmp + rename (fork, external-teacher 16), the pattern graph.ts uses: a
+ *  write cut off partway leaves the previous file whole. The tmp name does
+ *  not end in .json, so listChats never sees it. */
 function writeChat(record: ChatRecord): void {
-	fs.writeFileSync(chatFile(record.id), JSON.stringify({ ...record, version: CURRENT_CHAT_VERSION }, null, "\t"), "utf-8");
+	const file = chatFile(record.id);
+	const tmp = `${file}.tmp-${crypto.randomUUID().slice(0, 8)}`;
+	try {
+		fs.writeFileSync(tmp, JSON.stringify({ ...record, version: CURRENT_CHAT_VERSION }, null, "\t"), "utf-8");
+		fs.renameSync(tmp, file);
+	} catch (err) {
+		try {
+			fs.unlinkSync(tmp);
+		} catch {
+			/* the rename either already happened or the tmp never existed */
+		}
+		throw err;
+	}
 }
 
 function getChat(id: string): ChatRecord | null {

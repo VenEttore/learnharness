@@ -27,6 +27,19 @@ import type { EmissionStats } from "./graph.ts";
  *  practice agent, its two tools, no extraction, no graph writes. */
 export type ChatKind = "teach" | "practice";
 
+/** Who drives the lesson's turns (fork, ADR 0001). Only "external"
+ *  exists; absence means LearnHarness's own model. */
+export type ChatDriver = "external";
+
+/** The bot-run fields createChat may stamp at birth. */
+export interface ChatDriverInit {
+	driver: ChatDriver;
+	externalKey?: string;
+	/** The lesson's first messages, written in the same save as the
+	 *  record, so no crash can leave the lesson without them. */
+	messages?: LhMessage[];
+}
+
 export interface ChatRecord {
 	id: string;
 	title: string;
@@ -35,6 +48,14 @@ export interface ChatRecord {
 	messages: LhMessage[];
 	/** The session's kind — absent = teach (pre-practice records). */
 	kind?: ChatKind;
+	/** Bot-run lesson (fork, ADR 0001): "external" means an outside Bot
+	 *  Teacher writes the turns and LearnHarness never calls its model.
+	 *  Absent = LearnHarness drives, as before. */
+	driver?: ChatDriver;
+	/** The Bot Teacher's create key, stored at birth. The create route
+	 *  (external-teacher ticket 03) uses it to return this lesson on a
+	 *  rerun instead of making a new one. Bot-run lessons only. */
+	externalKey?: string;
 	/** The session's plan tree (vision §2) — written by plan tools via saveTree. */
 	tree?: PlanTree;
 	/** Append-only usage log (observability, 2026-09): one entry per model
@@ -271,6 +292,10 @@ export interface ChatSummary {
 	/** Practice sessions (2026-10-04): a posed problem with no conclude —
 	 *  the sidebar meta's "Problem waiting". Absent on teaching sessions. */
 	pendingProblem: boolean;
+	/** Bot-run fields (fork, ADR 0001), riding the summary spread like
+	 *  `settings`; the external create route finds a lesson by its key. */
+	driver?: ChatDriver;
+	externalKey?: string;
 	/** The record's model-control settings — rides the list payload via the
 	 *  summary spread (the picker never needs it from here; the full record
 	 *  is its source). */

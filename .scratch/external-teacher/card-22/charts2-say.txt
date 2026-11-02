@@ -1,0 +1,50 @@
+Plot of 2^x:
+
+```mermaid
+xychart-beta
+  title "Doubling"
+  x-axis [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+  y-axis "Items" 0 --> 1100
+  line [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024]
+```
+
+Quadrants:
+
+```mermaid
+quadrantChart
+  title Effort and payoff
+  x-axis Low effort --> High effort
+  y-axis Low payoff --> High payoff
+  quadrant-1 Plan it
+  quadrant-2 Do it now
+  quadrant-3 Skip it
+  quadrant-4 Delegate
+  Halving: [0.3, 0.8]
+  Counting: [0.7, 0.4]
+```
+
+Relations:
+
+```mermaid
+erDiagram
+  ITEM_PILE ||--o{ THE_HALF_OF_PILE : splits
+  ITEM_PILE ||--o{ THE_HALVING_COUNT : records
+```
+
+Classes:
+
+```mermaid
+classDiagram
+  Pile "1" --> "*" HalfPile : splits
+  Pile "1" --> "*" HalvingCount : records
+  Pile "1" --> "*" StepLog : takes
+```
+
+Styled small:
+
+```mermaid
+graph TD
+  A[Big node] --> B[Tiny by class]
+  classDef tiny font-size:8px
+  class B tiny
+```

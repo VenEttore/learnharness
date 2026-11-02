@@ -50,6 +50,10 @@ export type { FilePathPart } from "./file-paths.ts";
 export * from "./view.ts";
 export * from "./tool-parts.ts";
 export * from "./answer-presentation.ts";
+// Fork (external-teacher 22): the phone question card.
+export * from "./question-card.ts";
+// Fork (external-teacher 21): lh submit's answer code, shared with the question dock.
+export * from "./answer-submit.ts";
 export * from "./prices.ts";
 export * from "./context-usage.ts";
 export type { ChatGPTStatus, ChatGPTControlBridge } from "./contracts/chatgpt.ts";
