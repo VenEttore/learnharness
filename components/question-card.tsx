@@ -153,6 +153,8 @@ function useFitWideContent(ref: React.RefObject<HTMLDivElement | null>) {
 			// A chart is an svg scaled to the column: it cannot wrap or zoom
 			// back up. Like the plan map, hide one whose labels would read
 			// under MIN_NODE_TEXT_PX; the sheet's style shows a note instead.
+			// Known limit (accepted): the rule checks label size, not overlap,
+			// so a gantt's day ticks can overprint at 390 px and still show.
 			for (const chart of charts) {
 				const svg = chart.querySelector("svg");
 				const viewWidth = svg?.viewBox.baseVal?.width;
