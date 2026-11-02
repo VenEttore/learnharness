@@ -59,8 +59,15 @@ export function withAuthoredText(
 	const picks = answer.answers as SentPick[];
 
 	// Each pick's value names its option; each row's label names its own.
-	const pickOption = picks.map((a) => (a.value === undefined ? undefined : only(authored, (o) => names(a.value!, o.value))));
-	const rowOption = bindRows(rows, picks, pickOption, authored);
+	// Lookups go through an index built once, so the cost stays linear in
+	// the options (a quiz has no upper bound on them).
+	const byValue = textIndex(authored.map((o) => o.value), authored);
+	const byLabel = textIndex(authored.map((o) => o.label), authored);
+	const pickOption = picks.map((a) => {
+		const named = a.value === undefined ? [] : byValue.get(a.value) ?? [];
+		return named.length === 1 ? named[0] : undefined;
+	});
+	const rowOption = bindRows(rows, picks, pickOption, (label) => byLabel.get(label) ?? []);
 	out.options = rows.map((row, i) => (rowOption[i] ? { ...row, label: rowOption[i]!.label } : row));
 	// A hand-built pick may lack its value; it stays without one.
 	out.answers = picks.map((a, i) => {
@@ -91,14 +98,14 @@ function pageShaped(answer: QuestionAnswerData, n: number): Row[] | undefined {
  *  cannot be, and once every other option it names is bound elsewhere,
  *  it names the one left. A binding is kept only when it is unique both
  *  ways (one option per row, one row per option). */
-function bindRows(rows: Row[], picks: SentPick[], pickOption: (QuizOption | undefined)[], authored: QuizOption[]): (QuizOption | undefined)[] {
+function bindRows(rows: Row[], picks: SentPick[], pickOption: (QuizOption | undefined)[], named: (label: string) => QuizOption[]): (QuizOption | undefined)[] {
 	const claims = rows.map(() => new Set<QuizOption>());
 	picks.forEach((a, i) => {
 		if (pickOption[i]) claims[a.index - 1]!.add(pickOption[i]!);
 	});
-	const possible = rows.map((row) => authored.filter((o) => names(row.label, o.label)));
-	possible.forEach((named, i) => {
-		if (named.length === 1) claims[i]!.add(named[0]!);
+	const possible = rows.map((row) => named(row.label));
+	possible.forEach((options, i) => {
+		if (options.length === 1) claims[i]!.add(options[0]!);
 	});
 	const claimants = new Map<QuizOption, number>();
 	for (const set of claims) for (const option of set) claimants.set(option, (claimants.get(option) ?? 0) + 1);
@@ -111,30 +118,40 @@ function bindRows(rows: Row[], picks: SentPick[], pickOption: (QuizOption | unde
 	// Rows with no claim whose label names several options: drop the options
 	// claimed anywhere; one left is that row's. Two rows left with the same
 	// one contradict each other, so neither binds. Repeat until nothing moves.
+	const taken = new Set(bound.filter((o) => o !== undefined));
 	for (let moved = true; moved; ) {
 		moved = false;
-		const deduced = new Map<QuizOption, number[]>();
-		possible.forEach((named, i) => {
-			if (bound[i] || claims[i]!.size > 0 || named.length < 2) return;
-			const left = named.filter((o) => !claimants.has(o) && !bound.includes(o));
-			if (left.length === 1) deduced.set(left[0]!, [...(deduced.get(left[0]!) ?? []), i]);
+		const deduced = new Map<QuizOption, number>(); // option -> its row, or -1 when two rows are left with it
+		possible.forEach((options, i) => {
+			if (bound[i] || claims[i]!.size > 0 || options.length < 2) return;
+			const left = options.filter((o) => !claimants.has(o) && !taken.has(o));
+			if (left.length === 1) deduced.set(left[0]!, deduced.has(left[0]!) ? -1 : i);
 		});
-		for (const [option, at] of deduced) {
-			if (at.length !== 1) continue;
-			bound[at[0]!] = option;
+		for (const [option, row] of deduced) {
+			if (row === -1) continue;
+			bound[row] = option;
+			taken.add(option);
 			moved = true;
 		}
 	}
 	return bound;
 }
 
-/** Does `sent` name `authored`: the same text, or what a bot's JSON body
- *  makes of it inside a double-quoted shell string? There bash expands every
- *  `$name` and `$1`..`$9` (unset: to nothing) and turns the JSON's `\\` into
- *  `\`, so JSON then reads the authored TeX `\frac` as a form feed and
- *  `rac`, `\times` as a tab and `imes`. */
-function names(sent: string, authored: string): boolean {
-	return sent === authored || sent === throughShell(authored);
+/** Sent text -> the options it names: each option's authored text, and
+ *  what a bot's JSON body makes of it inside a double-quoted shell string.
+ *  There bash expands every `$name` and `$1`..`$9` (unset: to nothing) and
+ *  turns the JSON's `\\` into `\`, so JSON then reads the authored TeX
+ *  `\frac` as a form feed and `rac`, `\times` as a tab and `imes`. */
+function textIndex(texts: string[], options: QuizOption[]): Map<string, QuizOption[]> {
+	const index = new Map<string, QuizOption[]>();
+	texts.forEach((text, i) => {
+		for (const form of new Set([text, throughShell(text)])) {
+			const named = index.get(form);
+			if (named) named.push(options[i]!);
+			else index.set(form, [options[i]!]);
+		}
+	});
+	return index;
 }
 
 const JSON_ESCAPES: Record<string, string> = { "\"": "\"", "\\": "\\", "/": "/", b: "\b", f: "\f", n: "\n", r: "\r", t: "\t" };
@@ -144,11 +161,6 @@ function throughShell(authored: string): string {
 		.replace(/\$(?:[A-Za-z_][A-Za-z0-9_]*|[1-9])/g, "")
 		.replace(/\\(["\\/bfnrt]|u[0-9a-fA-F]{4})/g, (_, e: string) =>
 			e.length === 5 ? String.fromCharCode(parseInt(e.slice(1), 16)) : JSON_ESCAPES[e]!);
-}
-
-function only<T>(list: T[], test: (item: T) => boolean): T | undefined {
-	const hits = list.filter(test);
-	return hits.length === 1 ? hits[0] : undefined;
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {

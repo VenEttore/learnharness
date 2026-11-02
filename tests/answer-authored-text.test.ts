@@ -401,6 +401,22 @@ describe("ordinary lessons, and which order a hand-built answer used", () => {
 		}
 	});
 
+	it("the page's answer to an 8,000-option quiz stores in linear time", () => {
+		// Interrogate round 3: pairwise matching took about 14 s here.
+		const OPTS = Array.from({ length: 8_000 }, (_, i) => ({ label: `$x_{${i}}$`, value: `v${i}` }));
+		const order = pageOrder("call_big", OPTS);
+		const qd = {
+			id: "call_big", kind: "quiz" as const, question: "Which?", mode: "single-select" as const, options: order,
+			createdAt: "", correctIndices: [1], explanation: "e",
+		};
+		const fromPage = buildAnswer(qd, { values: [order[0]!.value], confidence: 50 }, "quiz");
+		const started = performance.now();
+		const details = stored("call_big", "quiz", { question: "Which?", options: OPTS, explanation: "e", correctAnswer: order[0]!.value }, fromPage);
+		const ms = performance.now() - started;
+		assert.ok(ms < 3_000, `took ${Math.round(ms)} ms`);
+		assert.deepEqual(JSON.parse(JSON.stringify(details)), JSON.parse(JSON.stringify(fromPage)), "stored as the page sent it");
+	});
+
 	it("a pick's value binds its own row even when the row's label could be two options, and settles the other", () => {
 		const OPTS = [{ label: "$n$", value: "n" }, { label: "$k$", value: "k" }, { label: "$2$", value: "two" }];
 		const sent = {
