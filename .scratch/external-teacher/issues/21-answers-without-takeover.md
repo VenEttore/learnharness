@@ -25,3 +25,31 @@ From ticket 15's bench (P1, P2, P3). On the bench, Ven was on a phone. The lesso
 - [ ] From bench 2 (2026-11-02, Ven's test bot): the guide says hand-built answer bodies must go through `--file`, a single-quoted heredoc or `curl --data-binary @file`, never a double-quoted string. Say why: bash expands `$name` and runs `$(...)` from lesson text while building the body (bench 2 N3). Bench 2 found these paths clean in every case. If ticket 20 ships with known limits, list them in the guide.
 - [ ] From bench 2: the API stores any confidence value as sent (null, 150, "high"), and `correct` is trusted from the client. Both predate this feature. `lh submit` enforces the page's values; note the server side as a known limit unless a guard is cheap.
 - [ ] `lh submit` refuses a null or out-of-range pick before sending (ticket 20 found upstream compactAnswerForModel crashes on a null pick entry).
+
+## Comments
+
+### Stopped at the review cap 2026-11-02 (3 of 3 rounds this launch; Status stays claimed)
+Branch `external-teacher-21-answers-without-takeover`, tip 5639103. Rounds used on this ticket: 3 of 8.
+
+Completed (every checklist box has code, guide text or a test; none is deferred):
+- `lh submit <lesson> --after <cursor>` (`scripts/lh.mjs`) reads one JSON object from `--file` or stdin: `picks` (card numbers), `confidence`, `thinking`, `dontKnow`, `text`, `other`, or `{"skip":true}` alone. It reads the lesson with `lh show`'s route, checks the answer against the question open at `--after`, and saves it through the page's own routes, POST /api/chat for an answer and POST /api/chats/<id>/dismiss for a skip. No server route was added. The reply is `lh answer`'s reply after the save, plus `repeat` and `toolCallId`.
+- The answer record comes from the dock's own code. The dock's QuestionData builder moved, unchanged, into `questionDataOf` in `src/core/answer-submit.ts` (new), and `components/question-dock.tsx` now calls it (a net 50-line deletion there; `src/core/index.ts` exports the file). `planSubmit` builds the dock's AnswerRequest and runs upstream `buildAnswer`, so grading, the option snapshot, the explanation and the commitment match the page.
+- Card order: `questionDataOf` orders options with ticket 22's `displayedQuestionOptions`, the function the card and the dock use. lh.mjs is plain Node with no build step, so it loads `answer-submit.ts` through tsx's `tsImport` (tsx is a dev dependency `npm ci` installs). Without tsx, `lh submit` refuses with `usage` and an `npm ci` hint. Other commands still need nothing. A submit costs about 0.5 to 0.7 s more than `lh show` for the load.
+- Refused before anything is sent: unknown fields, non-integer or null picks (`usage`); picks out of range or doubled, a quiz or probe pick without a confidence of 0/30/50/70/90/100, confidence or "I don't know" where the page has none, a single-select pick beside `other`, fields a typed-answer question does not take (`invalid`, with the card's numbered options). Also `unread_input`, `bad_after`, `no_open_question`, and `answered` (with the `saved` answer).
+- Retries: the same submit again is `"repeat":true` and saves nothing, with the same `--after` or a later cursor, until the bot posts after the answer. After that, `no_open_question`. A page answer racing a submit leaves one answer: `repeat` if equal, `answered` if not.
+- `lh` refuses with `node_version` on Node 16 to 21 (see open item 1 for older Node).
+- Guide (`docs/external-teacher.md`): section 4 "Answers outside the page" (Take over is slow from a phone; card screenshot, widget from the main agent only, pick, confidence and "why" together, no right or wrong before the confidence, `lh submit`, grade from its reply, numbers not labels, `lh show` is authored order, field and refusal tables, retries, math in chat as `\( \)`, the never-double-quoted rule with ticket 20's limits A, B1 and the `$?`/`$$`/`$(...)` leftovers, and the server storing any confidence and trusting `correct`). Section 2: the double-quoted rule for all `lh` input. Section 6: the Grok Bot stand-in table. Section 1: the "Loading..."/"Compiling..." note and Node 22.
+- Ticket 19's deferred wording: guide step 5 (exact not_found reply), the another-port case, plan resend vs `open_question`, spec.md bot_run_lesson over HTTP, and the exit-1 wording in lh.mjs and spec.md.
+- GLOSSARY: "Lead-in", "Question card"; "Repeat" covers `lh submit`.
+- Server-side limits (any confidence stored, `correct` from the client): left as known limits in the guide. A guard would change the upstream answer route for every lesson; `lh submit` is the supported path and sends only page values.
+- `tests/lh-submit.test.ts` (new, 15 tests): real `lh` against the real routes, including a pick with confidence and thinking storing the page's record (options in the card's order), missing confidence refused, "I don't know" without one, skip, retry as repeat, stale cursors, the refused path and the page-first race.
+- `phase-c-smoke.sh` section 9b covers `lh submit` against a real `next dev`, including the card page's number matching `lh`'s.
+
+Open (round 3, interrogate seat A, reproduced with Node 12.22.12): on Node 12, `lh` fails to parse (`??`, top-level await) and prints a SyntaxError, not the `node_version` line guide :11 promises. Node 16 and 18 get the refusal. Fix one of two ways: a small entry file in old syntax that checks the version and then imports lh.mjs, or narrow guide :11 to "Node 16 to 21". Commit 5639103 (round 3 code-review's two fixes: the double-quoted rule now covers `lh` input; tests for `refused` and the race) has not been reviewed.
+
+Verified:
+- Full check at f022a43: typecheck and lint clean; 3163/3164, the one failure the baseline Pi main-loader test. Full check at 5639103: see the handoff.
+- `NODE_ENV=test npx tsx --test tests/lh-submit.test.ts`: 15/15 at 5639103.
+- `bash .scratch/external-teacher/phase-c-smoke.sh 3731` at f022a43: PASS. Reviewers reran it: PASS (102 ok) at 334faaf and 5b76a9e.
+- Review: 3 rounds of code-review (Opus 5.5 xhigh) and interrogate seats A (Opus 5.5 xhigh) and C (Haiku 5.5 xhigh). Seats B (GLM 5.3 Flash) and D (Composer 2.5) were skipped: Cursor usage limit until 2026-11-19 on their round-1 try. Round 3: code-review 2 findings (fixed in 5639103), seat C 0, seat A 1 (open above).
+- Blast-radius skipped: Risk pre-release.
