@@ -2,7 +2,7 @@
 
 import { useId } from "react";
 import { ToolContentResponse, MessageResponse } from "@/components/ai-elements/message";
-import { GRAPH_PAD, PlanDiagram, TEXT_CAP_SCALE } from "@/components/plan-block";
+import { blockLayout, GRAPH_PAD, PlanDiagram, TEXT_CAP_SCALE } from "@/components/plan-block";
 import { CONFIDENCE_STOPS, type QuestionCard as QuestionCardData, type QuestionCardQuestion } from "@/src/core";
 
 /**
@@ -37,24 +37,37 @@ function replyHint(q: QuestionCardQuestion): string {
 	return `Reply with ${pick}${q.quiz ? " and a confidence" : ""}.`;
 }
 
+// The map's width on a 390 px phone (the sheet pads 16 px each side), the
+// node title size in svg units (text-xs), and the smallest title worth
+// drawing. Below that the card shows the current node's title alone.
+const CARD_MAP_WIDTH = 358;
+const NODE_TEXT_UNITS = 11;
+const MIN_NODE_TEXT_PX = 10;
+const MAP_PAD = GRAPH_PAD + 8;
+
+/** The plan map, when its node titles stay readable at 390 px. Height is
+ *  free (the screenshot crops to the page), so only width scales it. */
 function PlanMap({ plan }: { plan: NonNullable<QuestionCardData["plan"]> }) {
 	const markerId = useId().replace(/[^a-zA-Z0-9-]/g, "");
 	const visited = new Set(plan.visited);
 	const statusOf = (id: string) => (id === plan.current ? "current" : visited.has(id) ? "visited" : "upcoming");
 	const currentTitle = plan.current ? plan.tree.nodes.find((n) => n.id === plan.current)?.title : undefined;
+	const layout = blockLayout(plan.tree.nodes, plan.tree.edges);
+	const scale = Math.min(CARD_MAP_WIDTH / (Math.max(layout.width, 1) + 2 * MAP_PAD), TEXT_CAP_SCALE);
+	const legible = scale * NODE_TEXT_UNITS >= MIN_NODE_TEXT_PX;
 	return (
 		<div data-testid="card-plan">
-			<div className="mx-auto max-h-56 overflow-hidden [&_svg]:mx-auto [&_svg]:max-h-56">
+			{legible && (
 				<PlanDiagram
 					nodes={plan.tree.nodes}
 					edges={plan.tree.edges}
 					statusOf={statusOf}
 					glowId={plan.current}
 					markerId={markerId}
-					pad={GRAPH_PAD + 8}
+					pad={MAP_PAD}
 					textCapScale={TEXT_CAP_SCALE}
 				/>
-			</div>
+			)}
 			<p className="mt-2 text-sm">
 				<span className="text-muted-foreground">Now: </span>
 				<span data-testid="card-current-node">{currentTitle ?? "not started"}</span>
@@ -102,13 +115,6 @@ export function QuestionCard({ title, card }: { title: string; card: QuestionCar
 	const q = card.question;
 	return (
 		<CardSheet title={title} tag={`Phase · ${PHASE_LABEL[card.phase]}`}>
-
-				{card.plan && card.phase !== "probe" && (
-					<section className="mb-5">
-						<Label>Plan</Label>
-						<PlanMap plan={card.plan} />
-					</section>
-				)}
 
 				{card.teaching && (
 					<section className="mb-5" data-testid="card-teaching">
@@ -195,6 +201,12 @@ export function QuestionCard({ title, card }: { title: string; card: QuestionCar
 							{replyHint(q)}
 							{q.quiz && <> Confidence: {CONFIDENCE_STOPS.join(" · ")}.</>}
 						</p>
+					</section>
+				)}
+				{card.plan && card.phase !== "probe" && (
+					<section className="mt-6">
+						<Label>Plan</Label>
+						<PlanMap plan={card.plan} />
 					</section>
 				)}
 		</CardSheet>

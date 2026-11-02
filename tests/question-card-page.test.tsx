@@ -153,6 +153,22 @@ describe("question card page", () => {
 		assert.deepEqual(optionTex(doc), dockOrder(id));
 	});
 
+	for (const [name, mermaid, drawn] of [
+		["a nine-node chain draws the map", "graph TD\n" + Array.from({ length: 8 }, (_, i) => `  n${i}[Step ${i}] --> n${i + 1}[Step ${i + 1}]`).join("\n"), true],
+		["a plan too wide to read at 390 px shows only the current node", "graph TD\n" + Array.from({ length: 8 }, (_, i) => `  r${i}[Branch number ${i}] --> hub[Hub]`).join("\n"), false],
+	] as const) {
+		it(name, async () => {
+			const { id, cursor } = await lesson();
+			const done = await turn(id, { kind: "probe-done", after: cursor, ...ASSESSMENT });
+			const planned = await turn(id, { kind: "plan", after: done, mermaid });
+			const nodeId = drawn ? "n0" : "r0";
+			await turn(id, { kind: "quiz", after: planned, ...QUIZ, nodeId });
+			const doc = await card(id);
+			assert.equal(!!byTestId(doc, "card-plan")?.querySelector("svg"), drawn);
+			assert.equal(byTestId(doc, "card-current-node")?.textContent, drawn ? "Step 0" : "Branch number 0");
+		});
+	}
+
 	it("a recall says a typed answer is expected and shows no options", async () => {
 		const { id, cursor } = await lesson();
 		await turn(id, { kind: "recall", after: cursor, question: "Explain what $\\log_2 n$ counts.", correctAnswer: "Halvings to reach 1." });
