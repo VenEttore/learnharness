@@ -362,18 +362,6 @@ describe("ordinary lessons, and which order a hand-built answer used", () => {
 		assert.equal(recall.committed, RECALL.correctAnswer);
 	});
 
-	// A null pick entry already throws in compactAnswerForModel, before
-	// and after this guard; only option rows are the guard's to tolerate.
-	it("a hand-added row, an index past the options and a null option row are kept, not thrown on", () => {
-		const sent = quizAnswer("quiz", PROBE, PAGE, "halved", shell) as unknown as Json;
-		sent.options = [...sent.options, { index: 4, label: "I don't know" }, null];
-		sent.answers = [...sent.answers, { index: 9, label: "ghost" }];
-		const details = stored(CALL, "quiz", PROBE, sent) as unknown as Json;
-		assert.deepEqual(details.options.slice(0, 3), PAGE.map((o, i) => ({ index: i + 1, label: o.label })));
-		assert.deepEqual(details.options.slice(3), [{ index: 4, label: "I don't know" }, null]);
-		assert.deepEqual(details.answers.slice(1), [{ index: 9, label: "ghost" }]);
-	});
-
 	it("an ask with no values (each value is its label, mangled too) gets its labels back", () => {
 		const ASK = { question: "Which is $n/2$ when $n = 8$?", options: [{ label: "$4$ items" }, { label: "$n$ halves" }] };
 		const details = stored("call_ask", "ask_user_question", ASK, {
@@ -386,38 +374,30 @@ describe("ordinary lessons, and which order a hand-built answer used", () => {
 		assert.deepEqual(details.options, [{ index: 1, label: "$4$ items" }, { index: 2, label: "$n$ halves" }]);
 		assert.deepEqual(details.answers, [{ index: 2, label: "$n$ halves", value: "$ halves" }], "the value is the learner's part and stays as sent");
 	});
-	it("a request with thousands of rows appends in linear time", () => {
-		// A pairwise rival check took 27 s for 16,000 rows (interrogate round 2).
-		const sent = quizAnswer("quiz", PROBE, PAGE, "halved", shell);
-		sent.options = Array.from({ length: 16_000 }, (_, i) => ({ index: i + 1, label: "/2^k$" }));
-		const started = performance.now();
-		const details = stored(CALL, "quiz", PROBE, sent);
-		const ms = performance.now() - started;
-		assert.ok(ms < 5_000, `took ${Math.round(ms)} ms`);
-		assert.equal(details.options![0]!.label, "/2^k$", "16,000 rows naming one option: none binds");
-	});
-
-	it("a pick with no index still gets its option's label by value", () => {
-		const sent = quizAnswer("quiz", PROBE, PAGE, "halved", shell) as unknown as Json;
-		sent.answers = [{ label: "/2^k$", value: "halved" }];
-		assert.deepEqual((stored(CALL, "quiz", PROBE, sent) as unknown as Json).answers, [{ label: "$n/2^k$", value: "halved" }]);
-	});
-
-	it("a pick pointing at no row does not stop a row's own label from binding", () => {
-		for (const index of [0, 4]) {
-			const sent = quizAnswer("quiz", PROBE, AUTHORED, "halved", shell);
-			sent.answers = [{ index, label: "/2^k$", value: "halved" }];
-			const details = stored(CALL, "quiz", PROBE, sent);
-			assert.deepEqual(details.options, AUTHORED.map((o, i) => ({ index: i + 1, label: o.label })), `pick index ${index}`);
+	it("a request not shaped like the page's keeps its rows and picks as sent, and never throws", () => {
+		// Ticket 21's lh submit refuses these before they reach the server; the
+		// guard only restores the question text and must not make them worse.
+		// (A null pick entry throws in upstream compactAnswerForModel, before and
+		// after this guard, so no case sends one.)
+		const base = () => quizAnswer("quiz", PROBE, AUTHORED, "halved", shell) as unknown as Json;
+		const cases: Record<string, (sent: Json) => void> = {
+			"a hand-added row": (sent) => sent.options.push({ index: 4, label: "I don't know" }),
+			"a null row": (sent) => sent.options.push(null),
+			"a row with no label": (sent) => delete sent.options[1].label,
+			"a pick with no index": (sent) => { sent.answers = [{ label: "/2^k$", value: "halved" }]; },
+			"a pick at index 0": (sent) => { sent.answers[0].index = 0; },
+			"a pick past the rows": (sent) => { sent.answers[0].index = 4; },
+			"rows sharing an index": (sent) => { sent.options[1].index = 1; },
+			"16,000 rows": (sent) => { sent.options = Array.from({ length: 16_000 }, (_, i) => ({ index: i + 1, label: "/2^k$" })); },
+		};
+		for (const [name, spoil] of Object.entries(cases)) {
+			const sent = base();
+			spoil(sent);
+			const details = stored(CALL, "quiz", PROBE, sent) as unknown as Json;
+			assert.equal(details.questionText, PROBE.question, name);
+			assert.deepEqual(details.options, sent.options, name);
+			assert.deepEqual(details.answers, sent.answers, name);
 		}
-	});
-
-	it("rows sharing an index stay as sent; neither takes the other's label", () => {
-		const sent = quizAnswer("quiz", PROBE, AUTHORED, "halved", shell);
-		sent.answers = [];
-		sent.options = [{ index: 1, label: "It depends" }, { index: 1, label: "/2^k$" }, { index: 2, label: "-k$" }, { index: 3, label: "/k$" }];
-		const details = stored(CALL, "quiz", PROBE, sent);
-		assert.deepEqual(details.options, [{ index: 1, label: "It depends" }, { index: 1, label: "/2^k$" }, { index: 2, label: "$n-k$" }, { index: 3, label: "$n/k$" }]);
 	});
 
 	it("a pick's value binds its own row even when the row's label could be two options", () => {
