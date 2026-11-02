@@ -254,6 +254,8 @@ A retry is safe. Rerun the same `lh submit` with the same `--after`, or with a c
 
 **Math in chat.** Grok Bot chat does not treat a single `$` as math. When you copy a question, teaching text or a plan into chat, write `$...$` as `\( ... \)`. Display math (`$$...$$`) and fenced `mermaid` blocks render as they are. The card screenshot already shows math as the page renders it.
 
+**Plans on a phone.** Keep the plan at most 2 nodes side by side, with short labels (a few words each). A long chain of nodes reads well on a phone; a wide plan does not. On a bench run, a 14-node plan 4 nodes wide was dropped from the card (only "Now: ..." showed) and its labels were about 5 px in chat. If a plan has to be wide, send the card's plan view as a screenshot instead of the `mermaid` text, and check that it is readable.
+
 **Never build the request by hand.** `lh submit` sends picks by number and never handles the question text. If you must still hand-build a request body (for `curl`), pass it through `--file`, a single-quoted heredoc (`<<'EOF'`) or `curl --data-binary @file`, never a double-quoted string. In a double-quoted string, bash expands `$name` (an unset `$n` becomes nothing, so `$n$` arrives as `$`) and runs any `$(...)` in the lesson text while it builds the body. A bench run found those three paths clean in every case. When an answer is saved, LearnHarness restores the question text, option labels and explanation from the stored question, but not in every case:
 
 - An option whose text has a backslash right before a newline can arrive, through bash, in another option's form, and the pick can then take that option's label.
