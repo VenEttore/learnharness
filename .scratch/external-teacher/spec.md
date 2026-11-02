@@ -1,4 +1,4 @@
-Status: open
+Status: resolved
 
 # Bot-run lessons, round 1: the lesson loop
 
@@ -197,7 +197,7 @@ Deferred in the grill or the reviews:
 - a "bot is thinking" indicator;
 - LearnHarness grading free recall;
 - a page button for starting a bot-run lesson;
-- crash-safe file saves.
+- crash-safe saves for files other than the lesson file (ticket 16 made lesson saves crash-safe).
 
 ## Further Notes
 
@@ -205,3 +205,32 @@ Deferred in the grill or the reviews:
 - Glossary terms: Lesson, Bot-run lesson, Bot Teacher, Learner input, Item, Phase, Strand, Open question, Turn, Cursor, Repeat, Refusal, Worker, Takeover (`GLOSSARY.md`). Decision record: ADR 0001.
 - No code ticket is tied to the laptop, so they are `Host: linuxdev`, and development runs on linuxdev: the repo is `~/code/learnharness`, and Node 22 is in `~/.local/bin`. linuxdev has no GitHub credentials, so ticket branches stay in that repo until GitHub access is added there. Only the bench ticket is `Host: laptop`.
 - The final spec ship needs the owner's "ship it" after the final spec review.
+
+## Comments
+
+2026-11-02, shipped on "ship it" from Ven (his own words, relayed by the Watcher).
+
+Completed: tickets 01-23, all merged into feat/external-teacher. A Grok Bot runs a whole lesson, probe then plan then teach, through `lh` and the external routes, and LearnHarness calls no model. Beyond round 1's plan, the benches added these:
+- 16: crash-safe lesson saves.
+- 17: glossary terms.
+- 18: edge-path tests.
+- 19: wording fixes.
+- 20: authored question text survives hand-built answers.
+- 21: `lh submit` and the guide's phone and chat flow.
+- 22: the read-only question card at /chat/<id>/card.
+- 23: narrow plans on a phone.
+
+Verified: 3 benches. Bench 1 (ticket 15) passed. Bench 2 checked ticket 20. Bench 3 passed 6 of 7 items with 1 partial (wide plans on a phone, addressed by 23). The full check at the 21 merge passed 3166 of 3167 tests; the one failure is the Pi main-loader test, which fails on main before this work. Smoke passed 102 checks with 0 failures. 23 is docs only.
+
+Known limits, accepted (details in final-review.md):
+- Ticket 20's gap A and B1 in double-quoted shell bodies.
+- Shell leftovers stay as sent.
+- The server trusts client confidence and `correct`.
+- Learner input in the read-to-save window of `lh submit` is not caught.
+- `lh` on Node older than 14.13.1 cannot print its version refusal.
+- Gantt date labels overlap on the card.
+- Wide plans on a phone; the guide says to keep plans narrow.
+
+Not tested: live chat widgets with Ven, and the plan map on a real phone.
+
+Deferred: everything in Out of Scope above, and the follow-ups in grok-bot-tool-map.md (read-only `lh sessions`/`lh propositions`, spaced review in `lh`).
