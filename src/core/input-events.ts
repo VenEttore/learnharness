@@ -42,6 +42,7 @@ import {
 	pendingProblemDismissalOf,
 } from "./native-messages.ts";
 import { QUESTION_TOOLS, toolQuestionKind } from "./pending.ts";
+import { withAuthoredText } from "./answer-authored-text.ts";
 
 /** One client-originated input event (the POST body's `input`). */
 export type ChatInput =
@@ -149,7 +150,7 @@ export function dismissAppends(record: { messages: LhMessage[] }, input: Dismiss
 	if (input.answer.kind !== toolQuestionKind(pending.tool)) {
 		throw new ChatInputError("dismiss input's answer kind does not match the question");
 	}
-	return [newAnswerResult(input.toolCallId, pending.tool, input.answer)];
+	return [newAnswerResult(input.toolCallId, pending.tool, withAuthoredText(input.answer, pending))];
 }
 
 /** A malformed input event (the honest 400 — the orphan-trap discipline). */
@@ -213,7 +214,7 @@ export function inputAppends(
 			if (!pending || pending.toolCallId !== input.toolCallId) {
 				throw new ChatInputError("answer input targets no pending question call");
 			}
-			return [newAnswerResult(input.toolCallId, pending.tool, input.answer)];
+			return [newAnswerResult(input.toolCallId, pending.tool, withAuthoredText(input.answer, pending))];
 		}
 		case "continue":
 			return dismissalConclusion(record);
