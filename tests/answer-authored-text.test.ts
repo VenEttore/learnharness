@@ -499,6 +499,21 @@ describe("ordinary lessons, and which order a hand-built answer used", () => {
 		assert.deepEqual(details.options, padded.options);
 	});
 
+	it("a claim the binding rejected settles nothing: an ambiguous row elsewhere stays as sent", () => {
+		// Code-review round 7: row 2's label says `plain` but its pick's value says `k`, so row 2
+		// is not bound; row 1's `$` (`$n$` or `$k$`) must not be settled by that rejected `k`.
+		const OPTS = [{ label: "$n$", value: "n" }, { label: "$k$", value: "k" }, { label: "plain", value: "p" }];
+		const sent = {
+			kind: "quiz", tool: "quiz", questionText: "q", dontKnow: false,
+			options: [{ index: 1, label: "$" }, { index: 2, label: "plain" }, { index: 3, label: "zzz" }],
+			answers: [{ index: 2, label: "plain", value: "k" }],
+			correct: false, correctIndices: [2], answeredAt: new Date().toISOString(),
+		};
+		const details = stored(CALL, "quiz", { question: "Which?", options: OPTS, explanation: "e", correctAnswer: "p" }, sent);
+		assert.equal(details.questionText, "Which?", "the call parsed");
+		assert.deepEqual(details.options, sent.options);
+	});
+
 	it("two rows left with the same option contradict each other, so neither binds", () => {
 		const OPTS = [{ label: "$n$", value: "n" }, { label: "$k$", value: "k" }, { label: "plain", value: "p" }];
 		const sent = {
@@ -702,7 +717,7 @@ describe("backslash TeX through a real double-quoted bash string", () => {
 		assert.equal(sent.answers[0]!.value, "\\times 2", "what bash sent: `Other`'s value, verbatim");
 		const details = stored(CALL, "quiz", call, sent);
 		assert.equal(details.questionText, "Which?", "the call parsed");
-		assert.notEqual(details.answers[0]!.label, "Other", "never another option's label");
+		assert.deepEqual(details.answers.map((x) => x.label), ["$n\\times 2"], "its own option's label, never `Other`");
 
 		// And a row in that form is restored where nothing else claims its option.
 		const TEX = [{ label: "$k\\times n$" }, { label: "2" }];

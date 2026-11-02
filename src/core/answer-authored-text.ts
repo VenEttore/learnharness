@@ -139,22 +139,25 @@ function bindRows(
 	});
 	// Labels are compared trimmed here too, like every other lookup.
 	// Rows with no claim whose label names several options: drop the options
-	// claimed anywhere; one left is that row's. One pass, so the cost stays
-	// linear. Two such rows with the same label would be left with the same
-	// option and contradict each other, so a shared label settles nothing;
-	// that also bounds the work (each option has at most two forms, so at
-	// most two distinct labels name it). Two rows left with the same option
-	// bind neither.
+	// bound to other rows; one left, and claimed by no other row, is that
+	// row's. Only bindings count as settled: a claim the binding rejected
+	// (say a pick value that contradicts its row's label) proves nothing.
+	// One pass, so the cost stays linear. Two such rows with the same label
+	// would be left with the same option and contradict each other, so a
+	// shared label settles nothing; that also bounds the work (each option
+	// has at most three forms, so at most three distinct labels name it).
+	// Two rows left with the same option bind neither.
 	const open = possible.map((options, i) => !bound[i] && claims[i]!.size === 0 && options.length > 1);
 	const openLabels = new Map<string, number>();
 	rows.forEach((row, i) => {
 		if (open[i]) openLabels.set(row.label.trim(), (openLabels.get(row.label.trim()) ?? 0) + 1);
 	});
+	const settled = new Set(bound.filter((o) => o !== undefined));
 	const deduced = new Map<QuizOption, number[]>();
 	possible.forEach((options, i) => {
 		if (!open[i] || openLabels.get(rows[i]!.label.trim())! > 1) return;
-		const left = options.filter((o) => !claimants.has(o));
-		if (left.length === 1) deduced.set(left[0]!, [...(deduced.get(left[0]!) ?? []), i]);
+		const left = options.filter((o) => !settled.has(o));
+		if (left.length === 1 && !claimants.has(left[0]!)) deduced.set(left[0]!, [...(deduced.get(left[0]!) ?? []), i]);
 	});
 	for (const [option, at] of deduced) if (at.length === 1) bound[at[0]!] = option;
 	return bound;
