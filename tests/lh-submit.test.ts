@@ -218,6 +218,9 @@ describe("lh submit", () => {
 
 	it("skips the way the page's Skip does", async () => {
 		const { id, cursor, toolCallId } = await asked("probe", PROBE);
+		const piped = await lh(["submit", id, "--after", cursor, "--skip"], JSON.stringify({ picks: [1], confidence: 70 }));
+		assert.equal(piped.json.code, "usage", "an answer piped beside --skip is refused, not dropped");
+		assert.equal(storedAnswers(id).length, 0);
 		const res = await lh(["submit", id, "--after", cursor, "--skip"]);
 		assert.equal(res.code, 0, JSON.stringify(res.json));
 		assert.deepEqual(res.json.items.at(-1), { type: "skip", id: res.json.cursor, toolCallId, kind: "quiz" });

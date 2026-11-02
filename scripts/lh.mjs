@@ -41,6 +41,9 @@ const STDIN_TIMEOUT_MS = Number(process.env.LH_STDIN_TIMEOUT_MS) || 30_000;
 /** How often `answer --wait` checks. LH_WAIT_POLL_MS is for tests. */
 const WAIT_POLL_MS = Number(process.env.LH_WAIT_POLL_MS) || 2_000;
 const WAIT_TIMEOUT_S = 600;
+/** How long `submit --skip` waits on a stdin nobody closes before it
+ *  takes it as empty. A heredoc or pipe closes at once. */
+const SKIP_STDIN_MS = 1_000;
 
 /** Bad input on the command line: exit 1 with a usage refusal. */
 class UsageError extends Error {}
@@ -94,13 +97,16 @@ function requireAfter(flags) {
  *  hang the bot. (A sync read of fd 0 can neither time out nor survive a
  *  slow writer: once process.stdin exists, fd 0 is non-blocking and the
  *  read fails with EAGAIN.) */
-function readStdin() {
+function readStdin(quietAfterMs) {
 	return new Promise((resolve, reject) => {
 		const chunks = [];
 		const timer = setTimeout(() => {
 			process.stdin.destroy();
-			reject(new UsageError(`stdin was not closed within ${STDIN_TIMEOUT_MS / 1000} s; pass the text with --file <path>`));
-		}, STDIN_TIMEOUT_MS);
+			// A stdin nobody writes to or closes: with a quiet deadline, what
+			// arrived so far is the input.
+			if (quietAfterMs !== undefined) resolve(Buffer.concat(chunks).toString("utf-8"));
+			else reject(new UsageError(`stdin was not closed within ${STDIN_TIMEOUT_MS / 1000} s; pass the text with --file <path>`));
+		}, quietAfterMs ?? STDIN_TIMEOUT_MS);
 		process.stdin.on("data", (chunk) => chunks.push(chunk));
 		process.stdin.on("end", () => {
 			clearTimeout(timer);
@@ -215,6 +221,8 @@ async function requestFor(argv) {
 			const after = requireAfter(flags);
 			if (flags.skip) {
 				if (flags.file !== undefined) throw new UsageError("--skip takes no --file");
+				// An answer piped in beside --skip must not turn into a skip.
+				if (!isatty(0) && (await readStdin(SKIP_STDIN_MS)).trim()) throw new UsageError("--skip takes no input; to save an answer, leave out --skip");
 				return { submit: { lesson: rest[0], after, input: { skip: true } } };
 			}
 			const text = await readInput(flags);
