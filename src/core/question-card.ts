@@ -18,7 +18,7 @@ import type { PlanTree } from "./contracts.ts";
 import { failedOutputCallIds, pendingQuestionOf, userFacingTextOf, type LhMessage } from "./native-messages.ts";
 import { QUESTION_TOOLS, toolQuestionKind } from "./pending.ts";
 import { phaseAt3Lh, type Phase3 } from "./phases.ts";
-import { normalizeOptions, normalizeQuizType, seededRandom, shuffleOptions, type QuizOption } from "./question-core.ts";
+import { normalizeOptions, normalizeQuizType, seededRandom, shuffleOptions, type QuestionMode, type QuizOption } from "./question-core.ts";
 import { parseAskInput, parseExplainInput, parseQuizInput } from "./tool-parts.ts";
 
 /** The options in the order the question dock shows them. Quiz-kind
@@ -54,7 +54,7 @@ export interface QuestionCardQuestion {
 	question: string;
 	details?: string;
 	/** "text": a typed answer is expected (explain, recall, ask without options). */
-	mode: "single-select" | "multi-select" | "text";
+	mode: QuestionMode;
 	options: QuestionCardOption[];
 	/** Quiz kinds offer "I don't know" and take a confidence. */
 	quiz: boolean;
@@ -81,7 +81,7 @@ export interface QuestionCard {
 	malformed: boolean;
 }
 
-const KIND_LABEL: Record<string, QuestionCardQuestion["kindLabel"]> = {
+const KIND_LABEL: Record<(typeof QUESTION_TOOLS)[number], QuestionCardQuestion["kindLabel"]> = {
 	probe: "Probe",
 	quiz: "Quiz",
 	explain: "Explain",
@@ -132,12 +132,16 @@ function buildQuestion(
 	const rawOptions = "options" in parsed ? (parsed.options as { label: string; value?: string; description?: string }[] | undefined) : undefined;
 	const options = displayedQuestionOptions(kind, toolCallId, normalizeOptions(rawOptions ?? []));
 	const multi = "multiSelect" in parsed && parsed.multiSelect === true;
-	const mode = kind === "explain" || options.length === 0 ? "text" : multi ? "multi-select" : "single-select";
+	// The dock's rule: a quiz always selects; an ask selects only with options.
+	const mode: QuestionMode =
+		kind === "quiz" ? (multi ? "multi-select" : "single-select")
+			: kind === "ask" && options.length > 0 ? (multi ? "multi-select" : "single-select")
+				: "text";
 	const role = kind === "quiz" ? normalizeQuizType((parsed as { type?: unknown }).type) : undefined;
 	return {
 		toolCallId,
 		tool,
-		kindLabel: KIND_LABEL[tool] ?? "Ask",
+		kindLabel: KIND_LABEL[tool as keyof typeof KIND_LABEL] ?? "Ask",
 		...(role ? { role } : {}),
 		leadIn,
 		question: parsed.question,

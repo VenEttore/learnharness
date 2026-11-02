@@ -1,7 +1,8 @@
 import puppeteer from "puppeteer-core";
 const [, , base, outDir, ...pairs] = process.argv;
 const browser = await puppeteer.launch({
-	executablePath: "/home/matt/.t3/tools/chrome-headless-shell/linux64/156.0.8078.70/chrome-headless-shell",
+	// CHROME_PATH (docs/development.md) or the host's chrome-headless-shell.
+	executablePath: process.env.CHROME_PATH ?? "/home/matt/.t3/tools/chrome-headless-shell/linux64/156.0.8078.70/chrome-headless-shell",
 	args: ["--no-sandbox"],
 });
 const page = await browser.newPage();
