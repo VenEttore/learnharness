@@ -554,10 +554,10 @@ describe("ordinary lessons, and which order a hand-built answer used", () => {
 /** The request body a bot writes inside a double-quoted bash string (its
  *  JSON with each `"` escaped for the shell, and with `escapeBackslashes`
  *  each `\` too), as bash hands it on. */
-function viaBash(body: unknown, { escapeBackslashes = false } = {}): unknown {
+function viaBash(body: unknown, { escapeBackslashes = false, env: shellVars = {} as Record<string, string> } = {}): unknown {
 	const json = JSON.stringify(body);
 	const text = (escapeBackslashes ? json.replaceAll("\\", "\\\\") : json).replaceAll('"', '\\"');
-	const env: NodeJS.ProcessEnv = { NODE_ENV: "test", PATH: process.env.PATH ?? "/usr/bin:/bin" }; // no $n, $k
+	const env: NodeJS.ProcessEnv = { NODE_ENV: "test", PATH: process.env.PATH ?? "/usr/bin:/bin", ...shellVars }; // no $n, $k unless given
 	const out = spawnSync("bash", ["-c", `printf '%s' "${text}"`], { env, encoding: "utf8" });
 	assert.equal(out.status, 0, out.stderr);
 	return JSON.parse(out.stdout);
@@ -729,6 +729,26 @@ describe("backslash TeX through a real double-quoted bash string", () => {
 		assert.equal(row.options![0]!.label, "\\times n$", "what bash sent");
 		const restored = stored(CALL, "quiz", { question: "Which?", options: TEX, explanation: "e", correctAnswer: "2" }, row);
 		assert.deepEqual(restored.options!.map((o) => o.label), ["$k\\times n$", "2"]);
+	});
+
+	it("a pick whose sent label is an authored label keeps it, though a set shell variable changed its value (bench 2, B2)", () => {
+		// Bench 2: the bot's shell had USER=matt; Alice's value `$USER` arrived as Bob's value `matt`.
+		const OPTS = [{ label: "Alice", value: "$USER" }, { label: "Bob", value: "matt" }];
+		const call = { question: "Who wrote it?", options: OPTS, explanation: "e", correctAnswer: "$USER" };
+		const body = {
+			kind: "quiz", tool: "quiz", questionText: "q", dontKnow: false,
+			options: OPTS.map((o, i) => ({ index: i + 1, label: o.label })),
+			answers: [{ index: 1, label: "Alice", value: "$USER" }],
+			correct: true, correctIndices: [1], answeredAt: new Date().toISOString(),
+		};
+		for (const escapeBackslashes of [false, true]) {
+			const sent = viaBash(body, { escapeBackslashes, env: { USER: "matt" } }) as QuestionAnswerData;
+			assert.deepEqual(sent.answers, [{ index: 1, label: "Alice", value: "matt" }], "what bash sent");
+			const details = stored(CALL, "quiz", call, sent);
+			assert.equal(details.questionText, "Who wrote it?", "the call parsed");
+			assert.deepEqual(details.answers, sent.answers, "Alice, as sent, not Bob");
+			assert.deepEqual(details.options, sent.options);
+		}
 	});
 
 	it("an answer sent that way gets every row and the pick back", () => {
