@@ -2,13 +2,13 @@
 
 This guide is for the Bot Teacher, the Grok Bot on the shared cloud computer that teaches a LearnHarness lesson through the `lh` command instead of LearnHarness's own model. The lesson is a bot-run lesson. LearnHarness saves your turns and the learner's input, shows them on its normal page, and never calls a model.
 
-You run the whole lesson: probe, then plan, then teach. The learner is the owner of this computer. They answer on the lesson page in your browser, through the "Take over" button in the Cursor app.
+You run the whole lesson: probe, then plan, then teach. The learner is the owner of this computer. They answer on the lesson page in your browser, through the "Take over" button in the Cursor app, or, from a phone, in your own chat, and you save their answer with `lh submit` (section 4, "Answers outside the page").
 
 ## 1. Start LearnHarness
 
 The examples assume the repo is at `/workspace/learnharness`. Use your own path if it is elsewhere.
 
-1. Check Node: `node -v` must print `v22.x`.
+1. Check Node: `node -v` must print `v22.x` or newer. On an older Node, `lh` refuses every command with `"code":"node_version"`.
 2. Install once: `cd /workspace/learnharness && npm ci`.
 3. Put `lh` on your PATH: `mkdir -p ~/.local/bin && ln -sf /workspace/learnharness/scripts/lh.mjs ~/.local/bin/lh`. Check that `~/.local/bin` is on `PATH`. Without the link, run `node /workspace/learnharness/scripts/lh.mjs` wherever this guide says `lh`.
 4. Start the server, bound to 127.0.0.1. First run both checks in step 5. If they pass, a LearnHarness is already running, so skip this step; section 3 confirms it is yours. Rerunning the start line empties the log, and the second server fails on the busy port. To restart, stop the old process first.
@@ -29,7 +29,7 @@ The examples assume the repo is at `/workspace/learnharness`. Use your own path 
    - `LH_DATA_DIR` under `/workspace` keeps lessons across restarts of the computer.
    - No API keys. `LH_IGNORE_ENV_KEYS=1` removes LearnHarness's key variables (`XAI_API_KEY`, `OPENROUTER_API_KEY`, `ANTHROPIC_API_KEY` and the rest) from the server's environment. It leaves some provider tokens in place, and the second `unset` line clears those. It does not touch cloud credentials (`AWS_*`, `GOOGLE_APPLICATION_CREDENTIALS` or a gcloud login in `~/.config/gcloud`, `ANTHROPIC_FEDERATION_RULE_ID`), so start from a shell and an account that hold none. Keep no `.env*` file in the repo. Next loads those files after the shell `unset`. Add no key in Settings either. A bot-run lesson needs none.
 
-5. Check it is up: `lh show no-such-lesson`. It prints `{"ok":false,"code":"not_found"}` and exits 1 when a LearnHarness answers. Exit 3 means it is not reachable yet. The first start compiles for a while, so read `/workspace/lh-server.log` and try again. Then run `grep -E 'Local: +http://127\.0\.0\.1:3000' /workspace/lh-server.log`. It should find a line, a first sign the server is yours. Use your port in the pattern if you changed it. The lesson file in section 3 is the proof.
+5. Check it is up: `lh show no-such-lesson`. A LearnHarness in browser mode prints exactly `{"ok":false,"code":"not_found"}` and exits 1. Any other reply on exit 1 is not a pass: it comes from another program on the port or from a LearnHarness in desktop mode (section 2). Exit 3 means it is not reachable yet. The first start compiles for a while, so read `/workspace/lh-server.log` and try again. While it compiles, the lesson page's sidebar can show "Loading..." or "Compiling...". That is normal; do not restart the server for it. Then run `grep -E 'Local: +http://127\.0\.0\.1:3000' /workspace/lh-server.log`. It should find a line, a first sign the server is yours. Use your port in the pattern if you changed it. The lesson file in section 3 is the proof.
 
 `lh` talks to `LH_URL`, default `http://127.0.0.1:3000`. Use the IP, not `localhost`, which can resolve to the IPv6 address while the server listens on 127.0.0.1 only. To use another port, change `-p` and set `LH_URL` to match, for example `-p 3001` and `LH_URL=http://127.0.0.1:3001`.
 
@@ -44,13 +44,13 @@ Every command prints one JSON line and exits with a code:
 | 2 | `lh answer --wait` timed out: `{"ok":false,"error":"timeout"}` |
 | 3 | LearnHarness unreachable, or no answer within 30 s: `{"ok":false,"code":"unreachable","error":"...","guide":"docs/external-teacher.md"}`. This is not a refusal. If `error` says "is not reachable", start it as in section 1. If it says "did not answer", the server may be busy compiling. After a turn command, the turn may have landed, so follow "A lost reply" in section 5. After `lh lesson new`, rerun it with the same `--key`. After `lh show` or `lh answer`, rerun it. |
 
-A reply with `"code":"bad_reply"` means the server on `LH_URL` answered with something other than JSON: a LearnHarness error page, or another program holding the port. Any other JSON on exit 1, not shaped like a refusal, comes from another program on the port, or from a LearnHarness in desktop mode, which replies `{"error":"Desktop API access requires the trusted LearnHarness window."}`. If you started that LearnHarness yourself with `LH_DESKTOP_SERVER` or `LH_DESKTOP_API_SECRET` set, stop it and start it again as in section 1. Otherwise read `/workspace/lh-server.log`; if your server is not running, start it on another port (section 1).
+A reply with `"code":"bad_reply"` means the server on `LH_URL` answered with something other than JSON: a LearnHarness error page, or another program holding the port. Any other JSON on exit 1, not shaped like a refusal, comes from another program on the port, or from a LearnHarness in desktop mode, which replies `{"error":"Desktop API access requires the trusted LearnHarness window."}`. If you started that LearnHarness yourself with `LH_DESKTOP_SERVER` or `LH_DESKTOP_API_SECRET` set, stop it and start it again as in section 1. Otherwise read `/workspace/lh-server.log`. If your server is running on another port (its `Local:` line names the port), set `LH_URL` to that port instead of starting a second one. If your server is not running, start it on another port (section 1).
 
 **The cursor.** Every reply from LearnHarness about a lesson you can write to carries `cursor`, the id of the newest message in the lesson, except the `forbidden_*` refusals. Replies made by `lh` itself (`usage`, `unreachable`, `bad_reply`, a `--wait` timeout) carry none. A new lesson created without `--prompt` is empty, and its cursor is the lesson id. Pass the lesson id only when a reply gave it to you as the cursor. As `--after`, the lesson id means "from the start". On a lesson created with a prompt, a turn sent with the lesson id as `--after` is refused as `unread_input` until a Bot Teacher turn is saved. After that, such a turn counts as a repeat if it matches any saved Bot Teacher turn, and saves nothing. Every turn command needs `--after <cursor>`. In the examples, `L` is the lesson id and `C` is the cursor; after each reply, set `C` to its `cursor`.
 
 **Items.** Learner input comes back as `items`. `lh answer` always has them. A create, a repeat, `lh show`, and an `unread_input` or `bad_after` refusal carry `items` when there is learner input you have not responded to. That is everything after the last saved Bot Teacher turn, whether you or an earlier Bot Teacher took it. With no saved turn, it is everything since the lesson began. In an `unread_input` refusal, the items start after your `--after` instead when that message is newer than the last saved Bot Teacher turn. A create with `--prompt` returns the prompt this way. Read the items in every reply that has them, and respond to all of them, before your next turn.
 
-**Input.** `say` and `plan` read plain text. `ask`, `probe`, `recall`, `probe-done`, `quiz` and `explain` read one JSON object. Both come from `--file <path>` or stdin; the examples use a quoted heredoc (`<<'EOF'`), which keeps `$` and backticks literal. The JSON never carries `kind` or `after`. Those come from the command line.
+**Input.** `say` and `plan` read plain text. `ask`, `probe`, `recall`, `probe-done`, `quiz`, `explain` and `submit` read one JSON object. Both come from `--file <path>` or stdin; the examples use a quoted heredoc (`<<'EOF'`), which keeps `$` and backticks literal. The JSON never carries `kind` or `after`. Those come from the command line.
 
 ## 3. Run a lesson
 
@@ -140,7 +140,7 @@ graph TD
 EOF
 ```
 
-A plan that does not parse, or has a cycle, is refused with `invalid` and the problems. If a node id appears twice, the nodes merge and keep the first title given. A node written only as a bare id takes its id as its title. Send `plan` again whenever the map is wrong, in the plan or teach phase. The new map replaces the old one.
+A plan that does not parse, or has a cycle, is refused with `invalid` and the problems. If a node id appears twice, the nodes merge and keep the first title given. A node written only as a bare id takes its id as its title. Send `plan` again whenever the map is wrong, in the plan or teach phase, while no question is open (an open question refuses it with `open_question`). The new map replaces the old one.
 
 Then ask, and wait for the answer:
 
@@ -196,13 +196,65 @@ LearnHarness never grades free recall. For an answer of kind `explain`, compare 
 
 While the learner has taken over your browser, you are paused. They answer, skip, or type on the page, then click "I'm done", and you resume. On resume, run `lh answer "$L"` once and act on its items. Empty items mean they did nothing. Ask them in the Cursor app's chat what they want.
 
-Use `--wait` only when the learner answers outside a takeover, while you keep running:
+Use `--wait` only when the learner answers on the page outside a takeover, while you keep running:
 
 ```bash
 lh answer "$L" --wait --timeout 300
 ```
 
 `--wait` takes no value. It checks every 2 s until there is at least one item, for 600 s unless `--timeout <seconds>` says otherwise. A timeout (exit 2) means the learner has not answered. Wait again, or ask them in the Cursor app's chat.
+
+### Answers outside the page
+
+A learner on a phone can still reach the lesson page through Take over, but driving your desktop from a phone is slow. The convenient path is your own chat:
+
+1. Post the question with `lh` as usual.
+2. Take a screenshot of the question card, `http://127.0.0.1:3000/chat/<lesson id>/card` (your port if you changed it), and send it. The card shows the open question, its lead-in, and its options numbered in the order the lesson page shows them, with math rendered as the page renders it.
+3. Ask in a chat widget. Only your main chat agent can raise a widget; workers and routine runs cannot, so ask yourself. Collect everything in one widget: the pick (or picks), and for a `probe` or `quiz` the confidence and an optional "why". Offer the page's confidence values, 0, 30, 50, 70, 90 and 100, and "I don't know" as an extra option. For `recall` and `explain`, collect the typed answer.
+4. Never say or hint whether a pick is right before its confidence is in. The learner wants it that way, and the confidence only counts when it comes first.
+5. Save it with `lh submit`, then grade from the answer item its reply carries.
+
+Picks are option numbers, read and sent by number, not by label: the number the learner saw on the card. `probe` and `quiz` options are shuffled, and `lh show` returns your authored order, so never number options from `lh show`. `ask` options keep your order.
+
+```bash
+lh submit "$L" --after "$C" <<'EOF'
+{"picks":[2],"confidence":70,"thinking":"Each comparison halves what is left."}
+EOF
+```
+
+| field | for | meaning |
+|---|---|---|
+| `picks` | `probe`, `quiz`, `ask` with options | option numbers from the card, counted from 1; one pick unless the question is multi-select |
+| `confidence` | `probe`, `quiz` | required with a pick: 0, 30, 50, 70, 90 or 100 |
+| `dontKnow` | `probe`, `quiz` | `true` for "I don't know"; no picks and no confidence |
+| `thinking` | any question with options | the learner's reasoning, optional |
+| `other` | `ask` with options | the learner's own answer in place of, or beside, a pick |
+| `text` | `recall`, `explain`, `ask` without options | the typed answer |
+
+A skip is `lh submit "$L" --after "$C" --skip`, with no JSON.
+
+`lh submit` reads the lesson, checks the answer against the question that was open at `--after`, and saves it through the lesson page's own routes, so the stored answer, grade included, is the one the page would store. The reply is what `lh answer` returns right after the save, plus `"repeat"` and the question's `toolCallId`. Its answer item has `correct`; tell the learner the result from that. `--after` must be the current cursor. A refusal saves nothing:
+
+| code | what to do |
+|---|---|
+| `usage` | The JSON does not parse, has an unknown field, or a pick that is not a whole number (`null` included). |
+| `invalid` | The answer does not fit the question: a pick without a confidence, a pick out of range, a field the question does not take. `problems` says what; `options` lists the card's numbers and labels. |
+| `unread_input` | The learner typed something after `--after`. Read `items`, then submit again with the new `cursor`. |
+| `answered` | The question already has a different answer or skip, saved on the page or by an earlier submit. Read it with `lh answer`. |
+| `no_open_question`, `bad_after` | No question was open at `--after`, or `--after` is not in this lesson. Use the cursor from the reply that posted the question, or a later one. |
+| `refused` | The page route refused the save; `error` says why. |
+
+A retry is safe. Rerun the same `lh submit` with the same `--after`: when the first one landed, the reply has `"repeat":true` and nothing is saved again.
+
+**Math in chat.** Grok Bot chat does not treat a single `$` as math. When you copy a question, teaching text or a plan into chat, write `$...$` as `\( ... \)`. Display math (`$$...$$`) and fenced `mermaid` blocks render as they are. The card screenshot already shows math as the page renders it.
+
+**Never build the request by hand.** `lh submit` sends picks by number and never handles the question text. If you must still hand-build a request body (for `curl`), pass it through `--file`, a single-quoted heredoc (`<<'EOF'`) or `curl --data-binary @file`, never a double-quoted string. In a double-quoted string, bash expands `$name` (an unset `$n` becomes nothing, so `$n$` arrives as `$`) and runs any `$(...)` in the lesson text while it builds the body. A bench run found those three paths clean in every case. When an answer is saved, LearnHarness restores the question text, option labels and explanation from the stored question, but not in every case:
+
+- An option whose text has a backslash right before a newline can arrive, through bash, in another option's form, and the pick can then take that option's label.
+- A shell variable that is set can turn one option's text into another option's: with `m=2` set, `$m$` arrives as `2$` and can take the label of an option `2$n$`. LearnHarness cannot see your shell.
+- Leftovers of `$?`, `$$` and `$(...)` stay as they were sent.
+
+The server also stores any `confidence` as sent (`null`, `150`, `"high"`), and takes `correct` from the request instead of grading it. `lh submit` sends only the page's confidence values and grades with the page's own code.
 
 ## 5. Refusals and recovery
 
@@ -251,4 +303,15 @@ The cursor rules above are mechanics. For how to probe, plan and teach, read Lea
 
 The input fields match the tools' fields. The prompts call the `readingThinking` field `thinkingWhileReading`. Where a prompt says "end your turn" after a question, wait for the learner's input.
 
-`lh` has no equivalent for these tools: `research`, `demo`, `visual`, `pdf`, `find`, `ls`, `grep`, `read`, `list_sessions`, `list_propositions`. Where a prompt relies on one, use your own tools on this computer (your browser, your shell) and put what you learn into a `say`. With no `list_sessions` or `list_propositions`, you cannot see earlier lessons, so probe every strand.
+`lh` has no equivalent for these tools. Where a prompt relies on one, use your own tool and put what you learn into a `say`:
+
+| LearnHarness tool | your stand-in |
+|---|---|
+| `research` | web search and fetch, or workers |
+| `visual` | Mermaid in chat, or a screenshot of HTML or SVG you render for anything exact; generated images are illustrations, not exact diagrams |
+| `pdf` | poppler-utils on this computer |
+| `find`, `ls`, `grep`, `read` | your shell on this computer; copy the learner's notes here first |
+| `demo` | screenshots plus a widget on a phone; interactive only through Take over |
+| `list_sessions`, `list_propositions` | none: you cannot see earlier lessons, so probe every strand |
+
+Workers can research and draft, but they cannot raise widgets or talk to the learner.

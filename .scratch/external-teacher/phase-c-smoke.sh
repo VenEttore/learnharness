@@ -292,6 +292,67 @@ OUT="$(LH_URL="http://127.0.0.1:$JPORT" "${LH[@]}" show x)"; code=$?
 printf '%s\n[exit %s]\n' "$OUT" "$code"
 [ "$code" = 1 ] && jq -e '.code=="bad_reply"' >/dev/null <<<"$OUT" && ok "bad_reply: exit 1" || bad "bad_reply reply"
 
+say "9b. Answers outside the page: lh submit (ticket 21)"
+lh_run 0 '.ok' lesson new --title "Submit" --key submit-1 --prompt "Binary search, from my phone."
+S="$(jq -r .id <<<"$OUT")"; cursor
+lh_run 0 '.ok' probe "$S" --after "$C" <<'EOF'
+{"question":"Binary search on 1,000 sorted items takes at most about how many comparisons?","options":[{"label":"About 10","value":"ten"},{"label":"About 100","value":"hundred"},{"label":"About 500","value":"five-hundred"}],"explanation":"Each comparison halves the range, and 2^10 = 1024, so about 10 halvings reach one item.","correctAnswer":"ten"}
+EOF
+cursor
+code="$(curl -s -o "$TMP/card.html" -w '%{http_code}' "$LH_URL/chat/$S/card")"
+[ "$code" = 200 ] && grep -q "About 10" "$TMP/card.html" && ok "card /chat/$S/card answers 200 with the question" || bad "card: http $code"
+lh_run 1 '.code=="invalid" and (.problems|tostring|test("confidence")) and (.options|length)==3' submit "$S" --after "$C" <<'EOF'
+{"picks":[1]}
+EOF
+N="$(jq -r '.options[] | select(.label=="About 10") | .number' <<<"$OUT")"
+CARD_N="$(sed 's/<li /\n<li /g' "$TMP/card.html" | grep 'data-testid="card-option"' | grep '<p>About 10</p>' | sed -E 's/.*data-number="([0-9]+)".*/\1/')"
+echo "card number of About 10: lh $N, card page $CARD_N"
+[ -n "$N" ] && [ "$N" = "$CARD_N" ] && ok "lh submit numbers options as the card page does" || bad "lh submit's number ($N) differs from the card's ($CARD_N)"
+lh_run 1 '.code=="usage"' submit "$S" --after "$C" <<'EOF'
+{"picks":[null],"confidence":70}
+EOF
+lh_run 0 '.ok' show "$S"
+[ "$(jq '[.messages[]|select(.role=="toolResult")]|length' <<<"$OUT")" = 0 ] && ok "refused submits saved nothing" || bad "a refused submit saved something"
+printf '{"picks":[%s],"confidence":70,"thinking":"2^10 is about 1000, so $n$ halves to 1 in $k$ steps"}\n' "$N" > "$TMP/submit.json"
+lh_run 0 ".repeat==false and .items[0].type==\"answer\" and .items[0].answers==[{\"index\":$N,\"label\":\"About 10\"}] and .items[0].correct==true and .items[0].confidence==70 and (.items[0].thinking|test(\"[$]n[$]\")) and .openQuestion==null" submit "$S" --after "$C" --file "$TMP/submit.json"
+SUBMIT_CURSOR="$(jq -r .cursor <<<"$OUT")"
+lh_run 0 ".repeat==true and .cursor==\"$SUBMIT_CURSOR\"" submit "$S" --after "$C" --file "$TMP/submit.json"
+lh_run 0 '.ok' show "$S"
+[ "$(jq '[.messages[]|select(.role=="toolResult")]|length' <<<"$OUT")" = 1 ] && ok "the retry saved nothing" || bad "the retry saved a second answer"
+lh_run 1 '.code=="answered"' submit "$S" --after "$C" <<'EOF'
+{"dontKnow":true}
+EOF
+lh_run 0 '(.items|length)==1 and .items[0].correct==true' answer "$S"
+cursor
+lh_run 0 '.ok' say "$S" --after "$C" <<<"Right: about 10."
+cursor
+lh_run 0 '.ok' recall "$S" --after "$C" <<'EOF'
+{"question":"Why does binary search need the list to be sorted?","correctAnswer":"Each step compares the target with the middle item and throws away the half that cannot contain it."}
+EOF
+cursor
+lh_run 0 '.items[0].kind=="explain" and .items[0].text=="So the half you drop cannot hold it."' submit "$S" --after "$C" <<'EOF'
+{"text":"So the half you drop cannot hold it."}
+EOF
+cursor
+lh_run 0 '.ok' say "$S" --after "$C" <<<"That matches the answer I committed."
+cursor
+lh_run 0 '.ok' probe "$S" --after "$C" <<'EOF'
+{"question":"Which list can binary search use?","options":[{"label":"1, 3, 7, 9","value":"sorted"},{"label":"9, 1, 7, 3","value":"unsorted"}],"explanation":"Only sorted order lets each comparison rule out a half.","correctAnswer":"sorted"}
+EOF
+cursor
+lh_run 0 '.items[0].type=="answer" and .items[0].dontKnow==true and (.items[0]|has("confidence")|not)' submit "$S" --after "$C" <<'EOF'
+{"dontKnow":true}
+EOF
+cursor
+lh_run 0 '.ok' say "$S" --after "$C" <<<"No problem; sorted order is what lets each step drop a half."
+cursor
+lh_run 0 '.ok' ask "$S" --after "$C" <<'EOF'
+{"question":"Shall we go on?","options":[{"label":"Yes","value":"yes"},{"label":"Later","value":"later"}]}
+EOF
+cursor
+lh_run 0 '.items[0].type=="skip" and .items[0].kind=="ask" and .openQuestion==null' submit "$S" --after "$C" --skip
+lh_run 0 '.repeat==true' submit "$S" --after "$C" --skip
+
 say "10. No model ran"
 printf '$ grep -iE "agent|provider|api key|error" %s\n' "$LOG"
 grep -iE "agent|provider|api key|error" "$LOG" || echo "(no matches)"

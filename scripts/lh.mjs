@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 /**
  * lh: the Bot Teacher's command line for bot-run lessons (fork, ADR 0001).
- * One Node 22 script, no dependencies. It calls LearnHarness's external
- * routes (app/api/external/**) and prints one JSON line per command.
+ * One Node 22 script. It calls LearnHarness's external routes
+ * (app/api/external/**), and for `submit` the lesson page's own answer
+ * routes, and prints one JSON line per command.
  *
  *   lh lesson new --title <t> --key <k> [--prompt <p>]
  *   lh say <lesson> --after <cursor> [--file <path>]   text from --file, else stdin
@@ -20,8 +21,10 @@
  *   lh submit <lesson> --after <cursor> --skip
  *
  * Exit codes: 0 ok; 1 any reply that is not ok (a refusal, bad_reply, or
- * a reply without "ok":true, whatever its HTTP status); 2 `answer --wait`
+ * a reply without "ok":true or on a non-2xx status); 2 `answer --wait`
  * timed out; 3 LearnHarness unreachable or no answer.
+ * No dependencies, except that `submit` loads the repo's own answer code
+ * through tsx (installed by `npm ci`). Node 22 or newer.
  * The base URL is LH_URL, default http://127.0.0.1:3000: not localhost,
  * which can resolve to the IPv6 address while LearnHarness listens on
  * 127.0.0.1 only. Stdin must close within LH_STDIN_TIMEOUT_MS (default

@@ -78,7 +78,7 @@ The work comes in four phases:
 - **Bot-run flag.** The lesson record gains an optional `driver: "external"` and an optional `externalKey`. Lesson creation in the chat store takes an optional third argument to set them; existing callers stay untouched. Lessons without the flag behave as today.
 - **Bot-run module.** A new server module holds all bot-run logic. Routes are thin wrappers that import it through the server barrel, following the repo's import rule.
 - **Page input in a bot-run lesson.** The chat handler gets one early return, right after it fetches the record and parses the input, into the bot-run module. That path:
-  - accepts only the page's input types (any other input, such as an internal wake input, is refused with 400 and code `bot_run_lesson`);
+  - accepts only the page's input types. An internal wake input (steers) is refused with 400 and code `bot_run_lesson`. Over HTTP, an input type the page never sends is refused earlier, by the input parser, with 400 and no code;
   - refuses `continue` and `retry` with 422 and code `bot_run_lesson` (not 409, which the page treats as "turn running" and resends);
   - otherwise appends the input with the existing input-append logic, turning its errors into 400;
   - commits the record and returns the same settled-turn response the parallel-question path returns.
@@ -130,16 +130,17 @@ The work comes in four phases:
 
     The bot's own results and markers are excluded. Reading twice returns the same items.
   - The **cursor** is the id of the newest message in the lesson.
-- **`lh`.** One Node 22 script with no dependencies.
+- **`lh`.** One Node 22 script with no dependencies of its own. `submit` (ticket 21) loads the repo's answer code through tsx, which `npm ci` installs.
   - Base URL comes from `LH_URL`, default `http://127.0.0.1:3000`. Not `localhost`, which can resolve to the IPv6 address while the server listens on 127.0.0.1 only.
   - It prints one JSON line per command, with the cursor when there is one.
-  - Exit codes: 0 ok; 1 any reply that is not ok (a refusal, `bad_reply`, or JSON without `"ok":true`); 2 `--wait` timed out; 3 LearnHarness unreachable or no answer within 30 s, naming `LH_URL` and printing the guide's path, `docs/external-teacher.md`.
+  - Exit codes: 0 ok; 1 any reply that is not ok (a refusal, `bad_reply`, or a reply without `"ok":true` or on a non-2xx status); 2 `--wait` timed out; 3 LearnHarness unreachable or no answer within 30 s, naming `LH_URL` and printing the guide's path, `docs/external-teacher.md`.
   - Commands, lesson id first:
     - `lesson new --title --key [--prompt]`
     - `say` and `plan`, which read text
     - `ask`, `probe`, `recall`, `probe-done`, `quiz` and `explain`, which read JSON
     - `answer [--wait] [--timeout]`; `--wait` checks every 2 s until there is at least one item, up to 10 minutes by default
     - `show`
+    - `submit --after [--file] [--skip]` (ticket 21): saves a learner's answer given outside the page through the page's own routes
 
     Turn commands require `--after <cursor>`. Long input comes from `--file` or stdin.
 - **Teacher guide.** A short Markdown guide for the Bot Teacher, at `docs/external-teacher.md`. It covers:
