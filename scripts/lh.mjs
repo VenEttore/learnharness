@@ -13,10 +13,15 @@
  *                                 --wait checks every 2 s until there is
  *                                 at least one item, 600 s by default
  *   lh show <lesson>
+ *   lh submit <lesson> --after <cursor> [--file <path>]
+ *                                 the learner's answer to the open question,
+ *                                 a JSON object from --file, else stdin:
+ *                                 {"picks":[2],"confidence":70,"thinking":"..."}
+ *   lh submit <lesson> --after <cursor> --skip
  *
  * Exit codes: 0 ok; 1 any reply that is not ok (a refusal, bad_reply, or
- * JSON without "ok":true); 2 `answer --wait` timed out;
- * 3 LearnHarness unreachable or no answer.
+ * a reply without "ok":true, whatever its HTTP status); 2 `answer --wait`
+ * timed out; 3 LearnHarness unreachable or no answer.
  * The base URL is LH_URL, default http://127.0.0.1:3000: not localhost,
  * which can resolve to the IPv6 address while LearnHarness listens on
  * 127.0.0.1 only. Stdin must close within LH_STDIN_TIMEOUT_MS (default
@@ -38,7 +43,7 @@ const WAIT_TIMEOUT_S = 600;
 class UsageError extends Error {}
 
 /** Flags that take no value. */
-const SWITCHES = ["wait"];
+const SWITCHES = ["wait", "skip"];
 
 /** Split argv into positionals and flags, `--name value` or `--name=value`
  *  (the second form takes a value that itself starts with `--`). A switch
@@ -152,6 +157,7 @@ const FLAGS = {
 	...Object.fromEntries(JSON_KINDS.map((k) => [k, ["after", "file"]])),
 	answer: ["wait", "timeout"],
 	show: [],
+	submit: ["after", "file", "skip"],
 };
 
 /** The HTTP request a command line makes: `{ method, path, body? }`. */
@@ -201,8 +207,24 @@ async function requestFor(argv) {
 		}
 		case "show":
 			return { method: "GET", path: lessonPath(rest[0]) };
+		case "submit": {
+			lessonPath(rest[0]);
+			const after = requireAfter(flags);
+			if (flags.skip) {
+				if (flags.file !== undefined) throw new UsageError("--skip takes no --file");
+				return { submit: { lesson: rest[0], after, input: { skip: true } } };
+			}
+			const text = await readInput(flags);
+			let raw;
+			try {
+				raw = JSON.parse(text);
+			} catch (err) {
+				throw new UsageError(`the input is not JSON: ${err.message}`);
+			}
+			return { submit: { lesson: rest[0], after, raw } };
+		}
 		default:
-			throw new UsageError(`unknown command ${JSON.stringify(command ?? "")}; commands: lesson new, say, plan, ${JSON_KINDS.join(", ")}, answer, show`);
+			throw new UsageError(`unknown command ${JSON.stringify(command ?? "")}; commands: lesson new, say, plan, ${JSON_KINDS.join(", ")}, answer, show, submit`);
 	}
 }
 
@@ -210,7 +232,15 @@ function print(value) {
 	process.stdout.write(`${JSON.stringify(value)}\n`);
 }
 
+/** The oldest Node `lh` runs on. */
+const NODE_MAJOR = 22;
+
 async function main() {
+	const major = Number(process.versions.node.split(".")[0]);
+	if (major < NODE_MAJOR) {
+		print({ ok: false, code: "node_version", error: `lh needs Node ${NODE_MAJOR} or newer; this is Node ${process.versions.node}. See ${GUIDE}, section 1.` });
+		return 1;
+	}
 	let request;
 	try {
 		request = await requestFor(process.argv.slice(2));
@@ -220,6 +250,7 @@ async function main() {
 		return 1;
 	}
 	const base = process.env.LH_URL || DEFAULT_URL;
+	if (request.submit) return submit(request.submit, base);
 	const deadline = Date.now() + (request.waitMs ?? 0);
 	for (;;) {
 		const reply = await send(request, base);
@@ -238,6 +269,76 @@ async function main() {
 			return 2;
 		}
 		await new Promise((resolve) => setTimeout(resolve, Math.min(WAIT_POLL_MS, left)));
+	}
+}
+
+/** The shared answer logic (src/core/answer-submit.ts): the page's own
+ *  QuestionData, option order and answer record. lh has no build step, so
+ *  it loads the TypeScript through tsx, which `npm ci` installs. */
+async function submitCore() {
+	let tsImport;
+	try {
+		({ tsImport } = await import("tsx/esm/api"));
+	} catch {
+		throw new UsageError(`lh submit runs LearnHarness's own answer code and needs the repo's node_modules: run npm ci in the repo (${GUIDE}, section 1)`);
+	}
+	return tsImport("../src/core/answer-submit.ts", import.meta.url);
+}
+
+/** `lh submit`: read the lesson, check the answer against its open
+ *  question, then save it through the page's own route, as the page
+ *  does. A retry finds its answer already saved and reports a repeat. */
+async function submit({ lesson, after, input, raw }, base) {
+	let core;
+	try {
+		core = await submitCore();
+	} catch (err) {
+		if (!(err instanceof UsageError)) throw err;
+		print({ ok: false, code: "usage", error: err.message });
+		return 1;
+	}
+	if (!input) {
+		const parsed = core.parseSubmitPayload(raw);
+		if (!parsed.ok) {
+			print({ ok: false, code: "usage", error: parsed.problems.join("; ") });
+			return 1;
+		}
+		input = parsed.input;
+	}
+	const lessonUrl = lessonPath(lesson);
+	// Once more after a refused send: a racing save (the page, or another
+	// submit) may have taken the question, and the plan then says repeat
+	// or answered.
+	for (let attempt = 0; ; attempt++) {
+		const shown = await send({ method: "GET", path: lessonUrl }, base);
+		if (typeof shown === "number") return shown;
+		if (!(shown.res.ok && shown.body?.ok === true)) {
+			print(shown.body);
+			return 1;
+		}
+		const plan = core.planSubmit(lesson, shown.body, after, input);
+		if (plan.action === "refuse") {
+			print(plan.reply);
+			return 1;
+		}
+		if (plan.action === "send") {
+			const sent = await send({ method: "POST", path: plan.path, body: plan.body }, base);
+			if (typeof sent === "number") return sent;
+			if (!sent.res.ok) {
+				if (attempt === 0) continue;
+				print({ ok: false, code: "refused", status: sent.res.status, error: sent.body?.error ?? sent.body });
+				return 1;
+			}
+		}
+		// Read it back: the answer as saved, and the new cursor.
+		const read = await send({ method: "GET", path: `${lessonUrl}/answer` }, base);
+		if (typeof read === "number") return read;
+		if (!(read.res.ok && read.body?.ok === true)) {
+			print(read.body);
+			return 1;
+		}
+		print({ ...read.body, repeat: plan.action === "repeat", toolCallId: plan.toolCallId });
+		return 0;
 	}
 }
 
