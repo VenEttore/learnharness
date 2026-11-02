@@ -1,0 +1,13 @@
+A wide flow:
+
+```mermaid
+graph LR
+  a[Count the items] --> b[Halve the pile] --> c[Check the size] --> d[Halve again] --> e[Count the halvings] --> f[Compare with log2 n] --> g[Write the formula] --> h[Test on 1024 items]
+```
+
+A small one:
+
+```mermaid
+graph TD
+  x[n items] --> y[n/2 items]
+```

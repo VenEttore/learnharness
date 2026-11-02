@@ -1,0 +1,1 @@
+{"text":"Quick check before we start: how does repeated halving shrink a pile?","question":"After $k$ halvings starting from $n$ items, about how many items remain?","options":[{"label":"$n/2^k$","value":"a"},{"label":"$n-k$","value":"b"},{"label":"$n/k$","value":"c"}],"explanation":"Each halving divides by 2, so after $k$ steps: $n/2^k$.","correctAnswer":"a"}
