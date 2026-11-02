@@ -246,13 +246,30 @@ export function planSubmit(lessonId: string, show: ShowReply, after: string, inp
 	if (!parsed) return refuse("invalid", { problems: ["the open question's input does not parse; the page shows it as malformed"], cursor, items });
 	const qd = questionDataOf(call.tool, call.toolCallId, parsed);
 	const shown = qd.mode === "text" ? [] : qd.options.map((o, i) => ({ number: i + 1, label: o.label }));
+	const result = messages.find((m): m is Extract<ShownMessage, { role: "toolResult" }> => m.role === "toolResult" && "toolCallId" in m && m.toolCallId === call.toolCallId);
+	// Whether the question is still open comes before what the answer
+	// says: a refusal must name the question the card shows now.
+	// The bot has posted since --after (the next question, or its reply
+	// to this answer): the cursor is stale, and this question is behind it.
+	if (result && messages.slice(at + 1).some((m) => m.role === "assistant")) return refuse("no_open_question", { error: "you posted after --after, so its question is closed; use the cursor from your latest reply", cursor, items });
+	if (!result && cursor !== after) return refuse("unread_input", { error: "the learner added input after --after; read items, then submit with the new cursor", cursor, items });
+	let saved: Record<string, unknown> = {};
+	if (result) {
+		try {
+			saved = JSON.parse(result.text) as Record<string, unknown>;
+		} catch {
+			// unreadable: never equal, so refused below
+		}
+	}
+	const answered = () => refuse("answered", { error: "the question already has a different answer or skip, shown in saved", toolCallId: call.toolCallId, saved, cursor, items });
 	let answer: QuestionAnswerData;
 	if (input.skip) {
 		// The page's skip: the raw stored question text (chat.tsx).
 		answer = dismissedAnswer(kind, (call.input as { question?: string } | null)?.question ?? "");
 	} else {
 		const problems = inputProblems(qd, call.tool, input);
-		if (problems.length > 0) return refuse("invalid", { problems, options: shown, cursor, items });
+		// An answer the page could not send is never the saved one.
+		if (problems.length > 0) return result ? answered() : refuse("invalid", { problems, options: shown, cursor, items });
 		// The dock's AnswerRequest: values by the shown order, thinking
 		// only beside picks, confidence only on quiz kinds.
 		const req: AnswerRequest = {
@@ -265,21 +282,7 @@ export function planSubmit(lessonId: string, show: ShowReply, after: string, inp
 		};
 		answer = buildAnswer(qd, req, call.tool);
 	}
-	const result = messages.find((m): m is Extract<ShownMessage, { role: "toolResult" }> => m.role === "toolResult" && "toolCallId" in m && m.toolCallId === call.toolCallId);
-	if (result) {
-		// The bot has posted since --after (the next question, or its reply
-		// to this answer): the cursor is stale, and this question is behind it.
-		if (messages.slice(at + 1).some((m) => m.role === "assistant")) return refuse("no_open_question", { error: "you posted after --after, so its question is closed; use the cursor from your latest reply", cursor, items });
-		let saved: Record<string, unknown> = {};
-		try {
-			saved = JSON.parse(result.text) as Record<string, unknown>;
-		} catch {
-			// unreadable: never equal, so refused below
-		}
-		if (answerKey(saved) === answerKey(compactAnswerForModel(answer))) return { action: "repeat", toolCallId: call.toolCallId };
-		return refuse("answered", { error: "the question already has a different answer or skip, shown in saved", toolCallId: call.toolCallId, saved, cursor, items });
-	}
-	if (cursor !== after) return refuse("unread_input", { error: "the learner added input after --after; read items, then submit with the new cursor", cursor, items });
+	if (result) return answerKey(saved) === answerKey(compactAnswerForModel(answer)) ? { action: "repeat", toolCallId: call.toolCallId } : answered();
 	if (input.skip) {
 		return { action: "send", toolCallId: call.toolCallId, path: `/api/chats/${encodeURIComponent(lessonId)}/dismiss`, body: { input: { type: "dismiss", toolCallId: call.toolCallId, answer } } };
 	}

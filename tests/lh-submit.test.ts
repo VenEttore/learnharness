@@ -278,7 +278,11 @@ describe("lh submit", () => {
 			assert.equal(stale.json.cursor, next.json.cursor);
 		}
 		assert.equal(chatPosts(), posts);
+		// An answer that would not fit either question still gets the stale-cursor refusal.
+		const invalid = await lh(["submit", id, "--after", first.json.cursor], JSON.stringify({ picks: [9] }));
+		assert.equal(invalid.json.code, "no_open_question", JSON.stringify(invalid.json));
 		const fresh = await lh(["submit", id, "--after", next.json.cursor], payload);
+
 		assert.equal(fresh.code, 0, JSON.stringify(fresh.json));
 		assert.equal(fresh.json.repeat, false);
 		assert.equal(storedAnswers(id).length, 2);
@@ -313,6 +317,9 @@ describe("lh submit", () => {
 		assert.equal(res.json.toolCallId, toolCallId);
 		assert.equal(res.json.saved.dontKnow, true);
 		assert.equal(storedAnswers(id).length, 1);
+		const unfit = await lh(["submit", id, "--after", cursor], JSON.stringify({ picks: [1] }));
+		assert.equal(unfit.json.code, "answered", "an answer missing its confidence is still told the question is answered");
+		assert.equal(unfit.json.saved.dontKnow, true);
 	});
 
 	it("a retried skip and a retried \"I don't know\" are repeats", async () => {
