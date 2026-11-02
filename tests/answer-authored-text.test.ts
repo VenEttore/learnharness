@@ -472,6 +472,33 @@ describe("ordinary lessons, and which order a hand-built answer used", () => {
 		assert.deepEqual(details.answers, [{ index: 2, label: "$k$", value: "k" }]);
 	});
 
+	it("rows whose labels differ only by edge spaces share a label: none binds, and it stays linear", () => {
+		// Interrogate round 6, seat A: the shared-label rule compared labels untrimmed.
+		const OPTS = [{ label: "$n$" }, { label: "$k$" }, { label: "$m$" }, { label: "A" }, { label: "B" }];
+		const call = { question: "Which?", options: OPTS, explanation: "e", correctAnswer: "A" };
+		const sent = {
+			kind: "quiz", tool: "quiz", questionText: "q", dontKnow: false,
+			options: ["$", "$ ", "$", "$k$", "$m$"].map((label, i) => ({ index: i + 1, label })),
+			answers: [], correct: false, correctIndices: [4], answeredAt: new Date().toISOString(),
+		};
+		assert.deepEqual(stored(CALL, "quiz", call, sent).options!.map((o) => o.label), ["$", "$ ", "$", "$k$", "$m$"]);
+
+		// The 25 characters String.prototype.trim removes, three per row: 15,625 distinct labels.
+		const pads = [9, 10, 11, 12, 13, 32, 0xa0, 0x1680, ...Array.from({ length: 11 }, (_, i) => 0x2000 + i), 0x2028, 0x2029, 0x202f, 0x205f, 0x3000, 0xfeff].map((c) => String.fromCharCode(c));
+		assert.equal(pads.join("").trim(), "");
+		const BIG = Array.from({ length: 16_000 }, (_, i) => ({ label: `$a${i}$`, value: `b${i}` }));
+		const padded = {
+			kind: "quiz", tool: "quiz", questionText: "q", dontKnow: false,
+			options: BIG.map((_, i) => ({ index: i + 1, label: "$" + pads[i % 25]! + pads[Math.floor(i / 25) % 25]! + pads[Math.floor(i / 625) % 25]! })),
+			answers: [], correct: false, correctIndices: [1], answeredAt: new Date().toISOString(),
+		};
+		const started = performance.now();
+		const details = stored(CALL, "quiz", { question: "Which?", options: BIG, explanation: "e", correctAnswer: "b0" }, padded);
+		const ms = performance.now() - started;
+		assert.ok(ms < 3_000, `took ${Math.round(ms)} ms`);
+		assert.deepEqual(details.options, padded.options);
+	});
+
 	it("two rows left with the same option contradict each other, so neither binds", () => {
 		const OPTS = [{ label: "$n$", value: "n" }, { label: "$k$", value: "k" }, { label: "plain", value: "p" }];
 		const sent = {

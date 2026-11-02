@@ -137,6 +137,7 @@ function bindRows(
 		if (possible[i]!.length > 0 && !labelFits(rows[i]!.label, option)) return undefined; // the row's label says otherwise
 		return claimants.get(option) === 1 ? option : undefined;
 	});
+	// Labels are compared trimmed here too, like every other lookup.
 	// Rows with no claim whose label names several options: drop the options
 	// claimed anywhere; one left is that row's. One pass, so the cost stays
 	// linear. Two such rows with the same label would be left with the same
@@ -147,11 +148,11 @@ function bindRows(
 	const open = possible.map((options, i) => !bound[i] && claims[i]!.size === 0 && options.length > 1);
 	const openLabels = new Map<string, number>();
 	rows.forEach((row, i) => {
-		if (open[i]) openLabels.set(row.label, (openLabels.get(row.label) ?? 0) + 1);
+		if (open[i]) openLabels.set(row.label.trim(), (openLabels.get(row.label.trim()) ?? 0) + 1);
 	});
 	const deduced = new Map<QuizOption, number[]>();
 	possible.forEach((options, i) => {
-		if (!open[i] || openLabels.get(rows[i]!.label)! > 1) return;
+		if (!open[i] || openLabels.get(rows[i]!.label.trim())! > 1) return;
 		const left = options.filter((o) => !claimants.has(o));
 		if (left.length === 1) deduced.set(left[0]!, [...(deduced.get(left[0]!) ?? []), i]);
 	});
