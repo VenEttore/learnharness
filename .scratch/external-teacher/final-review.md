@@ -1,6 +1,6 @@
 # external-teacher: final spec review packet
 
-Prepared 2026-10-31 at integration tip b2d80fc. Ticket 15 (Matt's bench) is still open, so the spec cannot ship yet.
+Updated 2026-11-02 at integration tip 53aab60. Every ticket (01-22) is merged. Bench 3 (`external-teacher-bench-3` @ 5d5ca58, same code apart from the AGENTS.md revert below) is with Ven's test bot. The spec ships on "ship it" from Ven or Matt in their own words, after bench 3 passes.
 
 ## What shipped
 
@@ -19,45 +19,63 @@ Prepared 2026-10-31 at integration tip b2d80fc. Ticket 15 (Matt's bench) is stil
 | 11 | `plan` (Mermaid), parser errors as 422, rewrites during teach; check/build throws become JSON 500 internal_error | 439f106 |
 | 12 | `quiz` and `explain` tagged with a plan node; node check reads the latest plan in the transcript; retried question after a rewrite is a repeat | 4c38b64 |
 | 13 | docs/external-teacher.md, the Bot Teacher guide | 815aa6d |
-| 14 | Phase C verified: guide's start command, loopback only, a scripted no-key lesson with the guide's JSON examples (78 checks pass) | b2d80fc |
-| 15 | Bench: one real lesson with a Grok Bot | open, in laptop-queue.md |
+| 14 | Phase C verified: the guide's start command, loopback only, a scripted no-key lesson (78 checks) | b2d80fc |
+| 15 | Bench 1 with a Grok Bot: PASS (Ven, 2026-11-01). Findings became 20, 21, 22 | .scratch only |
+| 16 | writeChat writes a temp file and renames it, so a cut-off write can't leave a lesson unreadable (upstream file, small edit) | d5f063c |
+| 17 | GLOSSARY terms: cursor, turn, item, repeat, takeover, strand, refusal | 675e146 |
+| 18 | Tests for bad_reply, exit 3, a failed `lesson new` save, unread_input past the bot's last turn | 8ae6d47 |
+| 19 | Guide, spec and code comments match the code | 522de4e |
+| 20 | Authored question text survives hand-built answers: on save, question text, explanation and commitment come from the stored question call; option rows and picks are restored only for page-shaped requests; anything unmodeled is stored as sent. Covers ordinary lessons too. B2 fix from bench 2 | 0504637 |
+| 22 | Read-only question card at /chat/<id>/card for 390 px phone screenshots: phase, open question with options in the page's order, latest teaching, plan map; unreadable charts become a note | 0673052 |
+| 21 | `lh submit`: saves an answer or skip through the page's own routes and record, options numbered in card order, confidence required for quiz and probe picks unless "I don't know", bad picks and stale cursors refused before sending, retries are repeats. Guide: answering from a phone or chat, Grok Bot notes and stand-in table, quoting rules, known limits, Node version line. GLOSSARY "Question card", "Lead-in". Smoke section 9b | 5d5ca58 |
 
 ## Final integration check
 
-Ticket 14 ran it at 0f1741e, whose code is identical to b2d80fc (14 changed only .scratch/): typecheck and lint pass, 3085 of 3086 tests pass. The one failure is the baseline test "main loader resolves Pi's import-only PUBLIC package exports and native OAuth without a CLI or network". It fails on main before this work and has nothing to do with the fork; the spec keeps it.
+Ticket 21 ran it at 759b539, whose code equals the merge 5d5ca58: typecheck and lint pass, 3166 of 3167 tests pass, and phase-c-smoke.sh passes (102 checks, 0 failed). The one failing test is the baseline "main loader resolves Pi's import-only PUBLIC package exports and native OAuth without a CLI or network". It fails on main before this work and has nothing to do with the fork. 53aab60 adds only .scratch files and the AGENTS.md revert.
 
-## Needs a decision
+## Known limits (accepted)
 
-1. writeChat is not atomic (from 11's interrogate). src/store/chats.ts writes the chat file with a plain writeFileSync, so a write cut off partway (disk full, crash) can leave the lesson unreadable. Every save path is affected, ordinary lessons too. It predates the fork. Fix: temp file plus rename, as graph.ts and auth.ts already do. Small edit to an upstream file. Recommendation: new ticket 16.
-2. Glossary entries (from 13). GLOSSARY.md lacks cursor, turn, item, repeat, takeover, strand and refusal. Docs only. Recommendation: new ticket 17.
-3. Untested code paths (from 13). bad_reply, the exit-3 "did not answer" path, a failed save on `lesson new`, and unread_input with an --after newer than the bot's last turn have no automated test. 13's reviewers checked them by hand. Recommendation: new ticket 18 adds the tests.
-4. Spec wording on two writers (from 07). The spec's Out of Scope line says "the cursor already refuses a writer that missed learner input". Since 07, check 4 reads unread input past max(after, the bot's last message), so this holds only for input that came after the bot's last message. Recommendation: correct the sentence in the spec at ship; no code change.
-5. LH_IGNORE_ENV_KEYS=1 (from 13). It leaves ANTHROPIC_AUTH_TOKEN, ANTHROPIC_OAUTH_TOKEN, AZURE_OPENAI_API_KEY, GOOGLE_CLOUD_API_KEY, CLOUDFLARE_API_KEY, COPILOT_GITHUB_TOKEN and cloud credentials in effect. The guide unsets them before starting. A bot-run lesson calls no model either way, so this only matters for ordinary lessons on that server. Recommendation: accept.
-6. Upstream prompt mismatch (from 13). prompts 20-teaching.md:33 says ask_user_question appears behind "Check your understanding", but the page shows it open. Upstream's file; the bot reads it for method only. Recommendation: accept.
+- Ticket 20, gap A: an option with a backslash right before a newline, sent in a double-quoted shell body, can store the pick under another option's label.
+- Ticket 20, B1: a shell variable that is set (e.g. m=2) can make one option's text look like another's.
+- `$?`, `$$` and `$(...)` leftovers from a double-quoted body stay as sent; bash also runs `$(...)` from lesson text while building such a body. The guide forbids double-quoted bodies; bench 2 found --file, a single-quoted heredoc and curl --data-binary @file clean in every case.
+- The server stores any confidence value and trusts `correct` from the client (both predate the fork). `lh submit` enforces the page's values.
+- A message the learner types between `lh submit`'s read and its save is not refused; it comes back in the reply's items. Listed in the guide.
+- `lh` on Node older than 14.13.1 crashes before it can print the node_version refusal. The guide names the versions that were run.
+- Card: gantt chart date labels overlap at 390 px (Ven, 2026-11-02).
 
-## Deferred, and where it went
+## Spec decisions taken during the work
 
-- 01: a shared {text, details} to tool-result mapper; moving PROBE_DONE_ACK_TEXT; retyping toToolResult's text-only branch. Not needed by later tickets (the bot path uses the shared message constructor). Dropped.
-- 02: job pump and artifact-ui route on bot-run lessons; out of scope until background jobs run on bot-run lessons. Duplicate-send dedupe: ordinary lessons have none either. Compaction not injectable: spec says no new seam.
-- 03: 127.0.0.1 bind and lost-reply recovery went to the guide (13), done. API auth stays out of scope. Cross-origin text/plain POSTs to the existing /api/chat and /api/chats are unchanged (predate the fork).
-- 06: two cursor gaps went to 07, fixed there. A null lead-in is refused, not dropped.
-- 11: no duplicate-id refusal (Mermaid merges repeated ids; only cycles reachable). writeChat item above. planTreeOf and latestPlan repeat upstream validation to keep upstream edits small.
-- 12: "call plan_init" wording mapped to `lh plan` in the guide, done.
-- 13: glossary item above; three optional wording nits dropped.
-- Code smells left on purpose: test harness helpers copied across bot-run-* test files; lh.mjs lists JSON kinds twice.
+1. Spec Out of Scope wording on two writers (from 07) corrected at ship.
+2. LH_IGNORE_ENV_KEYS=1 leaves some provider credentials in effect; the guide unsets them. Accepted.
+3. Upstream prompt 20-teaching.md:33 mismatch. Accepted.
+4. Upstream compactAnswerForModel crashes on a null pick entry; `lh submit` refuses null picks before sending. Upstream code unchanged.
+
+## Not re-reviewed after the last round
+
+- 20: the narrowed B2 rule (3958658). Covered by the reviewers' cases as tests and the full check.
+- 21: a guide sentence, a code comment, the closed-question checks moved before validation (with two tests), and the read-to-save guide row. Covered by the full check and smoke.
+- 22: none.
 
 ## Reviews and seats
 
-- No Needs-hardware findings. No Risk: live tickets, so no blast-radius facts.
-- Review skipped under the small-diff rule: 05, 08, 09, 14 (verification tickets, and 08's 3-line guard with tests).
-- 03 round 5: code-review did not run (Grok 4.7 provider errors twice). Round 4 code-review passed on both axes, round 5 interrogate was clean, and 14's smoke exercises every 03 route.
-- 13 round 2: Haiku seat never started (T3 MCP registration timeout during the linuxdev outage); code-review ran through the native Agent tool on the same model. Round 3 ran all four seats and code-review, clean.
-- From 2026-10-31, code-review and the old Grok 4.7 interrogate seat ran on Opus 5.5 xhigh (Matt).
+- No Needs-hardware findings. No Risk: live tickets, so no blast-radius.
+- Review skipped under the small-diff rule: 05, 08, 09, 14, 16, 18.
+- 03 round 5: code-review did not run (Grok 4.7 provider errors twice). Round 4 code-review passed; round 5 interrogate clean.
+- 13 round 2: Haiku seat never started (T3 MCP timeout during the linuxdev outage).
+- From 2026-10-31, code-review and the Grok 4.7 interrogate seat ran on Opus 5.5 xhigh (Matt, this project only).
+- GLM 5.3 Flash and Composer 2.5 seats skipped from 17 onward: Cursor usage limit until 2026-11-19.
+- Review round cap reinstated 2026-11-02 (8 per ticket, 3 per launch). Over the cap with Continue: 20 (9 rounds), 22 (10), 21 (4, under the cap).
 
 ## Benches
 
-- 15 not yet run.
+- Bench 1 (ticket 15, 2026-11-01): PASS. P0 was bot shell quoting corrupting LaTeX, fixed by 20 and made avoidable by 21.
+- Bench 2 (2026-11-02, integration + 20 at its cap): LaTeX regression PASS 24/24; safe transports clean; gaps A and B reproduced; B2 fixed afterwards in 20.
+- Bench 3 (`external-teacher-bench-3` @ 5d5ca58): with Ven's test bot. Covers the card + widget + `lh submit` phone flow, `lh submit` refusals, option order, a mermaid plan on a phone, math conversion in chat, ticket 15 follow-ups 1-6, and a B2 spot check.
+
+## Fixed by the parent
+
+- 53aab60 restores the AGENTS.md heading level that ticket 21 changed (`#` to `##`) by accident.
 
 ## Separate from the spec
 
-README section on the fork's goals: branch readme-fork-goals (cffce62, pushed to origin), off main.
+README section on the fork's goals: branch readme-fork-goals (cffce62, pushed to origin), off main. Ships to main with "ship it" unless Matt says otherwise.
