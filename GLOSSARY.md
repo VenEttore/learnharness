@@ -36,6 +36,14 @@ _Avoid_: Topic, prerequisite
 A question in a lesson that the learner has not yet answered or skipped.
 _Avoid_: Pending question, dangling question
 
+**Lead-in**:
+Text the teacher puts right before a question in the same message, shown above it. In `lh`, the `text` field of `ask`, `probe`, `recall`, `quiz` and `explain`.
+_Avoid_: Preamble, intro
+
+**Question card**:
+A read-only page, `/chat/<lesson id>/card`, that shows a lesson's open question with its lead-in and options, numbered in the order the lesson page shows them, sized for a phone screenshot. A learner answering outside the page replies with those numbers.
+_Avoid_: Card view, question preview
+
 ## Turns
 
 **Turn**:
@@ -47,7 +55,7 @@ The newest point in a lesson's transcript at the moment LearnHarness sent the re
 _Avoid_: Offset, position
 
 **Repeat**:
-A Bot Teacher turn that matches a turn saved after the cursor it was sent with. LearnHarness accepts it and saves nothing.
+A Bot Teacher turn that matches a turn saved after the cursor it was sent with, or an `lh submit` whose answer is already saved for the question open at its cursor. It is accepted and saves nothing.
 _Avoid_: Duplicate, retry (the resend, which may or may not be a repeat)
 
 **Refusal**:
