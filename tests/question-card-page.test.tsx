@@ -30,6 +30,7 @@ const { QuestionDock } = await import("../components/question-dock.tsx");
 const { chatStore } = await import("../src/store/chats.ts");
 const { pendingQuestionOf } = await import("../src/core/native-messages.ts");
 const { parseQuizInput } = await import("../src/core/tool-parts.ts");
+const { handleChatRequest } = await import("../src/server/chat-handler.ts");
 
 after(() => {
 	fs.rmSync(TMP_DATA, { recursive: true, force: true });
@@ -86,6 +87,18 @@ const ASSESSMENT = {
 const PLAN = "graph TD\n  halving[Repeated halving] --> logs[Logarithms] --> search[Binary search]";
 const QUIZ = { type: "predict", nodeId: "halving", ...PROBE };
 
+/** The learner answering the open probe on the page; returns the new cursor. */
+async function learnerAnswers(id: string, question: string): Promise<string> {
+	const toolCallId = pendingQuestionOf(chatStore.getChat(id)!.messages)!.toolCallId;
+	const answer = { kind: "quiz", questionText: question, dontKnow: true, answers: [], answeredAt: new Date().toISOString() };
+	const res = await handleChatRequest(postJson("http://test/api/chat", { chatId: id, input: { type: "answer", toolCallId, answer } }), () => {
+		throw new Error("a bot-run lesson asked for a model agent");
+	});
+	assert.equal(res.status, 200);
+	await res.text();
+	return chatStore.getChat(id)!.messages.at(-1)!.id;
+}
+
 /** The labels in the order the lesson page's question dock shows them. */
 function dockOrder(id: string): string[] {
 	const pending = pendingQuestionOf(chatStore.getChat(id)!.messages)!;
@@ -140,7 +153,7 @@ describe("question card page", () => {
 		assert.deepEqual(optionTex(doc), dockOrder(id));
 	});
 
-	it("explain and recall say a typed answer is expected and show no options", async () => {
+	it("a recall says a typed answer is expected and shows no options", async () => {
 		const { id, cursor } = await lesson();
 		await turn(id, { kind: "recall", after: cursor, question: "Explain what $\\log_2 n$ counts.", correctAnswer: "Halvings to reach 1." });
 		const doc = await card(id);
@@ -148,6 +161,45 @@ describe("question card page", () => {
 		assert.ok(byTestId(doc, "card-typed-answer"));
 		assert.deepEqual(optionNumbers(doc), []);
 		assert.deepEqual(tex(byTestId(doc, "card-question-text")), ["\\log_2 n"]);
+	});
+
+	it("a teaching explain says a typed answer is expected", async () => {
+		const { id, cursor } = await lesson();
+		const done = await turn(id, { kind: "probe-done", after: cursor, ...ASSESSMENT });
+		const planned = await turn(id, { kind: "plan", after: done, mermaid: PLAN });
+		await turn(id, { kind: "explain", after: planned, type: "check", nodeId: "logs", question: "Why is $\\log_2 n$ the number of halvings?", correctAnswer: "Each halving divides by 2." });
+		const doc = await card(id);
+		assert.equal(byTestId(doc, "card-kind")?.textContent, "Explain");
+		assert.ok(byTestId(doc, "card-typed-answer"));
+		assert.deepEqual(optionNumbers(doc), []);
+		assert.equal(byTestId(doc, "card-current-node")?.textContent, "Logarithms");
+	});
+
+	it("numbers six probe options in the dock's shuffled order, not the authored order", async () => {
+		const { id, cursor } = await lesson();
+		const six = ["$n/2^k$", "$n-k$", "$n/k$", "$2^k$", "$k/n$", "$n^k$"].map((label, i) => ({ label, value: `o${i}` }));
+		await turn(id, { kind: "probe", after: cursor, question: MATH_QUESTION, options: six, explanation: "Halve $k$ times.", correctAnswer: "o0" });
+		const doc = await card(id);
+		const authored = ["n/2^k", "n-k", "n/k", "2^k", "k/n", "n^k"];
+		assert.deepEqual(optionNumbers(doc), ["1", "2", "3", "4", "5", "6"]);
+		assert.deepEqual(optionTex(doc), dockOrder(id));
+		// 1 in 720 seeds keeps the authored order; a fixed seed would hide a card that skips the shuffle.
+		assert.notDeepEqual(optionTex(doc), authored);
+	});
+
+	it("the teaching text skips an earlier question's lead-in", async () => {
+		const { id, cursor } = await lesson();
+		const said = await turn(id, { kind: "say", after: cursor, text: "Halving teaches logarithms." });
+		await turn(id, { kind: "probe", after: said, text: "First probe lead-in.", ...PROBE });
+		const answered = await learnerAnswers(id, MATH_QUESTION);
+		await turn(id, { kind: "probe", after: answered, ...PROBE, question: "Second: after $k$ halvings?" });
+		const doc = await card(id);
+		assert.equal(byTestId(doc, "card-teaching")?.textContent?.includes("Halving teaches logarithms."), true);
+		assert.equal(byTestId(doc, "card-teaching")?.textContent?.includes("First probe lead-in."), false);
+	});
+
+	it("an unknown lesson is not found", async () => {
+		await assert.rejects(card("chat_missing_card"), (e: Error) => /NEXT_HTTP_ERROR_FALLBACK;404|NEXT_NOT_FOUND/.test(e.message ?? (e as { digest?: string }).digest ?? ""));
 	});
 
 	it("an ask keeps its authored option order and offers Other", async () => {

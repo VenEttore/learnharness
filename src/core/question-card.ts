@@ -16,7 +16,7 @@ import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { derivePlanStatusesLh } from "./contracts.ts";
 import type { PlanTree } from "./contracts.ts";
 import { failedOutputCallIds, pendingQuestionOf, userFacingTextOf, type LhMessage } from "./native-messages.ts";
-import { toolQuestionKind } from "./pending.ts";
+import { QUESTION_TOOLS, toolQuestionKind } from "./pending.ts";
 import { phaseAt3Lh, type Phase3 } from "./phases.ts";
 import { normalizeOptions, normalizeQuizType, seededRandom, shuffleOptions, type QuizOption } from "./question-core.ts";
 import { parseAskInput, parseExplainInput, parseQuizInput } from "./tool-parts.ts";
@@ -105,12 +105,16 @@ function joined(texts: string[]): string | null {
 	return text ? text : null;
 }
 
-/** The newest assistant message before `end` with learner-facing text. */
+/** The newest assistant message before `end` with learner-facing text.
+ *  A message that asks a question is skipped: its text is that older
+ *  question's lead-in, not teaching. */
 function latestTeaching(messages: readonly LhMessage[], end: number, failed: ReadonlySet<string>): string | null {
 	for (let i = end - 1; i >= 0; i--) {
 		const m = messages[i]!;
 		if (m.role !== "assistant") continue;
-		const text = joined(userFacingTextOf((m as AssistantMessage).content, failed));
+		const content = (m as AssistantMessage).content;
+		if (content.some((b) => b.type === "toolCall" && (QUESTION_TOOLS as readonly string[]).includes(b.name))) continue;
+		const text = joined(userFacingTextOf(content, failed));
 		if (text) return text;
 	}
 	return null;
