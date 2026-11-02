@@ -1,6 +1,6 @@
 # external-teacher: final spec review packet
 
-Updated 2026-11-02 at integration tip 53aab60. Every ticket (01-22) is merged. Bench 3 (`external-teacher-bench-3` @ 5d5ca58, same code apart from the AGENTS.md revert below) is with Ven's test bot. The spec ships on "ship it" from Ven or Matt in their own words, after bench 3 passes.
+Updated 2026-11-02 at integration tip 53aab60. Every ticket (01-22) is merged. Bench 3 (`external-teacher-bench-3` @ 5d5ca58, same code apart from the AGENTS.md revert below) passed with one partial item and no blockers. The spec ships on "ship it" from Ven or Matt in their own words.
 
 ## What shipped
 
@@ -70,7 +70,10 @@ Ticket 21 ran it at 759b539, whose code equals the merge 5d5ca58: typecheck and 
 
 - Bench 1 (ticket 15, 2026-11-01): PASS. P0 was bot shell quoting corrupting LaTeX, fixed by 20 and made avoidable by 21.
 - Bench 2 (2026-11-02, integration + 20 at its cap): LaTeX regression PASS 24/24; safe transports clean; gaps A and B reproduced; B2 fixed afterwards in 20.
-- Bench 3 (`external-teacher-bench-3` @ 5d5ca58): with Ven's test bot. Covers the card + widget + `lh submit` phone flow, `lh submit` refusals, option order, a mermaid plan on a phone, math conversion in chat, ticket 15 follow-ups 1-6, and a B2 spot check.
+- Bench 3 (`external-teacher-bench-3` @ 5d5ca58, 2026-11-02, Ven's test bot): 6 of 7 PASS, 1 PARTIAL, no blockers. Artifacts on the bot box in /workspace/bench3/.
+  - PASS: the card + `lh submit` flow end to end (a shuffled probe stored the right option, and `lh answer` agrees); every `lh submit` refusal, cursor case and retry; card option order on shuffled quizzes; math conversion and KaTeX on the card; ticket 15 follow-ups 1-6 (rebuilt from issue 15's checklist); the B2 spot check (Alice stored through every transport and through `lh submit`).
+  - PARTIAL: plan diagram on a phone. Narrow plans (at most 2 nodes side by side) are readable, if tall. A 14-node plan 4 nodes wide is dropped from the card ("Now: ..." only), and in a simulated 340 px chat its labels are about 5 px. The guide should tell the bot to keep plans to at most 2 columns with short labels. Not tested on a real phone.
+  - Not tested: live chat widgets with Ven (the bot exercised `lh submit` directly).
 
 ## Fixed by the parent
 
