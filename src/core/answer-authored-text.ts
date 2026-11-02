@@ -39,19 +39,25 @@ export function withAuthoredText(
 		return out; // duplicate values: the call could not have been posed
 	}
 	// The dock shows a quiz in a shuffle seeded by the call id; a hand-built
-	// request may use the authored order instead.
+	// request may use the authored order instead. Rows are relabeled only
+	// when the request settles which order it used: every order that fits
+	// gives the same labels. Otherwise a row could get another option's
+	// label next to the request's grade, so the rows stay as sent.
 	const orders = quiz ? [shuffleOptions(authored, seededRandom(question.toolCallId)), authored] : [authored];
-	const order = orders.find((o) => fits(o, answer, authored));
+	const fitting = orders.filter((o) => fits(o, answer, authored));
+	const order = fitting.length > 0 && fitting.every((o) => sameLabels(o, fitting[0]!)) ? fitting[0] : undefined;
 	const byValue = new Map(authored.map((o) => [o.value, o.label]));
 
 	if (Array.isArray(answer.answers)) {
 		out.answers = answer.answers.map((a) => {
-			const label = (a.value !== undefined ? byValue.get(a.value) : undefined) ?? order?.[a.index - 1]?.label;
+			if (!isRow(a)) return a;
+			const label = (typeof a.value === "string" ? byValue.get(a.value) : undefined) ?? order?.[a.index - 1]?.label;
 			return label === undefined ? a : { ...a, label };
 		});
 	}
 	if (order && Array.isArray(answer.options)) {
 		out.options = answer.options.map((row) => {
+			if (!isRow(row)) return row;
 			const label = order[row.index - 1]?.label;
 			return label === undefined ? row : { ...row, label };
 		});
@@ -59,16 +65,26 @@ export function withAuthoredText(
 	return out;
 }
 
-/** Does `order` agree with what the request already proves: each pick's
- *  value sits at its index, and each row whose label is an authored label
- *  unchanged sits where that label does? Rows past the order (a
- *  hand-added "I don't know") prove nothing. */
+/** A hand-built request's entries are not checked anywhere else. */
+function isRow(row: unknown): row is { index: number; label: string; value?: unknown } {
+	return typeof row === "object" && row !== null && Number.isInteger((row as { index?: unknown }).index);
+}
+
+const sameLabels = (a: QuizOption[], b: QuizOption[]) => a.every((o, i) => o.label === b[i]!.label);
+
+/** Does `order` agree with what the request proves: each pick whose value
+ *  is one of the call's sits at its index, and each row whose label is an
+ *  authored label unchanged sits where that label does? A value the call
+ *  lacks (a label-default value the shell mangled) and rows past the order
+ *  (a hand-added "I don't know") prove nothing. */
 function fits(order: QuizOption[], answer: QuestionAnswerData, authored: QuizOption[]): boolean {
+	const values = new Set(authored.map((o) => o.value));
 	const labels = new Set(authored.map((o) => o.label));
-	const picks = Array.isArray(answer.answers) ? answer.answers : [];
-	const rows = Array.isArray(answer.options) ? answer.options : [];
+	const picks = (Array.isArray(answer.answers) ? answer.answers : []).filter(isRow);
+	const rows = (Array.isArray(answer.options) ? answer.options : []).filter(isRow);
+	const at = (index: number) => order[index - 1];
 	return (
-		picks.every((a) => a.value === undefined || order[a.index - 1] === undefined || order[a.index - 1]!.value === a.value) &&
-		rows.every((r) => !labels.has(r.label) || order[r.index - 1] === undefined || order[r.index - 1]!.label === r.label)
+		picks.every((a) => typeof a.value !== "string" || !values.has(a.value) || at(a.index) === undefined || at(a.index)!.value === a.value) &&
+		rows.every((r) => !labels.has(r.label) || at(r.index) === undefined || at(r.index)!.label === r.label)
 	);
 }

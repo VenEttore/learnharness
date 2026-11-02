@@ -155,26 +155,31 @@ describe("an answer's question text, labels and explanation are the call's", () 
 		await asks(id, cursor, "probe", PROBE);
 		const call = pendingQuestionOf(messages(id))!;
 		const order = pageOrder(call.toolCallId, PROBE.options);
-		const sent = quizAnswer("probe", PROBE, order, "halved", shell);
-		assert.equal(sent.options![order.findIndex((o) => o.value === "halved")]!.label, "/2^k$", "the request is mangled as on the bench");
+		// A pick the shuffle moved, so its value tells the two orders apart
+		// (an identity shuffle makes them one order).
+		const authoredValues = PROBE.options.map((o) => o.value);
+		const pick = order.find((o, i) => authoredValues[i] !== o.value)?.value ?? "halved";
+		const sent = quizAnswer("probe", PROBE, order, pick, shell);
+		assert.equal(sent.questionText, "After $ halvings starting from $ items, about how many items remain?", "the request is mangled as on the bench");
 		await postAnswer(id, call.toolCallId, sent);
+		const pickedLabel = PROBE.options.find((o) => o.value === pick)!.label;
 
 		const details = lastDetails(id);
 		assert.equal(details.questionText, PROBE.question);
 		assert.deepEqual(details.options, order.map((o, i) => ({ index: i + 1, label: o.label })));
-		assert.deepEqual(details.answers, [{ index: sent.answers[0]!.index, label: "$n/2^k$", value: "halved" }]);
+		assert.deepEqual(details.answers, [{ index: sent.answers[0]!.index, label: pickedLabel, value: pick }]);
 		assert.equal(details.explanation, PROBE.explanation);
 		// The learner's part is the request's.
-		assert.equal(details.correct, true);
+		assert.equal(details.correct, sent.correct);
 		assert.equal(details.confidence, 70);
 		assert.equal(details.thinking, "it halves each time");
 
 		const [item] = (await answer(id)).body.items;
 		assert.equal(item.question, PROBE.question);
-		assert.deepEqual(item.answers, [{ index: sent.answers[0]!.index, label: "$n/2^k$" }]);
+		assert.deepEqual(item.answers, [{ index: sent.answers[0]!.index, label: pickedLabel }]);
 		// What the model reads in ordinary lessons rides the same record.
 		const modelText = JSON.parse(((messages(id).at(-1) as { content: { text: string }[] }).content[0]!).text);
-		assert.deepEqual(modelText.answers, [{ index: sent.answers[0]!.index, label: "$n/2^k$" }]);
+		assert.deepEqual(modelText.answers, [{ index: sent.answers[0]!.index, label: pickedLabel }]);
 	});
 
 	it("a hand-built answer in the authored order gets the authored labels in that order", async () => {
@@ -182,12 +187,15 @@ describe("an answer's question text, labels and explanation are the call's", () 
 		await asks(id, cursor, "probe", PROBE);
 		const call = pendingQuestionOf(messages(id))!;
 		const authored = normalizeOptions(PROBE.options);
-		const sent = quizAnswer("probe", PROBE, authored, "minus", shell);
+		const order = pageOrder(call.toolCallId, PROBE.options);
+		const pick = authored.find((o, i) => order[i]!.value !== o.value)?.value ?? "minus";
+		const sent = quizAnswer("probe", PROBE, authored, pick, shell);
 		await postAnswer(id, call.toolCallId, sent);
 		const details = lastDetails(id);
+		const index = authored.findIndex((o) => o.value === pick) + 1;
 		assert.deepEqual(details.options, authored.map((o, i) => ({ index: i + 1, label: o.label })));
-		assert.deepEqual(details.answers, [{ index: 2, label: "$n-k$", value: "minus" }]);
-		assert.equal(details.correct, false);
+		assert.deepEqual(details.answers, [{ index, label: authored[index - 1]!.label, value: pick }]);
+		assert.equal(details.correct, pick === "halved");
 	});
 
 	it("a teach quiz with mixed labels and a $$ lead-in round-trips unchanged from the page", async () => {
@@ -219,11 +227,12 @@ describe("an answer's question text, labels and explanation are the call's", () 
 		await asks(id, cursor, "quiz", QUIZ);
 		const call = pendingQuestionOf(messages(id))!;
 		const order = pageOrder(call.toolCallId, QUIZ.options);
-		await postAnswer(id, call.toolCallId, quizAnswer("quiz", QUIZ as unknown as typeof PROBE, order, "linear", shell));
+		const pick = order.find((o, i) => QUIZ.options[i]!.value !== o.value)?.value ?? "linear";
+		await postAnswer(id, call.toolCallId, quizAnswer("quiz", QUIZ as unknown as typeof PROBE, order, pick, shell));
 		const details = lastDetails(id);
 		assert.equal(details.questionText, QUIZ.question);
 		assert.deepEqual(details.options, order.map((o, i) => ({ index: i + 1, label: o.label })));
-		assert.deepEqual(details.answers.map((a) => a.label), ["Exactly $n$ steps"]);
+		assert.deepEqual(details.answers.map((a) => a.label), [QUIZ.options.find((o) => o.value === pick)!.label]);
 		assert.equal(details.explanation, QUIZ.explanation);
 	});
 
@@ -252,25 +261,89 @@ describe("an answer's question text, labels and explanation are the call's", () 
 	});
 });
 
-describe("ordinary lessons", () => {
+/** A record ending in the model's own question call: an ordinary lesson. */
+function ordinaryRecord(toolCallId: string, name: string, args: object) {
+	return {
+		messages: [
+			{ id: "u1", role: "user", content: "teach me", timestamp: 1 },
+			{
+				id: "a1", role: "assistant", api: "anthropic-messages", provider: "anthropic", model: "m", stopReason: "toolUse", timestamp: 2,
+				usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+				content: [{ type: "toolCall", id: toolCallId, name, arguments: args }],
+			},
+		] as unknown as LhMessage[],
+	};
+}
+function stored(toolCallId: string, name: string, args: object, answer: unknown): QuestionAnswerData {
+	const [result] = inputAppends(ordinaryRecord(toolCallId, name, args), { type: "answer", toolCallId, answer: answer as QuestionAnswerData });
+	return (result as { details: QuestionAnswerData }).details;
+}
+
+// "call_0" shows PROBE as minus, halved, divided: not the authored order.
+const CALL = "call_0";
+const AUTHORED = normalizeOptions(PROBE.options);
+const PAGE = pageOrder(CALL, PROBE.options);
+
+describe("ordinary lessons, and which order a hand-built answer used", () => {
+	it("precondition: the page order and the authored order differ", () => {
+		assert.deepEqual(PAGE.map((o) => o.value), ["minus", "halved", "divided"]);
+	});
+
 	it("an answer to the model's quiz keeps the authored LaTeX too", () => {
-		const toolCallId = "call_ordinary_1";
-		const record = {
-			messages: [
-				{ id: "u1", role: "user", content: "teach me", timestamp: 1 },
-				{
-					id: "a1", role: "assistant", api: "anthropic-messages", provider: "anthropic", model: "m", stopReason: "toolUse", timestamp: 2,
-					usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
-					content: [{ type: "toolCall", id: toolCallId, name: "quiz", arguments: { ...PROBE, type: "check" } }],
-				},
-			] as unknown as LhMessage[],
-		};
-		const order = pageOrder(toolCallId, PROBE.options);
-		const [result] = inputAppends(record, { type: "answer", toolCallId, answer: quizAnswer("quiz", PROBE, order, "halved", shell) });
-		const details = (result as { details: QuestionAnswerData }).details;
+		const details = stored(CALL, "quiz", { ...PROBE, type: "check" }, quizAnswer("quiz", PROBE, PAGE, "halved", shell));
 		assert.equal(details.questionText, PROBE.question);
-		assert.deepEqual(details.options, order.map((o, i) => ({ index: i + 1, label: o.label })));
-		assert.deepEqual(details.answers.map((a) => a.label), ["$n/2^k$"]);
+		assert.deepEqual(details.options, PAGE.map((o, i) => ({ index: i + 1, label: o.label })));
+		assert.deepEqual(details.answers, [{ index: 2, label: "$n/2^k$", value: "halved" }]);
 		assert.equal(details.explanation, PROBE.explanation);
+	});
+
+	it("when either order fits a pick with no value, rows and the pick stay as sent", () => {
+		const sent = quizAnswer("quiz", PROBE, AUTHORED, "halved", shell);
+		delete (sent.answers[0] as { value?: string }).value;
+		const details = stored(CALL, "quiz", PROBE, sent);
+		assert.equal(details.questionText, PROBE.question);
+		assert.deepEqual(details.options, sent.options, "no guessed labels");
+		assert.deepEqual(details.answers, sent.answers, "never another option's label next to the grade");
+		assert.equal(details.correct, true);
+	});
+
+	it("a pick's value settles the authored order", () => {
+		const details = stored(CALL, "quiz", PROBE, quizAnswer("quiz", PROBE, AUTHORED, "halved", shell));
+		assert.deepEqual(details.options, AUTHORED.map((o, i) => ({ index: i + 1, label: o.label })));
+		assert.deepEqual(details.answers, [{ index: 1, label: "$n/2^k$", value: "halved" }]);
+	});
+
+	it("multi-select picks each get their authored label", () => {
+		const sent = quizAnswer("quiz", PROBE, PAGE, "halved", shell);
+		sent.answers = [
+			{ index: 2, label: "/2^k$", value: "halved" },
+			{ index: 3, label: "/k$", value: "divided" },
+		];
+		const details = stored(CALL, "quiz", { ...PROBE, multiSelect: true, correctAnswer: ["halved", "divided"] }, sent);
+		assert.deepEqual(details.answers.map((a) => a.label), ["$n/2^k$", "$n/k$"]);
+		assert.deepEqual(details.options, PAGE.map((o, i) => ({ index: i + 1, label: o.label })));
+	});
+
+	it("a hand-added row, an index past the options and null entries are kept, not thrown on", () => {
+		const sent = quizAnswer("quiz", PROBE, PAGE, "halved", shell) as unknown as Json;
+		sent.options = [...sent.options, { index: 4, label: "I don't know" }, null];
+		sent.answers = [...sent.answers, { index: 9, label: "ghost" }, null];
+		const details = stored(CALL, "quiz", PROBE, sent) as unknown as Json;
+		assert.deepEqual(details.options.slice(0, 3), PAGE.map((o, i) => ({ index: i + 1, label: o.label })));
+		assert.deepEqual(details.options.slice(3), [{ index: 4, label: "I don't know" }, null]);
+		assert.deepEqual(details.answers.slice(1), [{ index: 9, label: "ghost" }, null]);
+	});
+
+	it("an ask with no values (each value is its label, mangled too) gets its labels back by index", () => {
+		const ASK = { question: "Which is $n/2$ when $n = 8$?", options: [{ label: "$4$ items" }, { label: "$n$ items" }] };
+		const details = stored("call_ask", "ask_user_question", ASK, {
+			kind: "ask", questionText: shell(ASK.question), dontKnow: false,
+			options: [{ index: 1, label: "$4$ items" }, { index: 2, label: " items" }],
+			answers: [{ index: 2, label: " items", value: " items" }],
+			answeredAt: new Date().toISOString(),
+		});
+		assert.equal(details.questionText, ASK.question);
+		assert.deepEqual(details.options, [{ index: 1, label: "$4$ items" }, { index: 2, label: "$n$ items" }]);
+		assert.deepEqual(details.answers, [{ index: 2, label: "$n$ items", value: " items" }], "the value is the learner's part and stays as sent");
 	});
 });
