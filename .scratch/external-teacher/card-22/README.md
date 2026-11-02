@@ -1,6 +1,6 @@
 # Ticket 22 card screenshots
 
-Made 2026-11-02 on linuxdev, retaken after the round-6 fixes (inline formulas shrink to their box; links render as plain links; a code block that would need less than half size wraps instead) (the card is in the page flow and hides the app shell; wide content, code blocks included, shrinks to fit the column; long words and inline code break; the renderers' copy buttons are hidden). The probe lesson's call id is new each run, so its shuffle differs between captures.
+Made 2026-11-02 on linuxdev, retaken after the round-7 fixes (zoom steps undershoot so wide math and tables fit exactly; inline formulas shrink to their box; links render as plain links; a code block that would need less than half size wraps instead) (the card is in the page flow and hides the app shell; wide content, code blocks included, shrinks to fit the column; long words and inline code break; the renderers' copy buttons are hidden). The probe lesson's call id is new each run, so its shuffle differs between captures.
 
 - Server: `LH_DATA_DIR=<temp dir> LH_IGNORE_ENV_KEYS=1 npx next dev -H 127.0.0.1 -p 3722`, with the desktop variables unset and no keys.
 - Lessons were created with `scripts/lh.mjs`. Every JSON payload containing `$` went through `--file` (the files are in this folder):
@@ -18,7 +18,7 @@ Made 2026-11-02 on linuxdev, retaken after the round-6 fixes (inline formulas sh
 probe {"shownButtons":0,"documentHeight":844,"cardHeight":844,"documentWidth":390,"clipped":[],"outside":[]}
 quiz {"shownButtons":0,"documentHeight":1166,"cardHeight":1166,"documentWidth":390,"clipped":[],"outside":[]}
 plan9 {"shownButtons":0,"documentHeight":1465,"cardHeight":1466,"documentWidth":390,"clipped":[],"outside":[]}
-wide {"shownButtons":0,"documentHeight":1086,"cardHeight":1087,"documentWidth":390,"clipped":[],"outside":[]}
+wide {"shownButtons":0,"documentHeight":1085,"cardHeight":1086,"documentWidth":390,"clipped":[],"outside":[]}
 longword {"shownButtons":0,"documentHeight":844,"cardHeight":844,"documentWidth":390,"clipped":[],"outside":[]}
 links {"shownButtons":0,"documentHeight":845,"cardHeight":845,"documentWidth":390,"clipped":[],"outside":[]}
 none {"shownButtons":0,"documentHeight":844,"cardHeight":844,"documentWidth":390,"clipped":[],"outside":[]}

@@ -36,6 +36,9 @@ for (const pair of pairs) {
 		const outside = [];
 		for (const el of card.querySelectorAll("*")) {
 			if (el.closest(".katex-mathml")) continue;
+			// Measure an <svg> as a whole: KaTeX draws \\sqrt with a very wide
+			// path that its svg clips itself.
+			if (el.parentElement?.closest("svg")) continue;
 			const r = el.getBoundingClientRect();
 			if (r.width > 0 && r.right > cardRight + 1) outside.push(`${el.tagName}.${String(el.className?.baseVal ?? el.className).slice(0, 30)} right=${Math.round(r.right)}`);
 		}

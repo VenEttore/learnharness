@@ -125,13 +125,15 @@ function useFitWideContent(ref: React.RefObject<HTMLDivElement | null>) {
 					pre.style.whiteSpace = "pre-wrap";
 					continue;
 				}
-				// Text does not scale exactly with zoom (a w-full table also
-				// re-flows), so step until it fits, from this pass's clean start.
+				// Text shrinks less than the zoom does (a w-full table also
+				// re-flows), so step until it fits, from this pass's clean
+				// start, undershooting each step so the steps cannot stall a
+				// few pixels short.
 				let zoom = factor;
-				for (let step = 0; step < 4; step++) {
+				for (let step = 0; step < 10; step++) {
 					for (const child of el.children) (child as HTMLElement).style.zoom = String(zoom);
 					if (el.scrollWidth <= el.clientWidth + 1) break;
-					zoom *= el.clientWidth / el.scrollWidth;
+					zoom *= (el.clientWidth / el.scrollWidth) * 0.97;
 				}
 			}
 			// Inline math is no scroller: KaTeX keeps a formula on one line
