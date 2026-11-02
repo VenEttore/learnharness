@@ -76,9 +76,9 @@ export function withAuthoredText(
 		const named = a.value === undefined ? [] : byValue.get(a.value.trim()) ?? [];
 		return named.length === 1 ? named[0] : undefined;
 	});
-	const shellLabel = new Map(authored.map((o) => [o, throughShell(o.label).trim()]));
+	const labelForms = new Map(authored.map((o) => [o, formsOf(o.label)]));
 	const optionsFor = (label: string) => byLabel.get(label.trim()) ?? [];
-	const labelFits = (label: string, o: QuizOption) => label.trim() === o.label || label.trim() === shellLabel.get(o);
+	const labelFits = (label: string, o: QuizOption) => labelForms.get(o)!.has(label.trim());
 	const rowOption = bindRows(rows, picks, pickOption, optionsFor, labelFits);
 	out.options = rows.map((row, i) => (rowOption[i] ? { ...row, label: rowOption[i]!.label } : row));
 	// A hand-built pick may lack its value; it stays without one.
@@ -159,17 +159,22 @@ function bindRows(
 	return bound;
 }
 
-/** Sent text -> the options it names: each option's authored text, and
+/** The forms an option's text can reach the server in: as authored, and
  *  what a bot's JSON body makes of it inside a double-quoted shell string.
  *  There bash expands every `$name` and `$1`..`$9` (unset: to nothing) and
  *  turns the JSON's `\\` into `\`, so JSON then reads the authored TeX
- *  `\frac` as a form feed and `rac`, `\times` as a tab and `imes`. */
+ *  `\frac` as a form feed and `rac`, `\times` as a tab and `imes`. Both are
+ *  trimmed: the page trims (normalizeOptions), a bot copying the call may
+ *  keep its edge spaces. Every lookup compares against these forms. */
+function formsOf(text: string): Set<string> {
+	return new Set([text.trim(), throughShell(text).trim()]);
+}
+
+/** Sent text (trimmed) -> the options one of whose forms it is. */
 function textIndex(texts: string[], options: QuizOption[]): Map<string, QuizOption[]> {
 	const index = new Map<string, QuizOption[]>();
 	texts.forEach((text, i) => {
-		// Compared trimmed: the page trims (normalizeOptions), a bot copying
-		// the call may keep its edge spaces.
-		for (const form of new Set([text.trim(), throughShell(text).trim()])) {
+		for (const form of formsOf(text)) {
 			const named = index.get(form);
 			if (named) named.push(options[i]!);
 			else index.set(form, [options[i]!]);
@@ -181,9 +186,10 @@ function textIndex(texts: string[], options: QuizOption[]): Map<string, QuizOpti
 const JSON_ESCAPES: Record<string, string> = { "\"": "\"", "\\": "\\", "/": "/", b: "\b", f: "\f", n: "\n", r: "\r", t: "\t" };
 
 /** `$` forms bash expands that throughShell does not model (`$[..]` is
- *  bash's old arithmetic form), and backticks (command substitution). Any
- *  other `$` is either modeled or literal. */
-const UNMODELED = /\$[{([*@#?$!0-]|`/;
+ *  bash's old arithmetic form; bash always sets `$_` and `$0`), and
+ *  backticks (command substitution). Any other `$` is either modeled or
+ *  literal. */
+const UNMODELED = /\$[{([*@#?$!0-]|\$_(?![A-Za-z0-9_])|`/;
 
 function throughShell(authored: string): string {
 	return authored

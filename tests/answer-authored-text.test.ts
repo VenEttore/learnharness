@@ -616,6 +616,21 @@ describe("backslash TeX through a real double-quoted bash string", () => {
 		assert.deepEqual(details.options, sent.options);
 	});
 
+	it("a bare `$_` counts as unmodeled (bash always sets it): rows and picks stay as sent", () => {
+		// Code-review round 6: `$_` is bash's last-argument parameter, never empty.
+		const OPTS = [{ label: "$_$" }, { label: "$_n$" }, { label: "plain" }];
+		const sent = viaBash({
+			kind: "quiz", tool: "quiz", questionText: "Which?", dontKnow: false,
+			options: OPTS.map((o, i) => ({ index: i + 1, label: o.label })),
+			answers: [{ index: 2, label: "$_n$", value: "$_n$" }],
+			correct: false, correctIndices: [3], answeredAt: new Date().toISOString(),
+		}) as QuestionAnswerData;
+		assert.notEqual(sent.options![0]!.label, "$", "bash filled in `$_`");
+		const details = stored(CALL, "quiz", { question: "Which?", options: OPTS, explanation: "e", correctAnswer: "plain" }, sent);
+		assert.deepEqual(details.options, sent.options);
+		assert.deepEqual(details.answers, sent.answers);
+	});
+
 	it("a pick keeps its sent label when its own value rules out its row's option", () => {
 		// Interrogate round 5, seat A: rows in the authored order, the pick's index from another order.
 		const OPTS = [{ label: "$k$" }, { label: "$n$" }, { label: "the step count" }];
