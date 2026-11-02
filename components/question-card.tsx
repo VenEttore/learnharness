@@ -108,6 +108,11 @@ function useFitWideContent(ref: React.RefObject<HTMLDivElement | null>) {
 				fit();
 			});
 		};
+		// Mermaid sizes a chart's svg through a style attribute after it
+		// mounts, which the mutation observer below ignores; watch each
+		// chart's svg size too. The fit's own writes leave the size settled
+		// within its frame, so this cannot loop.
+		const sizes = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(schedule);
 		// Each pass starts from the natural layout (its own zoom and wrap
 		// cleared), so repeated passes give the same result.
 		const fit = () => {
@@ -159,6 +164,7 @@ function useFitWideContent(ref: React.RefObject<HTMLDivElement | null>) {
 				const svg = chart.querySelector("svg");
 				const viewWidth = svg?.viewBox.baseVal?.width;
 				if (!svg || !viewWidth) continue;
+				sizes?.observe(svg);
 				// Judge by the smallest label: a title or quadrant name is drawn
 				// larger than the tick and point labels next to it.
 				let units = Infinity;
@@ -201,6 +207,7 @@ function useFitWideContent(ref: React.RefObject<HTMLDivElement | null>) {
 		if (ref.current) observer?.observe(ref.current, { childList: true, subtree: true, characterData: true });
 		return () => {
 			observer?.disconnect();
+			sizes?.disconnect();
 			if (frame) cancelAnimationFrame(frame);
 		};
 	}, [ref]);

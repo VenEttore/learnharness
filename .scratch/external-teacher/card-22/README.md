@@ -17,7 +17,7 @@ Made 2026-11-02 on linuxdev, retaken after the final-round fixes (a chart whose 
   - longword: `lesson new`, then `probe --file longword-probe.json` (a 90-character word in the lead-in and an option, a long inline-code option, and an inline formula with no break point)
   - links: `lesson new`, `say --file links-say.txt`, then `probe --file links-probe.json` (Markdown links and a bare URL in teaching, lead-in, question and options, and a 153-character code line)
   - charts: `lesson new`, `say --file charts-say.txt` (a wide left-to-right chart, shown as a note, and a small top-down chart), then `ask --file charts-ask.json`
-  - charts2: `lesson new`, `say --file charts2-say.txt` (an xy chart, a quadrant chart, an ER diagram and a class diagram whose tick, point or edge labels are smaller than their titles or boxes; all four show the note), then `ask --file charts-ask.json`
+  - charts2: `lesson new`, `say --file charts2-say.txt` (an xy chart, a quadrant chart, an ER diagram, a class diagram and a flowchart with an 8 px classDef label, each with labels smaller than their titles or boxes; all five show the note), then `ask --file charts-ask.json`
   - none: `lesson new`, then `say --file say.txt`
 - Capture: `node shot.mjs http://127.0.0.1:3722 <out dir> probe=<id> quiz=<id> plan9=<id> wide=<id> longword=<id> links=<id> charts=<id> charts2=<id> none=<id>`. It uses puppeteer-core with chrome-headless-shell at 390 x 844 CSS px, DPR 2, and a plain full-page screenshot, the way a bot would take one.
 - Its output for this capture:
@@ -30,7 +30,7 @@ wide {"shownButtons":0,"documentHeight":1085,"cardHeight":1086,"documentWidth":3
 longword {"shownButtons":0,"documentHeight":844,"cardHeight":844,"documentWidth":390,"clipped":[],"outside":[]}
 links {"shownButtons":0,"documentHeight":845,"cardHeight":845,"documentWidth":390,"clipped":[],"outside":[]}
 charts {"shownButtons":0,"documentHeight":844,"cardHeight":844,"documentWidth":390,"clipped":[],"outside":[]}
-charts2 {"shownButtons":0,"documentHeight":938,"cardHeight":939,"documentWidth":390,"clipped":[],"outside":[]}
+charts2 {"shownButtons":0,"documentHeight":1062,"cardHeight":1063,"documentWidth":390,"clipped":[],"outside":[]}
 none {"shownButtons":0,"documentHeight":844,"cardHeight":844,"documentWidth":390,"clipped":[],"outside":[]}
 non-GET requests: []
 ```

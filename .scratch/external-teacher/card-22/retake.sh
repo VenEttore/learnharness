@@ -13,10 +13,12 @@ L=scripts/lh.mjs
 PORT=3722
 export LH_URL=http://127.0.0.1:$PORT
 
-# Safe to run twice: refuse to start over a server already on the port,
+# Safe to run twice: refuse to start over a server already on the port
+# (ss filters by port itself: a `ss | grep -q` pipeline can fail open
+# under pipefail when grep exits early and ss gets SIGPIPE),
 # and on any exit stop only the server this script started (its own
 # session, killed as a process group; nothing is killed by port).
-if ss -ltn | grep -q ":$PORT "; then
+if [ -n "$(ss -ltnH "sport = :$PORT")" ]; then
 	echo "port $PORT is in use; stop that server first" >&2
 	exit 1
 fi
@@ -31,7 +33,7 @@ stop_server() {
 	cp /tmp/lh22-AGENTS.md AGENTS.md
 	rm -f ./.lh22-shot.mjs /tmp/lh22-server.pid
 	rm -rf /tmp/lh22-data
-	if ss -ltn | grep -q ":$PORT "; then echo "port $PORT still in use" >&2; return 1; fi
+	if [ -n "$(ss -ltnH "sport = :$PORT")" ]; then echo "port $PORT still in use" >&2; return 1; fi
 	echo "server stopped"
 }
 trap stop_server EXIT
@@ -53,7 +55,7 @@ SERVER=$(cat /tmp/lh22-server.pid)
 UP=0
 for _ in $(seq 1 60); do
 	if ! kill -0 "$SERVER" 2> /dev/null; then echo "next dev exited; see /tmp/lh22-server.log" >&2; exit 1; fi
-	LISTENER=$(ss -ltnp | grep ":$PORT " | grep -o "pid=[0-9]*" | head -1 | cut -d= -f2 || true)
+	LISTENER=$(ss -ltnpH "sport = :$PORT" | grep -o "pid=[0-9]*" | head -1 | cut -d= -f2 || true)
 	if [ -n "$LISTENER" ]; then
 		if [ "$(ps -o pgid= -p "$LISTENER" | tr -d ' ')" != "$SERVER" ]; then
 			echo "another process is listening on port $PORT" >&2

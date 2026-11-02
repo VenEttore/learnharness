@@ -39,3 +39,12 @@ classDiagram
   Pile "1" --> "*" HalvingCount : records
   Pile "1" --> "*" StepLog : takes
 ```
+
+Styled small:
+
+```mermaid
+graph TD
+  A[Big node] --> B[Tiny by class]
+  classDef tiny font-size:8px
+  class B tiny
+```
