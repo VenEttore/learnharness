@@ -142,9 +142,9 @@ lh_run 1 '.code=="usage"' frobnicate
 
 say "5. Create the lesson (guide section 3)"
 lh_run 0 '.ok and .existing==false and .title=="Binary search" and (.items|length)==1 and .items[0].type=="message" and .items[0].text=="I want to understand why binary search is fast." and .cursor==.items[0].id' \
-	lesson new --title "Binary search" --key binary-search-1 --prompt "I want to understand why binary search is fast."
+	lesson new --title 'Binary search' --key binary-search-1 --prompt 'I want to understand why binary search is fast.'
 L="$(jq -r .id <<<"$OUT")"; cursor
-lh_run 0 ".existing==true and .id==\"$L\"" lesson new --title "Binary search" --key binary-search-1 --prompt "I want to understand why binary search is fast."
+lh_run 0 ".existing==true and .id==\"$L\"" lesson new --title 'Binary search' --key binary-search-1 --prompt 'I want to understand why binary search is fast.'
 [ -f "$DATA/chats/$L.json" ] && ok "chats/$L.json exists" || bad "no chats/$L.json"
 code="$(curl -s -o /dev/null -w '%{http_code}' "$LH_URL/chat/$L")"
 [ "$code" = 200 ] && ok "page /chat/$L answers 200" || bad "page /chat/$L: http $code"
