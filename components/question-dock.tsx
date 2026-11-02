@@ -17,8 +17,7 @@ import {
 	emptyDockSelection,
 	normalizeOptions,
 	resolveCorrect,
-	seededRandom,
-	shuffleOptions,
+	displayedQuestionOptions,
 	toolQuestionKind,
 	parseAskInput,
 	parseQuizInput,
@@ -290,7 +289,7 @@ function QuestionDockForm({
 		const options = normalizeOptions(
 			(quizInput?.options ?? askInput?.options ?? []) as { label: string; value?: string }[],
 		);
-		const ordered = kind === "quiz" && options.length > 0 ? shuffleOptions(options, seededRandom(toolCallId)) : options;
+		const ordered = displayedQuestionOptions(kind, toolCallId, options);
 		const q: QuestionData = {
 			id: toolCallId,
 			kind,

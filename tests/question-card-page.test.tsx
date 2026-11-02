@@ -1,0 +1,184 @@
+/**
+ * QUESTION CARD PAGE (fork, external-teacher ticket 22): the read-only
+ * phone card at /chat/<id>/card. A Bot Teacher posts turns through the
+ * turn route under an isolated LH_DATA_DIR; the test renders the card
+ * page's server component to static markup and reads what a learner sees
+ * in the screenshot: kind, lead-in, question, numbered options (math
+ * rendered by the page's renderer), teaching text, phase and plan. Option
+ * numbers must match the order the lesson page's question dock shows.
+ * Every app-module import is dynamic: the seam must be set before
+ * config.ts loads.
+ */
+import React from "react";
+(globalThis as Record<string, unknown>).React = React;
+
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+import { after, describe, it } from "node:test";
+import { renderToStaticMarkup } from "react-dom/server";
+import { parseHTML } from "linkedom";
+
+const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), "lh-question-card-"));
+process.env.LH_DATA_DIR = TMP_DATA;
+
+const { default: CardPage } = await import("../app/chat/[id]/card/page.tsx");
+const createRoute = await import("../app/api/external/chats/route.ts");
+const turnRoute = await import("../app/api/external/chats/[id]/turn/route.ts");
+const { QuestionDock } = await import("../components/question-dock.tsx");
+const { chatStore } = await import("../src/store/chats.ts");
+const { pendingQuestionOf } = await import("../src/core/native-messages.ts");
+const { parseQuizInput } = await import("../src/core/tool-parts.ts");
+
+after(() => {
+	fs.rmSync(TMP_DATA, { recursive: true, force: true });
+});
+
+type Json = Record<string, any>;
+
+const ctx = (id: string) => ({ params: Promise.resolve({ id }) });
+const postJson = (url: string, body: unknown) =>
+	new Request(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+
+async function turn(id: string, body: unknown): Promise<string> {
+	const res = await turnRoute.POST(postJson(`http://test/api/external/chats/${id}/turn`, body), ctx(id));
+	const json = (await res.json()) as Json;
+	assert.equal(res.status, 200, JSON.stringify(json));
+	return json.cursor as string;
+}
+
+let keys = 0;
+async function lesson(): Promise<{ id: string; cursor: string }> {
+	const res = await createRoute.POST(
+		postJson("http://test/api/external/chats", { title: "Halving", key: `card-${++keys}`, prompt: "Teach me logarithms" }),
+	);
+	const body = (await res.json()) as Json;
+	return { id: body.id, cursor: body.cursor };
+}
+
+async function card(id: string): Promise<Document> {
+	const el = (await CardPage({ params: Promise.resolve({ id }) })) as React.ReactElement;
+	return parseHTML(`<html><body>${renderToStaticMarkup(el)}</body></html>`).document as unknown as Document;
+}
+
+const byTestId = (doc: Document, id: string) => doc.querySelector(`[data-testid="${id}"]`);
+const tex = (root: ParentNode | null) =>
+	[...(root?.querySelectorAll('annotation[encoding="application/x-tex"]') ?? [])].map((n) => n.textContent);
+const optionNumbers = (doc: Document) =>
+	[...doc.querySelectorAll('[data-testid="card-option"]')].map((li) => li.getAttribute("data-number"));
+const optionTex = (doc: Document) => [...doc.querySelectorAll('[data-testid="card-option"]')].map((li) => tex(li).join(" "));
+
+// Ticket 20's bench repro: inline math a shell once ate.
+const MATH_QUESTION = "After $k$ halvings starting from $n$ items, about how many items remain?";
+const MATH_OPTIONS = [
+	{ label: "$n/2^k$", value: "a" },
+	{ label: "$n-k$", value: "b" },
+	{ label: "$n/k$", value: "c" },
+];
+const PROBE = { question: MATH_QUESTION, options: MATH_OPTIONS, explanation: "Each halving divides by 2: $n/2^k$.", correctAnswer: "a" };
+const ASSESSMENT = {
+	assessment: {
+		strands: [{ strand: "halving", assessment: "Floor: halves once. Ceiling: unsure about repeated halving." }],
+		summary: "Start from repeated halving.",
+	},
+};
+const PLAN = "graph TD\n  halving[Repeated halving] --> logs[Logarithms] --> search[Binary search]";
+const QUIZ = { type: "predict", nodeId: "halving", ...PROBE };
+
+/** The labels in the order the lesson page's question dock shows them. */
+function dockOrder(id: string): string[] {
+	const pending = pendingQuestionOf(chatStore.getChat(id)!.messages)!;
+	const markup = renderToStaticMarkup(
+		<QuestionDock
+			toolName={pending.tool as "probe" | "quiz"}
+			toolCallId={pending.toolCallId}
+			input={parseQuizInput(pending.input)!}
+			expanded
+			onExpand={() => {}}
+			onSubmit={() => {}}
+		/>,
+	);
+	const doc = parseHTML(`<html><body>${markup}</body></html>`).document;
+	return [...doc.querySelectorAll('[role="radio"]')].map((b) => tex(b).join(" "));
+}
+
+describe("question card page", () => {
+	it("a probe shows its kind, lead-in, math question and numbered options in the dock's order", async () => {
+		const { id, cursor } = await lesson();
+		const said = await turn(id, { kind: "say", after: cursor, text: "Let's warm up with $\\log_2 8 = 3$." });
+		await turn(id, { kind: "probe", after: said, text: "Quick check first.", ...PROBE });
+		const doc = await card(id);
+
+		assert.equal(byTestId(doc, "card-phase")?.textContent, "Phase · Probe");
+		assert.equal(byTestId(doc, "card-kind")?.textContent, "Probe");
+		assert.match(byTestId(doc, "card-lead-in")?.textContent ?? "", /Quick check first\./);
+		assert.deepEqual(tex(byTestId(doc, "card-teaching")), ["\\log_2 8 = 3"]);
+		assert.deepEqual(tex(byTestId(doc, "card-question-text")), ["k", "n"]);
+		assert.deepEqual(optionNumbers(doc), ["1", "2", "3"]);
+		assert.deepEqual(optionTex(doc).toSorted(), ["n-k", "n/2^k", "n/k"]);
+		assert.deepEqual(optionTex(doc), dockOrder(id));
+		assert.match(byTestId(doc, "card-reply-hint")?.textContent ?? "", /confidence/);
+		assert.equal(byTestId(doc, "card-no-question"), null);
+		// The probe phase has no plan map.
+		assert.equal(byTestId(doc, "card-plan"), null);
+	});
+
+	it("a teaching quiz shows the plan with the current node, the prediction role and math options", async () => {
+		const { id, cursor } = await lesson();
+		const done = await turn(id, { kind: "probe-done", after: cursor, ...ASSESSMENT });
+		const planned = await turn(id, { kind: "plan", after: done, mermaid: PLAN });
+		await turn(id, { kind: "quiz", after: planned, ...QUIZ });
+		const doc = await card(id);
+
+		assert.equal(byTestId(doc, "card-kind")?.textContent, "Quiz · prediction");
+		assert.notEqual(byTestId(doc, "card-phase")?.textContent, "Phase · Probe");
+		assert.ok(byTestId(doc, "card-plan")?.querySelector("svg"), "the plan map renders");
+		assert.equal(byTestId(doc, "card-current-node")?.textContent, "Repeated halving");
+		assert.deepEqual(tex(byTestId(doc, "card-question-text")), ["k", "n"]);
+		assert.deepEqual(optionNumbers(doc), ["1", "2", "3"]);
+		assert.deepEqual(optionTex(doc), dockOrder(id));
+	});
+
+	it("explain and recall say a typed answer is expected and show no options", async () => {
+		const { id, cursor } = await lesson();
+		await turn(id, { kind: "recall", after: cursor, question: "Explain what $\\log_2 n$ counts.", correctAnswer: "Halvings to reach 1." });
+		const doc = await card(id);
+		assert.equal(byTestId(doc, "card-kind")?.textContent, "Recall");
+		assert.ok(byTestId(doc, "card-typed-answer"));
+		assert.deepEqual(optionNumbers(doc), []);
+		assert.deepEqual(tex(byTestId(doc, "card-question-text")), ["\\log_2 n"]);
+	});
+
+	it("an ask keeps its authored option order and offers Other", async () => {
+		const { id, cursor } = await lesson();
+		await turn(id, { kind: "ask", after: cursor, question: "What do you want?", options: [{ label: "Intuition" }, { label: "Exam prep" }, { label: "Both" }] });
+		const doc = await card(id);
+		assert.equal(byTestId(doc, "card-kind")?.textContent, "Ask");
+		const labels = [...doc.querySelectorAll('[data-testid="card-option"]')].map((li) => li.textContent?.replace(/^\d+/, "").trim());
+		assert.deepEqual(labels, ["Intuition", "Exam prep", "Both"]);
+		assert.match(byTestId(doc, "card-question")?.textContent ?? "", /Other/);
+	});
+
+	it("with no open question it shows the latest teaching text and No open question", async () => {
+		const { id, cursor } = await lesson();
+		await turn(id, { kind: "say", after: cursor, text: "Halving $n$ items $k$ times leaves $n/2^k$." });
+		const doc = await card(id);
+		assert.equal(byTestId(doc, "card-no-question")?.textContent, "No open question");
+		assert.deepEqual(tex(byTestId(doc, "card-teaching")), ["n", "k", "n/2^k"]);
+		assert.equal(byTestId(doc, "card-question"), null);
+	});
+
+	it("has no inputs, buttons or forms", async () => {
+		const { id, cursor } = await lesson();
+		await turn(id, { kind: "probe", after: cursor, ...PROBE });
+		const doc = await card(id);
+		assert.equal(doc.querySelectorAll("input, textarea, button, form, select, [contenteditable]").length, 0);
+	});
+
+	it("an ordinary lesson renders the same card", async () => {
+		const chat = chatStore.createChat("plain");
+		const doc = await card(chat.id);
+		assert.equal(byTestId(doc, "card-no-question")?.textContent, "No open question");
+	});
+});
