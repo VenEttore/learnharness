@@ -90,6 +90,11 @@ function PlanMap({ plan }: { plan: NonNullable<QuestionCardData["plan"]> }) {
 // undershooting each step so it cannot stall a few pixels short.
 const FIT_STEPS = 10;
 const FIT_UNDERSHOOT = 0.97;
+const MIN_CHART_TEXT_PX = 9;
+const TOO_WIDE = "data-card-too-wide";
+// The note a too-wide chart shows instead (the attribute is set by the fit).
+const TOO_WIDE_CSS = `[${TOO_WIDE}] > * { display: none !important; }
+[${TOO_WIDE}]::after { content: "Diagram too wide for a phone screenshot. Open the lesson page to see it."; display: block; padding: 12px; border: 1px dashed var(--border); border-radius: 8px; color: var(--muted-foreground); font-size: 14px; }`;
 
 function useFitWideContent(ref: React.RefObject<HTMLDivElement | null>) {
 	useEffect(() => {
@@ -119,6 +124,8 @@ function useFitWideContent(ref: React.RefObject<HTMLDivElement | null>) {
 				if (pre) pre.style.whiteSpace = "";
 			}
 			for (const math of maths) math.style.zoom = "";
+			const charts = [...root.querySelectorAll<HTMLElement>('[data-streamdown="mermaid"]')];
+			for (const chart of charts) chart.removeAttribute(TOO_WIDE);
 			for (const el of scrollers) {
 				if (el.scrollWidth <= el.clientWidth + 1) continue;
 				const factor = el.clientWidth / el.scrollWidth;
@@ -140,6 +147,17 @@ function useFitWideContent(ref: React.RefObject<HTMLDivElement | null>) {
 					if (el.scrollWidth <= el.clientWidth + 1) break;
 					zoom *= (el.clientWidth / el.scrollWidth) * FIT_UNDERSHOOT;
 				}
+			}
+			// A chart is an svg scaled to the column: it cannot wrap or zoom
+			// back up. Like the plan map, hide one whose labels would read
+			// under MIN_CHART_TEXT_PX; the sheet's style shows a note instead.
+			for (const chart of charts) {
+				const svg = chart.querySelector("svg");
+				const viewWidth = svg?.viewBox.baseVal?.width;
+				if (!svg || !viewWidth) continue;
+				const label = svg.querySelector(".nodeLabel, text");
+				const units = parseFloat(getComputedStyle(label ?? svg).fontSize) || 16;
+				if ((svg.getBoundingClientRect().width / viewWidth) * units < MIN_CHART_TEXT_PX) chart.setAttribute(TOO_WIDE, "");
 			}
 			// Inline math is no scroller: KaTeX keeps a formula on one line
 			// (white-space: nowrap), so one with no break point can run past
@@ -215,6 +233,7 @@ function CardSheet({ title, tag, children }: { title: string; tag: string; child
 			data-testid="question-card"
 			className="min-h-dvh w-full bg-background text-foreground [overflow-wrap:anywhere] [&_button]:hidden"
 		>
+			<style>{TOO_WIDE_CSS}</style>
 			<main className="mx-auto w-full max-w-[430px] px-4 pb-10 pt-5">
 				<header className="mb-5 border-b border-border pb-3">
 					<div className="flex items-baseline justify-between gap-3 text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">

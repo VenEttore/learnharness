@@ -57,12 +57,15 @@ turn probe "$LONG" "$C" $S/longword-probe.json > /dev/null
 read -r LINKS C < <(lesson "Links and a long code line" card22-links)
 C=$(turn say "$LINKS" "$C" $S/links-say.txt); turn probe "$LINKS" "$C" $S/links-probe.json > /dev/null
 
+read -r CHARTS C < <(lesson "Charts" card22-charts)
+C=$(turn say "$CHARTS" "$C" $S/charts-say.txt); turn ask "$CHARTS" "$C" $S/charts-ask.json > /dev/null
+
 read -r NONE C < <(lesson "Halving and logs (no question)" card22-none)
 turn say "$NONE" "$C" $S/say.txt > /dev/null
 
 # shot.mjs imports puppeteer-core, so it runs from the repo root.
 cp $S/shot.mjs ./.lh22-shot.mjs
-node ./.lh22-shot.mjs http://127.0.0.1:3722 $S probe="$PROBE" quiz="$QUIZ" plan9="$PLAN9" wide="$WIDE" longword="$LONG" links="$LINKS" none="$NONE" | tee /tmp/lh22-shot.txt
+node ./.lh22-shot.mjs http://127.0.0.1:3722 $S probe="$PROBE" quiz="$QUIZ" plan9="$PLAN9" wide="$WIDE" longword="$LONG" links="$LINKS" charts="$CHARTS" none="$NONE" | tee /tmp/lh22-shot.txt
 rm -f ./.lh22-shot.mjs
 
 # Stop the server this script started: the npx wrapper and the next-server
