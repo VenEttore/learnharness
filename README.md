@@ -1,4 +1,4 @@
-# LearnHarness: Matt's fork
+# LearnHarness: VenEttore's fork
 
 This is a fork of [amosblomqvist/learnharness](https://github.com/amosblomqvist/learnharness). This section covers what the fork is for. The original README follows it, unchanged.
 
