@@ -1,6 +1,6 @@
 # Ticket 22 card screenshots
 
-Made 2026-11-02 on linuxdev at commit 5421a95 plus the bottom-padding change in c7399f5.
+Made 2026-11-02 on linuxdev. Retaken at cf18b97, the code the round-3 review covers; only the probe image changed, because the new lesson's call id gives a different shuffle.
 
 - Server: `LH_DATA_DIR=<temp dir> LH_IGNORE_ENV_KEYS=1 npx next dev -H 127.0.0.1 -p 3722`, with the desktop variables unset and no keys.
 - Lessons were created with `scripts/lh.mjs`. Every JSON payload containing `$` went through `--file` (the files are in this folder):
