@@ -49,7 +49,9 @@ export function withAuthoredText(
 	// The page's answers always carry these (buildAnswer); its skips are the
 	// minimal record (dismissedAnswer) and stay minimal.
 	if (!answer.dismissed && quiz) out.explanation = quiz.explanation;
-	if (!answer.dismissed && explain) out.committed = explain.correctAnswer;
+	// The dock commits the call's raw value (a model may write `42`, which
+	// the parse turns into "42"), so take it from the same place.
+	if (!answer.dismissed && explain) out.committed = (rawField(question.input, "correctAnswer") ?? explain.correctAnswer) as string;
 
 	const options = quiz?.options ?? ask?.options;
 	if (!options?.length) return out;
@@ -57,6 +59,11 @@ export function withAuthoredText(
 	const authored = normalizeOptions(options);
 	const rows = pageShaped(answer, authored.length);
 	if (!rows) return out;
+	// A shell form this guard does not model (`$*`, `$$`, `${x}`, a backtick)
+	// leaves no telling what bash made of any of the call's text: its result
+	// could look like another option's, verbatim or mangled. Rows and picks
+	// then stay as sent.
+	if (authored.some((o) => UNMODELED.test(o.label) || UNMODELED.test(o.value))) return out;
 	const picks = answer.answers as SentPick[];
 
 	// Each pick's value names its option; each row's label names its own.
@@ -164,11 +171,19 @@ function textIndex(texts: string[], options: QuizOption[]): Map<string, QuizOpti
 
 const JSON_ESCAPES: Record<string, string> = { "\"": "\"", "\\": "\\", "/": "/", b: "\b", f: "\f", n: "\n", r: "\r", t: "\t" };
 
+/** `$` forms bash expands that throughShell does not model, and backticks
+ *  (command substitution). Any other `$` is either modeled or literal. */
+const UNMODELED = /\$[{(*@#?$!0-]|`/;
+
 function throughShell(authored: string): string {
 	return authored
 		.replace(/\$(?:[A-Za-z_][A-Za-z0-9_]*|[1-9])/g, "")
 		.replace(/\\(["\\/bfnrt]|u[0-9a-fA-F]{4})/g, (_, e: string) =>
 			e.length === 5 ? String.fromCharCode(parseInt(e.slice(1), 16)) : JSON_ESCAPES[e]!);
+}
+
+function rawField(input: unknown, key: string): unknown {
+	return isObject(input) ? input[key] : undefined;
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {

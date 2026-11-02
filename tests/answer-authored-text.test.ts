@@ -355,6 +355,15 @@ describe("ordinary lessons, and which order a hand-built answer used", () => {
 		assert.deepEqual(details.options, PAGE.map((o, i) => ({ index: i + 1, label: o.label })));
 	});
 
+	it("the page's explain answer keeps a commitment the model wrote as a number", () => {
+		// Interrogate round 4, seat A: the dock commits the raw `42`; the parse makes it "42".
+		for (const tool of ["explain", "recall"]) {
+			const fromPage = { kind: "explain", tool, questionText: "What is 6 x 7?", dontKnow: false, answers: [], text: "6 sevens", committed: 42, answeredAt: "" };
+			const details = stored(`call_${tool}_n`, tool, { question: "What is 6 x 7?", correctAnswer: 42 }, fromPage) as unknown as Json;
+			assert.equal(details.committed, 42, tool);
+		}
+	});
+
 	it("a hand-built answer without the explanation or commitment gets the call's", () => {
 		const sent = quizAnswer("quiz", PROBE, PAGE, "halved", shell) as unknown as Json;
 		delete sent.explanation;
@@ -546,6 +555,37 @@ describe("backslash TeX through a real double-quoted bash string", () => {
 		assert.deepEqual(details.answers.map((a) => a.label), ["$\\frac{n}{2^k}$ rounded"]);
 		const [item] = (await answer(id)).body.items;
 		assert.deepEqual(item.answers.map((a: Json) => a.label), ["$\\frac{n}{2^k}$ rounded"]);
+	});
+
+	it("a call with a shell form the guard does not model keeps rows and picks as sent", () => {
+		// Interrogate round 4, seat A: bash makes `$*$` into `$`, which looked like `$x$`'s bash form,
+		// so the record said the learner picked `$x$` (and was correct).
+		const OPTS = [{ label: "$\\times$", value: "times" }, { label: "$x$", value: "x" }, { label: "$*$", value: "star" }];
+		const call = { question: "Which?", options: OPTS, explanation: "e", correctAnswer: "star" };
+		const order = [OPTS[1]!, OPTS[0]!, OPTS[2]!];
+		const sent = viaBash({
+			kind: "quiz", tool: "quiz", questionText: "Which?", dontKnow: false,
+			options: order.map((o, i) => ({ index: i + 1, label: o.label })),
+			answers: [{ index: 3, label: "$*$", value: "$*$" }],
+			correct: true, correctIndices: [3], answeredAt: new Date().toISOString(),
+		}) as QuestionAnswerData;
+		assert.deepEqual([sent.options![0]!.label, sent.options![2]!.label, sent.answers[0]!.value], ["$", "$", "$"], "what bash sent");
+		const details = stored(CALL, "quiz", call, sent);
+		assert.deepEqual(details.options, sent.options, "rows as sent");
+		assert.deepEqual(details.answers, sent.answers, "the pick as sent, not `$x$`");
+
+		// Seat A's fuzz: a modeled form elsewhere in such a call (`$_n$` -> `$`) can equal another option's verbatim value.
+		const MIXED = [{ label: "\\neq" }, { label: "$" }, { label: "\\times 2 $$", value: "$_n$" }];
+		const mixed = viaBash({
+			kind: "quiz", tool: "quiz", questionText: "Which?", dontKnow: false,
+			options: MIXED.map((o, i) => ({ index: i + 1, label: o.label })),
+			answers: [{ index: 3, label: MIXED[2]!.label, value: "$_n$" }],
+			correct: false, correctIndices: [1], answeredAt: new Date().toISOString(),
+		}) as QuestionAnswerData;
+		assert.equal(mixed.answers[0]!.value, "$", "bash made `$_n$` into the other option's value");
+		const kept = stored(CALL, "quiz", { question: "Which?", options: MIXED, explanation: "e", correctAnswer: "\\neq" }, mixed);
+		assert.deepEqual(kept.answers, mixed.answers, "not the `$` option's label");
+		assert.deepEqual(kept.options, mixed.options);
 	});
 
 	it("an answer sent that way gets every row and the pick back", () => {
