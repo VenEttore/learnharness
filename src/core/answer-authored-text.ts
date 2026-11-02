@@ -19,10 +19,9 @@
  *
  * Rows and picks are touched only when the request is shaped like the
  * page's: one row per option, indexed 1..n, and picks pointing at those
- * rows. Anything else keeps its rows and picks exactly as sent. Ticket 21's
- * `lh submit` (still open) is to be the boundary that refuses malformed
- * answers; this guard only has to restore text and never make a request
- * worse.
+ * rows. Anything else keeps its rows and picks exactly as sent. Refusing
+ * malformed answers belongs to the sender (ticket 21's `lh submit`); this
+ * guard only has to restore text and never make a request worse.
  *
  * Upstream's answerForPresentation (answer-presentation.ts) binds rows for
  * display only; this guard binds them for the stored record, so it keeps
@@ -49,9 +48,7 @@ export function withAuthoredText(
 	// The page's answers always carry these (buildAnswer); its skips are the
 	// minimal record (dismissedAnswer) and stay minimal.
 	if (!answer.dismissed && quiz) out.explanation = quiz.explanation;
-	// The dock commits the call's raw value (a model may write `42`, which
-	// the parse turns into "42"), so take it from the same place.
-	if (!answer.dismissed && explain) out.committed = (rawField(question.input, "correctAnswer") ?? explain.correctAnswer) as string;
+	if (!answer.dismissed && explain) out.committed = explain.correctAnswer;
 
 	const options = quiz?.options ?? ask?.options;
 	if (!options?.length) return out;
@@ -76,7 +73,9 @@ export function withAuthoredText(
 		return named.length === 1 ? named[0] : undefined;
 	});
 	const shellLabel = new Map(authored.map((o) => [o, throughShell(o.label)]));
-	const rowOption = bindRows(rows, picks, pickOption, (label) => byLabel.get(label) ?? [], (label, o) => label === o.label || label === shellLabel.get(o));
+	const optionsFor = (label: string) => byLabel.get(label) ?? [];
+	const labelFits = (label: string, o: QuizOption) => label === o.label || label === shellLabel.get(o);
+	const rowOption = bindRows(rows, picks, pickOption, optionsFor, labelFits);
 	out.options = rows.map((row, i) => (rowOption[i] ? { ...row, label: rowOption[i]!.label } : row));
 	// A hand-built pick may lack its value; it stays without one.
 	out.answers = picks.map((a, i) => {
@@ -111,14 +110,14 @@ function bindRows(
 	rows: Row[],
 	picks: SentPick[],
 	pickOption: (QuizOption | undefined)[],
-	named: (label: string) => QuizOption[],
-	labelNames: (label: string, option: QuizOption) => boolean,
+	optionsFor: (label: string) => QuizOption[],
+	labelFits: (label: string, option: QuizOption) => boolean,
 ): (QuizOption | undefined)[] {
 	const claims = rows.map(() => new Set<QuizOption>());
 	picks.forEach((a, i) => {
 		if (pickOption[i]) claims[a.index - 1]!.add(pickOption[i]!);
 	});
-	const possible = rows.map((row) => named(row.label));
+	const possible = rows.map((row) => optionsFor(row.label));
 	possible.forEach((options, i) => {
 		if (options.length === 1) claims[i]!.add(options[0]!);
 	});
@@ -127,7 +126,7 @@ function bindRows(
 	const bound = claims.map((set, i) => {
 		if (set.size !== 1) return undefined;
 		const option = [...set][0]!;
-		if (possible[i]!.length > 0 && !labelNames(rows[i]!.label, option)) return undefined; // the row's label says otherwise
+		if (possible[i]!.length > 0 && !labelFits(rows[i]!.label, option)) return undefined; // the row's label says otherwise
 		return claimants.get(option) === 1 ? option : undefined;
 	});
 	// Rows with no claim whose label names several options: drop the options
@@ -180,10 +179,6 @@ function throughShell(authored: string): string {
 		.replace(/\$(?:[A-Za-z_][A-Za-z0-9_]*|[1-9])/g, "")
 		.replace(/\\(["\\/bfnrt]|u[0-9a-fA-F]{4})/g, (_, e: string) =>
 			e.length === 5 ? String.fromCharCode(parseInt(e.slice(1), 16)) : JSON_ESCAPES[e]!);
-}
-
-function rawField(input: unknown, key: string): unknown {
-	return isObject(input) ? input[key] : undefined;
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {

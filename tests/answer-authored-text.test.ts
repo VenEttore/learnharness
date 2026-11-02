@@ -34,6 +34,7 @@ const { handleChatRequest } = await import("../src/server/chat-handler.ts");
 const { chatStore } = await import("../src/store/chats.ts");
 const { pendingQuestionOf } = await import("../src/core/native-messages.ts");
 const { inputAppends } = await import("../src/core/input-events.ts");
+const { parseExplainInput } = await import("../src/core/tool-parts.ts");
 const { buildAnswer, dismissedAnswer, normalizeOptions, seededRandom, shuffleOptions } = await import("../src/core/question-core.ts");
 type QuestionAnswerData = import("../src/core/question-core.ts").QuestionAnswerData;
 type LhMessage = import("../src/core/native-messages.ts").LhMessage;
@@ -355,12 +356,16 @@ describe("ordinary lessons, and which order a hand-built answer used", () => {
 		assert.deepEqual(details.options, PAGE.map((o, i) => ({ index: i + 1, label: o.label })));
 	});
 
-	it("the page's explain answer keeps a commitment the model wrote as a number", () => {
-		// Interrogate round 4, seat A: the dock commits the raw `42`; the parse makes it "42".
+	it("the page's explain answer is stored as sent when the model wrote the commitment as a number", () => {
+		// The dock mounts with the parsed call, so it commits "42", not 42 (code-review round 5).
 		for (const tool of ["explain", "recall"]) {
-			const fromPage = { kind: "explain", tool, questionText: "What is 6 x 7?", dontKnow: false, answers: [], text: "6 sevens", committed: 42, answeredAt: "" };
-			const details = stored(`call_${tool}_n`, tool, { question: "What is 6 x 7?", correctAnswer: 42 }, fromPage) as unknown as Json;
-			assert.equal(details.committed, 42, tool);
+			const call = { question: "What is 6 x 7?", correctAnswer: 42 };
+			const parsed = parseExplainInput(call)!;
+			const qd = { id: `call_${tool}_n`, kind: "explain" as const, question: parsed.question, mode: "text" as const, options: [], createdAt: "", committedAnswer: parsed.correctAnswer };
+			const fromPage = buildAnswer(qd, { text: "6 sevens" }, tool);
+			assert.equal(fromPage.committed, "42", "what the page sends");
+			const details = stored(`call_${tool}_n`, tool, call, fromPage);
+			assert.deepEqual(JSON.parse(JSON.stringify(details)), JSON.parse(JSON.stringify(fromPage)), tool);
 		}
 	});
 
