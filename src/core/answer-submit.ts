@@ -139,19 +139,20 @@ export type SubmitPlan =
 
 const isQuestionTool = (tool: string) => (QUESTION_TOOLS as readonly string[]).includes(tool);
 
-/** The question open just after message `at`: the newest question call
- *  at or before it with no result at or before it. */
-function questionOpenAt(messages: readonly ShownMessage[], at: number): { toolCallId: string; tool: string; input: unknown } | null {
-	const answered = new Set<string>();
+/** The question a submit at message `at` is about: the question call in
+ *  the newest Bot Teacher message at or before `at`, open there or
+ *  answered since. A bot message without a question call means the bot
+ *  has moved on, and there is none. (While a question is open, the bot
+ *  can post nothing else, so the question is always the newest bot
+ *  message until the bot replies to its answer.) A cursor past the
+ *  question's own answer still finds it, so a retry that took its cursor
+ *  from a later reply is checked as a repeat too. */
+function questionAt(messages: readonly ShownMessage[], at: number): { toolCallId: string; tool: string; input: unknown } | null {
 	for (let i = at; i >= 0; i--) {
 		const m = messages[i]!;
-		if (m.role === "toolResult" && "toolCallId" in m) answered.add(m.toolCallId);
-		if (m.role !== "assistant" || !("calls" in m) || !m.calls) continue;
-		for (let c = m.calls.length - 1; c >= 0; c--) {
-			const call = m.calls[c]!;
-			if (!isQuestionTool(call.tool)) continue;
-			return answered.has(call.toolCallId) ? null : call;
-		}
+		if (m.role !== "assistant") continue;
+		const calls = ("calls" in m && m.calls) || [];
+		return calls.findLast((call) => isQuestionTool(call.tool)) ?? null;
 	}
 	return null;
 }
@@ -229,7 +230,7 @@ export function planSubmit(lessonId: string, show: ShowReply, after: string, inp
 	// The lesson id is the cursor of an empty lesson: before every message.
 	const at = after === lessonId ? -1 : messages.findIndex((m) => m.id === after);
 	if (at < 0 && after !== lessonId) return refuse("bad_after", { error: "--after is not a message in this lesson; use the cursor of your latest reply", cursor, items });
-	const call = questionOpenAt(messages, at);
+	const call = questionAt(messages, at);
 	if (!call) return refuse("no_open_question", { error: "no question was open at --after", cursor, items });
 	const kind = toolQuestionKind(call.tool);
 	const parsed = kind === "quiz" ? parseQuizInput(call.input) : kind === "explain" ? parseExplainInput(call.input) : parseAskInput(call.input);
@@ -255,7 +256,7 @@ export function planSubmit(lessonId: string, show: ShowReply, after: string, inp
 		};
 		answer = buildAnswer(qd, req, call.tool);
 	}
-	const result = messages.slice(at + 1).find((m): m is Extract<ShownMessage, { role: "toolResult" }> => m.role === "toolResult" && "toolCallId" in m && m.toolCallId === call.toolCallId);
+	const result = messages.find((m): m is Extract<ShownMessage, { role: "toolResult" }> => m.role === "toolResult" && "toolCallId" in m && m.toolCallId === call.toolCallId);
 	if (result) {
 		let saved: Record<string, unknown> = {};
 		try {
@@ -264,7 +265,7 @@ export function planSubmit(lessonId: string, show: ShowReply, after: string, inp
 			// unreadable: never equal, so refused below
 		}
 		if (answerKey(saved) === answerKey(compactAnswerForModel(answer))) return { action: "repeat", toolCallId: call.toolCallId };
-		return refuse("answered", { error: "the question already has a different answer or skip; read it with lh answer", toolCallId: call.toolCallId, cursor, items });
+		return refuse("answered", { error: "the question already has a different answer or skip, shown in saved", toolCallId: call.toolCallId, saved, cursor, items });
 	}
 	if (cursor !== after) return refuse("unread_input", { error: "the learner added input after --after; read items, then submit with the new cursor", cursor, items });
 	if (input.skip) {

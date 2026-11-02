@@ -238,9 +238,17 @@ describe("lh submit", () => {
 		assert.equal(again.json.cursor, first.json.cursor);
 		assert.equal(chatPosts(), posts, "a repeat sends nothing");
 		assert.equal(storedAnswers(id).length, 1);
+		const later = await lh(["submit", id, "--after", first.json.cursor], payload);
+		assert.equal(later.json.repeat, true, "a retry with the cursor from a later reply is a repeat too");
 		const other = await lh(["submit", id, "--after", cursor], JSON.stringify({ picks: [3], confidence: 30, thinking: "guess" }));
 		assert.equal(other.code, 1);
 		assert.equal(other.json.code, "answered");
+		assert.deepEqual(other.json.saved.answers.map((a: Json) => a.index), [2]);
+		assert.equal(other.json.saved.confidence, 30);
+		const replied = await lh(["say", id, "--after", first.json.cursor], "Noted.");
+		assert.equal(replied.code, 0, JSON.stringify(replied.json));
+		const afterReply = await lh(["submit", id, "--after", replied.json.cursor], payload);
+		assert.equal(afterReply.json.code, "no_open_question", "once the bot replied, the question is behind it");
 		const skip = await lh(["submit", id, "--after", cursor, "--skip"]);
 		assert.equal(skip.json.code, "answered");
 		assert.equal(storedAnswers(id).length, 1);

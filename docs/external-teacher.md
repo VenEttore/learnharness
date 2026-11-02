@@ -240,11 +240,11 @@ A skip is `lh submit "$L" --after "$C" --skip`, with no JSON.
 | `usage` | The JSON does not parse, has an unknown field, or a pick that is not a whole number (`null` included). |
 | `invalid` | The answer does not fit the question: a pick without a confidence, a pick out of range, a field the question does not take. `problems` says what; `options` lists the card's numbers and labels. |
 | `unread_input` | The learner typed something after `--after`. Read `items`, then submit again with the new `cursor`. |
-| `answered` | The question already has a different answer or skip, saved on the page or by an earlier submit. Read it with `lh answer`. |
+| `answered` | The question already has a different answer or skip, saved on the page or by an earlier submit. `saved` shows it as the stored answer reads, with `index` and `label` per pick. |
 | `no_open_question`, `bad_after` | No question was open at `--after`, or `--after` is not in this lesson. Use the cursor from the reply that posted the question, or a later one. |
 | `refused` | The page route refused the save; `error` says why. |
 
-A retry is safe. Rerun the same `lh submit` with the same `--after`: when the first one landed, the reply has `"repeat":true` and nothing is saved again.
+A retry is safe. Rerun the same `lh submit` with the same `--after`, or with a cursor `lh show` gave you since, before you reply to the answer: when the first one landed, the reply has `"repeat":true` and nothing is saved again.
 
 **Math in chat.** Grok Bot chat does not treat a single `$` as math. When you copy a question, teaching text or a plan into chat, write `$...$` as `\( ... \)`. Display math (`$$...$$`) and fenced `mermaid` blocks render as they are. The card screenshot already shows math as the page renders it.
 
