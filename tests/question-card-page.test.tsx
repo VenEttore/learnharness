@@ -313,11 +313,15 @@ describe("question card page", () => {
 		assert.equal(byTestId(doc, "card-question"), null);
 	});
 
-	it("has no inputs, buttons or forms", async () => {
+	it("has no inputs or forms, and hides the renderers' copy buttons", async () => {
 		const { id, cursor } = await lesson();
-		await turn(id, { kind: "probe", after: cursor, ...PROBE });
+		await turn(id, { kind: "probe", after: cursor, ...PROBE, text: "Code:\n\n```python\nprint(1)\n```\n\n| a | b |\n|---|---|\n| 1 | 2 |" });
 		const doc = await card(id);
-		assert.equal(doc.querySelectorAll("input, textarea, button, form, select, [contenteditable]").length, 0);
+		assert.equal(doc.querySelectorAll("input, textarea, form, select, [contenteditable]").length, 0);
+		// Code and table blocks bring Copy buttons; the sheet hides every
+		// button (display: none), so none shows, takes focus or clicks.
+		assert.ok(doc.querySelectorAll('[data-testid="question-card"] button').length > 0);
+		assert.match(byTestId(doc, "question-card")?.getAttribute("class") ?? "", /\[&_button\]:hidden/);
 	});
 
 	it("a practice session gets a note, not a phase or a question", async () => {

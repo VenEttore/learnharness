@@ -133,11 +133,13 @@ function CardSheet({ title, tag, children }: { title: string; tag: string; child
 	useFitWideContent(ref);
 	return (
 		// In the page flow (not a fixed layer) so the document is as tall as
-		// the card and a full-page screenshot captures all of it.
+		// the card and a full-page screenshot captures all of it. Long words
+		// break instead of widening the page; the shared renderers' copy
+		// buttons (code, tables) are hidden: the card has no controls.
 		<div
 			ref={ref}
 			data-testid="question-card"
-			className="min-h-dvh w-full bg-background text-foreground [&_pre]:whitespace-pre-wrap [&_pre]:break-words"
+			className="min-h-dvh w-full bg-background text-foreground [overflow-wrap:anywhere] [&_pre]:whitespace-pre-wrap [&_button]:hidden"
 		>
 			<main className="mx-auto w-full max-w-[430px] px-4 pb-10 pt-5">
 				<header className="mb-5 border-b border-border pb-3">

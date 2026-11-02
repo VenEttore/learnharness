@@ -2,7 +2,8 @@
 // plain full-page screenshot. Usage: node shot.mjs <base url> <out dir> name=<lesson id> ...
 // Prints, per card, the document height against the card height (a
 // full-page capture must hold the whole card), any element whose content
-// is still wider than its box (cut off in a screenshot), and every
+// is still wider than its box (cut off in a screenshot), any control
+// still displayed, and every
 // non-GET request the page sent.
 import puppeteer from "puppeteer-core";
 const [, , base, outDir, ...pairs] = process.argv;
@@ -30,7 +31,9 @@ for (const pair of pairs) {
 			if (["auto", "scroll", "hidden", "clip"].includes(o) && el.scrollWidth > el.clientWidth + 1)
 				clipped.push(`${el.tagName}.${String(el.className?.baseVal ?? el.className).slice(0, 40)} ${el.clientWidth}/${el.scrollWidth}`);
 		}
+		const shownButtons = [...card.querySelectorAll("button, input, textarea, select")].filter((el) => getComputedStyle(el).display !== "none").length;
 		return {
+			shownButtons,
 			documentHeight: document.documentElement.scrollHeight,
 			cardHeight: Math.ceil(card.getBoundingClientRect().height),
 			documentWidth: document.documentElement.scrollWidth,
