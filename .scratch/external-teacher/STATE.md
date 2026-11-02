@@ -4,7 +4,7 @@ max_suborchestrators: 2
 destination: One LearnHarness lesson taught by a Grok Bot through lh, with no LearnHarness model calls.
 host: linuxdev, repo ~/code/learnharness, Node 22 in ~/.local/bin.
 live:
-  22 external-teacher-22-question-card-page (launching)
+  22 external-teacher-22-question-card-page node:delegated-task:command%3Amcp%3A009d2ebe-185c-4d20-99ce-ebf9953ddaa5%3Adelegate-task%3Aexternal-teacher-22-1 running
   20 external-teacher-20-latex-in-question-details node:delegated-task:command%3Amcp%3A461b638f-62e8-4b7f-84a5-e65799437ec9%3Adelegate-task%3Aexternal-teacher-20-1 running
 touches-locked: 20 (src/core/input-events.ts, src/core/answer-authored-text.ts, new tests); 22 (app/chat/[id]/card new files, new components, new tests)
 merged: 02 (33e1e55), 01 (0400540), 04 (8d77b94), 03 (e51624e), 05 (phase A verified; .scratch only), 08 (2e93d6c), 06 (8247cca), 07 (5929722), 09 (phase B verified; .scratch only), 10 (17ab05a), 11 (439f106), 12 (4c38b64), 13 (815aa6d; docs only, child check at the same code tree matched baseline); check after each code merge matches baseline, 14 (b2d80fc; phase C verified; .scratch only), 16 (merged; review skipped under small-diff rule, 19 lines, test red then green), 18 (tests only; review skipped under small-diff rule), 17 (675e146; 9 rounds; GLM and Composer seats skipped: Cursor usage limit until 2026-11-19), 15 (bench PASS 2026-11-01, Ven via Watcher; findings -> 20, 21), 19 (522de4e; 5 rounds; GLM/Composer skipped, Cursor limit)
