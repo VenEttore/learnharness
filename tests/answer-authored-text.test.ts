@@ -751,6 +751,61 @@ describe("backslash TeX through a real double-quoted bash string", () => {
 		}
 	});
 
+	it("a sent label that names the value's option among others still lets the value restore (bench-2 review)", () => {
+		const page = (opts: { label: string; value: string }[], picks: { index: number; value: string }[]) => ({
+			kind: "quiz", tool: "quiz", questionText: "q", dontKnow: false,
+			options: opts.map((o, i) => ({ index: i + 1, label: o.label })),
+			answers: picks.map((p) => ({ index: p.index, label: opts[p.index - 1]!.label, value: p.value })),
+			correct: false, correctIndices: [1], answeredAt: new Date().toISOString(),
+		});
+		const call = (opts: { label: string; value: string }[]) => ({ question: "Which?", options: opts, explanation: "e", correctAnswer: opts[0]!.value });
+		for (const escapeBackslashes of [false, true]) {
+			// Seat C: `2$n$` arrives as `2$`, which is also option 1's authored label.
+			const C = [{ label: "2$", value: "x" }, { label: "2$n$", value: "y" }];
+			const c = stored(CALL, "quiz", call(C), viaBash(page(C, [{ index: 2, value: "y" }]), { escapeBackslashes }));
+			assert.deepEqual([c.options!.map((o) => o.label), c.answers.map((x) => x.label)], [["2$", "2$n$"], ["2$n$"]]);
+
+			// Seat A: `cost: $5` arrives as `cost: `, which trims to option 1's authored label.
+			const A = [{ label: "cost:", value: "expanded" }, { label: "cost: $5", value: "literal" }];
+			const sa = stored(CALL, "quiz", call(A), viaBash(page(A, [{ index: 2, value: "literal" }]), { escapeBackslashes }));
+			assert.deepEqual([sa.options!.map((o) => o.label), sa.answers.map((x) => x.label)], [["cost:", "cost: $5"], ["cost: $5"]]);
+
+			// Code-review: `$x$` arrives as `$`, option 2's authored label; single and multi-select.
+			const R = [{ label: "$x$", value: "a" }, { label: "$", value: "b" }, { label: "none", value: "c" }];
+			const single = stored(CALL, "quiz", call(R), viaBash(page(R, [{ index: 1, value: "a" }]), { escapeBackslashes }));
+			assert.deepEqual([single.options!.map((o) => o.label), single.answers.map((x) => x.label)], [["$x$", "$", "none"], ["$x$"]]);
+			const multi = stored(CALL, "quiz", { ...call(R), multiSelect: true, correctAnswer: ["a", "b"] }, viaBash(page(R, [{ index: 1, value: "a" }, { index: 2, value: "b" }]), { escapeBackslashes }));
+			assert.deepEqual([multi.options!.map((o) => o.label), multi.answers.map((x) => x.label)], [["$x$", "$", "none"], ["$x$", "$"]]);
+		}
+	});
+
+	it("a pick with no value keeps its sent label when it names another option than its row's", () => {
+		const OPTS = [{ label: "Alice", value: "a" }, { label: "Bob", value: "b" }];
+		const sent = {
+			kind: "quiz", tool: "quiz", questionText: "q", dontKnow: false,
+			options: [{ index: 1, label: "Alice" }, { index: 2, label: "Bob" }],
+			answers: [{ index: 2, label: "Alice" }], correct: true, correctIndices: [1], answeredAt: new Date().toISOString(),
+		};
+		const details = stored(CALL, "quiz", { question: "Who?", options: OPTS, explanation: "e", correctAnswer: "a" }, sent);
+		assert.deepEqual(details.answers, sent.answers, "not Bob");
+	});
+
+	it("the page's multi-select answer with 8,000 options all picked stores in linear time", () => {
+		// Bench-2 review: a per-pick scan of every option took 1.2-1.6 s here and 4.1-4.7 s at 16,000.
+		const OPTS = Array.from({ length: 8_000 }, (_, i) => ({ label: `$x_{${i}}$`, value: `v${i}` }));
+		const order = pageOrder("call_multi", OPTS);
+		const qd = {
+			id: "call_multi", kind: "quiz" as const, question: "Which?", mode: "multi-select" as const, options: order,
+			createdAt: "", correctIndices: order.map((_, i) => i + 1), explanation: "e",
+		};
+		const fromPage = buildAnswer(qd, { values: order.map((o) => o.value), confidence: 50 }, "quiz");
+		const started = performance.now();
+		const details = stored("call_multi", "quiz", { question: "Which?", options: OPTS, multiSelect: true, explanation: "e", correctAnswer: OPTS.map((o) => o.value) }, fromPage);
+		const ms = performance.now() - started;
+		assert.ok(ms < 3_000, `took ${Math.round(ms)} ms`);
+		assert.deepEqual(JSON.parse(JSON.stringify(details)), JSON.parse(JSON.stringify(fromPage)), "stored as the page sent it");
+	});
+
 	it("an answer sent that way gets every row and the pick back", () => {
 		const order = pageOrder(CALL, TEX.options);
 		const answer = viaBash(quizAnswer("quiz", TEX, order, "times", (x) => x)) as QuestionAnswerData;

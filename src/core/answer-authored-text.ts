@@ -72,19 +72,20 @@ export function withAuthoredText(
 	// the options (a quiz has no upper bound on them).
 	const byValue = textIndex(authored.map((o) => o.value), authored);
 	const byLabel = textIndex(authored.map((o) => o.label), authored);
-	// A pick whose sent label is an authored label verbatim already shows the
-	// option the learner chose. Its value can still have been changed on the
-	// way (bench 2: a set `$USER` turned Alice's value into Bob's), so it is
-	// never relabeled, and a value naming another option proves nothing.
-	const exactLabel = picks.map((a) => authored.filter((o) => o.label === a.label.trim()));
-	const pickOption = picks.map((a, i) => {
-		const named = a.value === undefined ? [] : byValue.get(a.value.trim()) ?? [];
-		const option = named.length === 1 ? named[0] : undefined;
-		return option && (exactLabel[i]!.length === 0 || exactLabel[i]!.includes(option)) ? option : undefined;
-	});
 	const labelForms = new Map(authored.map((o) => [o, formsOf(o.label)]));
 	const optionsFor = (label: string) => byLabel.get(label.trim()) ?? [];
 	const labelFits = (label: string, o: QuizOption) => labelForms.get(o)!.has(label.trim());
+	// A pick's sent label outranks its value. A value can be changed on the
+	// way in a form this guard does not model (bench 2: a set `$USER` turned
+	// Alice's value into Bob's), so when the label names options (in any
+	// modeled form) and the value's option is not among them, the pick stays
+	// as sent and its value proves nothing about its row.
+	const labelAllows = (label: string, o: QuizOption) => optionsFor(label).length === 0 || labelFits(label, o);
+	const pickOption = picks.map((a) => {
+		const named = a.value === undefined ? [] : byValue.get(a.value.trim()) ?? [];
+		const option = named.length === 1 ? named[0] : undefined;
+		return option && labelAllows(a.label, option) ? option : undefined;
+	});
 	const rowOption = bindRows(rows, picks, pickOption, optionsFor, labelFits);
 	out.options = rows.map((row, i) => (rowOption[i] ? { ...row, label: rowOption[i]!.label } : row));
 	// A hand-built pick may lack its value; it stays without one.
@@ -92,10 +93,9 @@ export function withAuthoredText(
 	// has one, could be that option.
 	const valueFits = (value: string | undefined, o: QuizOption) => value === undefined || (byValue.get(value.trim()) ?? []).includes(o);
 	out.answers = picks.map((a, i) => {
-		if (exactLabel[i]!.length > 0) return a;
 		const row = rowOption[a.index - 1];
 		const option = pickOption[i] ?? (row && valueFits(a.value, row) ? row : undefined);
-		return option ? { ...a, label: option.label } : a;
+		return option && labelAllows(a.label, option) ? { ...a, label: option.label } : a;
 	}) as QuestionAnswerData["answers"];
 	return out;
 }
