@@ -70,7 +70,7 @@ export function QuestionCard({ title, card }: { title: string; card: QuestionCar
 			data-testid="question-card"
 			className="fixed inset-0 z-50 overflow-y-auto bg-background text-foreground"
 		>
-			<main className="mx-auto w-full max-w-[430px] px-4 pb-10 pt-5">
+			<main className="mx-auto w-full max-w-[430px] px-4 pb-20 pt-5">
 				<header className="mb-5 border-b border-border pb-3">
 					<div className="flex items-baseline justify-between gap-3 text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
 						<span>LearnHarness</span>
