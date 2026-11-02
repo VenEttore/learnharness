@@ -537,9 +537,11 @@ describe("ordinary lessons, and which order a hand-built answer used", () => {
 });
 
 /** The request body a bot writes inside a double-quoted bash string (its
- *  JSON with each `"` escaped for the shell), as bash hands it on. */
-function viaBash(body: unknown): unknown {
-	const text = JSON.stringify(body).replaceAll('"', '\\"');
+ *  JSON with each `"` escaped for the shell, and with `escapeBackslashes`
+ *  each `\` too), as bash hands it on. */
+function viaBash(body: unknown, { escapeBackslashes = false } = {}): unknown {
+	const json = JSON.stringify(body);
+	const text = (escapeBackslashes ? json.replaceAll("\\", "\\\\") : json).replaceAll('"', '\\"');
 	const env: NodeJS.ProcessEnv = { NODE_ENV: "test", PATH: process.env.PATH ?? "/usr/bin:/bin" }; // no $n, $k
 	const out = spawnSync("bash", ["-c", `printf '%s' "${text}"`], { env, encoding: "utf8" });
 	assert.equal(out.status, 0, out.stderr);
@@ -685,6 +687,33 @@ describe("backslash TeX through a real double-quoted bash string", () => {
 		const details = stored(CALL, "quiz", { question: "Which?", options: OPTS, explanation: "e", correctAnswer: "halved" }, sent);
 		assert.deepEqual(details.options!.map((o) => o.label), ["$n/2^k$", "$n-k$", "$n/k$"]);
 		assert.deepEqual(details.answers.map((a) => [a.label, a.value]), [["$n/2^k$", "halved "]]);
+	});
+
+	it("a bot that also escapes backslashes for bash: `$name`s go, backslashes stay", () => {
+		// Interrogate round 6, seat C: that form of one option's value was another option's verbatim value.
+		const OPTS = [{ label: "$n\\times 2", value: "$n\\times 2" }, { label: "Other", value: "\\times 2" }];
+		const call = { question: "Which?", options: OPTS, explanation: "e", correctAnswer: "\\times 2" };
+		const sent = viaBash({
+			kind: "quiz", tool: "quiz", questionText: "q", dontKnow: false,
+			options: OPTS.map((o, i) => ({ index: i + 1, label: o.label })),
+			answers: [{ index: 1, label: OPTS[0]!.label, value: OPTS[0]!.value }],
+			correct: false, correctIndices: [2], answeredAt: new Date().toISOString(),
+		}, { escapeBackslashes: true }) as QuestionAnswerData;
+		assert.equal(sent.answers[0]!.value, "\\times 2", "what bash sent: `Other`'s value, verbatim");
+		const details = stored(CALL, "quiz", call, sent);
+		assert.equal(details.questionText, "Which?", "the call parsed");
+		assert.notEqual(details.answers[0]!.label, "Other", "never another option's label");
+
+		// And a row in that form is restored where nothing else claims its option.
+		const TEX = [{ label: "$k\\times n$" }, { label: "2" }];
+		const row = viaBash({
+			kind: "quiz", tool: "quiz", questionText: "q", dontKnow: false,
+			options: TEX.map((o, i) => ({ index: i + 1, label: o.label })),
+			answers: [], correct: false, correctIndices: [2], answeredAt: new Date().toISOString(),
+		}, { escapeBackslashes: true }) as QuestionAnswerData;
+		assert.equal(row.options![0]!.label, "\\times n$", "what bash sent");
+		const restored = stored(CALL, "quiz", { question: "Which?", options: TEX, explanation: "e", correctAnswer: "2" }, row);
+		assert.deepEqual(restored.options!.map((o) => o.label), ["$k\\times n$", "2"]);
 	});
 
 	it("an answer sent that way gets every row and the pick back", () => {

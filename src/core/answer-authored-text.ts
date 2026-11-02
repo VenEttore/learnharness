@@ -162,13 +162,17 @@ function bindRows(
 
 /** The forms an option's text can reach the server in: as authored, and
  *  what a bot's JSON body makes of it inside a double-quoted shell string.
- *  There bash expands every `$name` and `$1`..`$9` (unset: to nothing) and
- *  turns the JSON's `\\` into `\`, so JSON then reads the authored TeX
- *  `\frac` as a form feed and `rac`, `\times` as a tab and `imes`. Both are
- *  trimmed: the page trims (normalizeOptions), a bot copying the call may
- *  keep its edge spaces. Every lookup compares against these forms. */
+ *  There bash expands every `$name` and `$1`..`$9` (unset: to nothing). If
+ *  the bot escaped only the quotes, bash also turns the JSON's `\\` into
+ *  `\`, so JSON then reads the authored TeX `\frac` as a form feed and
+ *  `rac`, `\times` as a tab and `imes`; if it doubled the backslashes too,
+ *  they survive and only the `$name`s go. All are trimmed: the page trims
+ *  (normalizeOptions), a bot copying the call may keep its edge spaces.
+ *  Every lookup compares against these forms, so text that is a form of two
+ *  options names neither. */
 function formsOf(text: string): Set<string> {
-	return new Set([text.trim(), throughShell(text).trim()]);
+	const unset = withoutVariables(text);
+	return new Set([text.trim(), unset.trim(), decodeEscapes(unset).trim()]);
 }
 
 /** Sent text (trimmed) -> the options one of whose forms it is. */
@@ -186,17 +190,19 @@ function textIndex(texts: string[], options: QuizOption[]): Map<string, QuizOpti
 
 const JSON_ESCAPES: Record<string, string> = { "\"": "\"", "\\": "\\", "/": "/", b: "\b", f: "\f", n: "\n", r: "\r", t: "\t" };
 
-/** `$` forms bash expands that throughShell does not model (`$[..]` is
+/** `$` forms bash expands that formsOf does not model (`$[..]` is
  *  bash's old arithmetic form; bash always sets `$_` and `$0`), and
  *  backticks (command substitution). Any other `$` is either modeled or
  *  literal. */
 const UNMODELED = /\$[{([*@#?$!0-]|\$_(?![A-Za-z0-9_])|`/;
 
-function throughShell(authored: string): string {
-	return authored
-		.replace(/\$(?:[A-Za-z_][A-Za-z0-9_]*|[1-9])/g, "")
-		.replace(/\\(["\\/bfnrt]|u[0-9a-fA-F]{4})/g, (_, e: string) =>
-			e.length === 5 ? String.fromCharCode(parseInt(e.slice(1), 16)) : JSON_ESCAPES[e]!);
+function withoutVariables(text: string): string {
+	return text.replace(/\$(?:[A-Za-z_][A-Za-z0-9_]*|[1-9])/g, "");
+}
+
+function decodeEscapes(text: string): string {
+	return text.replace(/\\(["\\/bfnrt]|u[0-9a-fA-F]{4})/g, (_, e: string) =>
+		e.length === 5 ? String.fromCharCode(parseInt(e.slice(1), 16)) : JSON_ESCAPES[e]!);
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {
