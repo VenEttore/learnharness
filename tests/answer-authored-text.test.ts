@@ -56,8 +56,8 @@ const answer = async (id: string) => json(await answerRoute.GET(new Request(`htt
 const messages = (id: string) => chatStore.getChat(id)!.messages;
 const lastDetails = (id: string) => (messages(id).at(-1) as { details: QuestionAnswerData }).details;
 
-/** What bash does to `$name` inside double quotes when no such variable is set. */
-const shell = (text: string) => text.replace(/\$[A-Za-z_][A-Za-z0-9_]*/g, "");
+/** What bash does to `$name` and `$1`..`$9` inside double quotes when they are unset. */
+const shell = (text: string) => text.replace(/\$(?:[A-Za-z_][A-Za-z0-9_]*|[1-9])/g, "");
 
 // The bench lesson's probe (chat_mvxc52d6_582ae133), as the bot authored it.
 const PROBE = {
@@ -297,14 +297,43 @@ describe("ordinary lessons, and which order a hand-built answer used", () => {
 		assert.equal(details.explanation, PROBE.explanation);
 	});
 
-	it("when either order fits a pick with no value, rows and the pick stay as sent", () => {
+	it("a pick with no value in the authored order gets its own option's label, not the page order's", () => {
 		const sent = quizAnswer("quiz", PROBE, AUTHORED, "halved", shell);
 		delete (sent.answers[0] as { value?: string }).value;
 		const details = stored(CALL, "quiz", PROBE, sent);
 		assert.equal(details.questionText, PROBE.question);
-		assert.deepEqual(details.options, sent.options, "no guessed labels");
-		assert.deepEqual(details.answers, sent.answers, "never another option's label next to the grade");
+		assert.deepEqual(details.options, AUTHORED.map((o, i) => ({ index: i + 1, label: o.label })));
+		assert.deepEqual(details.answers, [{ index: 1, label: "$n/2^k$" }], "never another option's label next to the grade");
 		assert.equal(details.correct, true);
+	});
+
+	it("an answer in a third order (the bot's own widget), values mangled too, keeps each row's own option", () => {
+		// Interrogate round 1, seat A: neither the page order nor the authored order.
+		const OPTS = [{ label: "$n/2^k$" }, { label: "$n-k$" }, { label: "It depends on the order" }];
+		const seen = ["$n/2^k$", "It depends on the order", "$n-k$"];
+		const sent = {
+			kind: "quiz", tool: "probe", questionText: shell(PROBE.question), dontKnow: false,
+			options: seen.map((label, i) => ({ index: i + 1, label: shell(label) })),
+			answers: [{ index: 1, label: shell(seen[0]!), value: shell(seen[0]!) }],
+			correct: true, correctIndices: [1], answeredAt: new Date().toISOString(),
+		};
+		const details = stored("call_bot_00000000000000000000000000000002", "probe", { question: PROBE.question, options: OPTS, explanation: PROBE.explanation, correctAnswer: "$n/2^k$" }, sent);
+		assert.deepEqual(details.options, seen.map((label, i) => ({ index: i + 1, label })));
+		assert.deepEqual(details.answers, [{ index: 1, label: "$n/2^k$", value: "/2^k$" }]);
+		assert.equal(details.correct, true);
+	});
+
+	it("rows whose mangled labels could be more than one option stay as sent", () => {
+		const OPTS = [{ label: "$n$", value: "n" }, { label: "$k$", value: "k" }, { label: "$2$", value: "two" }];
+		const sent = {
+			kind: "quiz", tool: "quiz", questionText: "q", dontKnow: false,
+			options: [{ index: 1, label: "$" }, { index: 2, label: "$" }, { index: 3, label: "$2$" }],
+			answers: [{ index: 2, label: "$" }],
+			correct: false, correctIndices: [3], answeredAt: new Date().toISOString(),
+		};
+		const details = stored(CALL, "quiz", { question: "Which?", options: OPTS, correctAnswer: "two" }, sent);
+		assert.deepEqual(details.options, sent.options);
+		assert.deepEqual(details.answers, sent.answers);
 	});
 
 	it("a pick's value settles the authored order", () => {
@@ -336,16 +365,16 @@ describe("ordinary lessons, and which order a hand-built answer used", () => {
 		assert.deepEqual(details.answers.slice(1), [{ index: 9, label: "ghost" }]);
 	});
 
-	it("an ask with no values (each value is its label, mangled too) gets its labels back by index", () => {
-		const ASK = { question: "Which is $n/2$ when $n = 8$?", options: [{ label: "$4$ items" }, { label: "$n$ items" }] };
+	it("an ask with no values (each value is its label, mangled too) gets its labels back", () => {
+		const ASK = { question: "Which is $n/2$ when $n = 8$?", options: [{ label: "$4$ items" }, { label: "$n$ halves" }] };
 		const details = stored("call_ask", "ask_user_question", ASK, {
 			kind: "ask", questionText: shell(ASK.question), dontKnow: false,
-			options: [{ index: 1, label: "$4$ items" }, { index: 2, label: " items" }],
-			answers: [{ index: 2, label: " items", value: " items" }],
+			options: ASK.options.map((o, i) => ({ index: i + 1, label: shell(o.label) })),
+			answers: [{ index: 2, label: shell("$n$ halves"), value: shell("$n$ halves") }],
 			answeredAt: new Date().toISOString(),
 		});
 		assert.equal(details.questionText, ASK.question);
-		assert.deepEqual(details.options, [{ index: 1, label: "$4$ items" }, { index: 2, label: "$n$ items" }]);
-		assert.deepEqual(details.answers, [{ index: 2, label: "$n$ items", value: " items" }], "the value is the learner's part and stays as sent");
+		assert.deepEqual(details.options, [{ index: 1, label: "$4$ items" }, { index: 2, label: "$n$ halves" }]);
+		assert.deepEqual(details.answers, [{ index: 2, label: "$n$ halves", value: "$ halves" }], "the value is the learner's part and stays as sent");
 	});
 });
