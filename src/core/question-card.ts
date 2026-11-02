@@ -105,20 +105,22 @@ function joined(texts: string[]): string | null {
 	return text ? text : null;
 }
 
-/** The newest assistant message before `end` with learner-facing text.
- *  A message that asks a question is skipped: its text is that older
- *  question's lead-in, not teaching. */
+/** The newest assistant message before `end` with learner-facing text,
+ *  the text the lesson page shows last before that point. Text beside an
+ *  earlier question counts: in ordinary lessons the teacher sends its
+ *  teaching in the same message as the question. */
 function latestTeaching(messages: readonly LhMessage[], end: number, failed: ReadonlySet<string>): string | null {
 	for (let i = end - 1; i >= 0; i--) {
 		const m = messages[i]!;
 		if (m.role !== "assistant") continue;
-		const content = (m as AssistantMessage).content;
-		if (content.some((b) => b.type === "toolCall" && (QUESTION_TOOLS as readonly string[]).includes(b.name))) continue;
-		const text = joined(userFacingTextOf(content, failed));
+		const text = joined(userFacingTextOf((m as AssistantMessage).content, failed));
 		if (text) return text;
 	}
 	return null;
 }
+
+const isQuestionCall = (b: AssistantMessage["content"][number]) =>
+	b.type === "toolCall" && (QUESTION_TOOLS as readonly string[]).includes(b.name);
 
 function buildQuestion(
 	tool: string,
@@ -170,13 +172,18 @@ export function questionCardOf(messages: readonly LhMessage[]): QuestionCard {
 	if (!pending || at < 0) {
 		return { phase, plan, teaching: latestTeaching(messages, messages.length, failed), question: null, malformed: false };
 	}
-	const message = messages[at] as AssistantMessage & { id: string };
-	const leadIn = joined(userFacingTextOf(message.content.slice(0, pending.contentIndex), failed));
+	// The lead-in is the text right before the open call, after any earlier
+	// question call in the same message (parallel questions each keep their
+	// own). Text before that earlier call is the latest teaching.
+	const before = (messages[at] as AssistantMessage).content.slice(0, pending.contentIndex);
+	const previousCall = before.findLastIndex(isQuestionCall);
+	const leadIn = joined(userFacingTextOf(before.slice(previousCall + 1), failed));
 	const question = buildQuestion(pending.tool, pending.toolCallId, pending.input, leadIn);
+	const sameMessageTeaching = previousCall >= 0 ? joined(userFacingTextOf(before.slice(0, previousCall), failed)) : null;
 	return {
 		phase,
 		plan,
-		teaching: latestTeaching(messages, at, failed),
+		teaching: sameMessageTeaching ?? latestTeaching(messages, at, failed),
 		question,
 		malformed: question === null,
 	};

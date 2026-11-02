@@ -187,15 +187,57 @@ describe("question card page", () => {
 		assert.notDeepEqual(optionTex(doc), authored);
 	});
 
-	it("the teaching text skips an earlier question's lead-in", async () => {
+	it("the teaching text is the latest text before the open question's own lead-in", async () => {
 		const { id, cursor } = await lesson();
 		const said = await turn(id, { kind: "say", after: cursor, text: "Halving teaches logarithms." });
 		await turn(id, { kind: "probe", after: said, text: "First probe lead-in.", ...PROBE });
 		const answered = await learnerAnswers(id, MATH_QUESTION);
-		await turn(id, { kind: "probe", after: answered, ...PROBE, question: "Second: after $k$ halvings?" });
+		const feedback = await turn(id, { kind: "say", after: answered, text: "Not quite: each halving divides by two." });
+		await turn(id, { kind: "probe", after: feedback, text: "Try again.", ...PROBE, question: "Second: after $k$ halvings?" });
 		const doc = await card(id);
-		assert.equal(byTestId(doc, "card-teaching")?.textContent?.includes("Halving teaches logarithms."), true);
-		assert.equal(byTestId(doc, "card-teaching")?.textContent?.includes("First probe lead-in."), false);
+		assert.match(byTestId(doc, "card-teaching")?.textContent ?? "", /Not quite: each halving divides by two\./);
+		assert.equal(byTestId(doc, "card-lead-in")?.textContent?.trim(), "Try again.");
+	});
+
+	describe("ordinary lesson record shapes", () => {
+		let n = 0;
+		const mid = () => `msg_card_shape_${++n}`;
+		const usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
+		const asst = (content: unknown[]) => ({ id: mid(), role: "assistant", content, api: "x", provider: "x", model: "x", usage, stopReason: "toolUse", timestamp: Date.now() });
+		const user = (text: string) => ({ id: mid(), role: "user", content: [{ type: "text", text }], timestamp: Date.now() });
+		const sendToUser = (cid: string, message: string) => ({ type: "toolCall", id: cid, name: "send_to_user", arguments: { message } });
+		const sendResult = (cid: string) => ({ id: mid(), role: "toolResult", toolCallId: cid, toolName: "send_to_user", content: [{ type: "text", text: "shown" }], details: null, isError: false, timestamp: Date.now() });
+		const probe = (cid: string, question: string) => ({ type: "toolCall", id: cid, name: "probe", arguments: { question, options: [{ label: "2", value: "a" }, { label: "3", value: "b" }, { label: "4", value: "c" }], correctAnswer: "b", explanation: "x" } });
+		const answered = (cid: string, q: string) => ({ id: mid(), role: "toolResult", toolCallId: cid, toolName: "probe", content: [{ type: "text", text: "answered" }], details: { kind: "quiz", questionText: q, dontKnow: true, answers: [], answeredAt: new Date().toISOString() }, isError: false, timestamp: Date.now() });
+		async function ordinary(messages: unknown[]): Promise<Document> {
+			const chat = chatStore.createChat("ordinary shapes");
+			chatStore.saveMessages(chat.id, messages as never);
+			return card(chat.id);
+		}
+
+		it("two questions in one message: the open one's lead-in is only its own text", async () => {
+			const doc = await ordinary([
+				user("Teach me logs"),
+				asst([{ type: "text", text: "First question: the base." }, probe("call_q1", "What base does $\\log_2 8$ use?"), { type: "text", text: "Second question: the value." }, probe("call_q2", "What is $\\log_2 8$?")]),
+				answered("call_q1", "What base?"),
+			]);
+			assert.equal(byTestId(doc, "card-lead-in")?.textContent?.trim(), "Second question: the value.");
+			assert.match(byTestId(doc, "card-teaching")?.textContent ?? "", /First question: the base\./);
+		});
+
+		it("teaching sent beside an earlier question still counts as the latest teaching", async () => {
+			const doc = await ordinary([
+				user("Teach me logs"),
+				asst([sendToUser("call_s0", "Welcome! We will start with a warm-up.")]),
+				sendResult("call_s0"),
+				asst([sendToUser("call_s1", "A logarithm counts halvings."), probe("call_q1", "What is $\\log_2 4$?")]),
+				sendResult("call_s1"),
+				answered("call_q1", "What is log 4?"),
+				asst([sendToUser("call_s2", "Correct! One more."), probe("call_q2", "What is $\\log_2 8$?")]),
+			]);
+			assert.match(byTestId(doc, "card-teaching")?.textContent ?? "", /A logarithm counts halvings\./);
+			assert.equal(byTestId(doc, "card-lead-in")?.textContent?.trim(), "Correct! One more.");
+		});
 	});
 
 	it("an unknown lesson is not found", async () => {
