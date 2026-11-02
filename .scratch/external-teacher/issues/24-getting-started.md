@@ -1,0 +1,20 @@
+# 24: Getting started from one prompt
+
+Status: resolved
+Blocked by: none
+Risk: pre-release
+Gate: none (cleared: cold-start passed; "ship it" from Matt 2026-11-02)
+Host: linuxdev
+Touches: README.md, docs/external-teacher.md
+
+Matt (2026-11-02): people should start the fork by handing a Grok Bot one prompt, not by reading the guide. The bot, not the prompt, asks the learner whether they want phone-ready or VM control.
+
+- [x] README: drop Status; add "Getting started" with the prompt; drop "Cursor cloud agent".
+- [x] Guide: clone step in section 1; "Ask the learner first" (phone-ready or VM control) before creating the lesson.
+- [x] Cold-start test: Ven's test bot gets the README prompt in a fresh folder, on this branch, and reports what it tripped on.
+- [x] Fixed what the test found; shipped to main on Matt's "ship it".
+- [ ] After ship: GitHub description and website link (Matt approved 2026-11-02).
+- [x] From Ven during the cold-start (2026-11-02): phone-ready asks in chat text and a widget; a card screenshot only when the question has something chat can't show (diagram, table, laid-out code). The bot still opens the card to read the option order. The widget's free-text input (`allowCustom`) takes pick and reasoning in one place; reasoning may also come as a chat message. Not yet run by a bot: the cold-start tested 29b02a8, before this change.
+- [x] Cold-start PASS (Watcher, 2026-11-02, fresh bot, clean prompt, @ 2220cc1): the bot asked phone-ready vs VM control from the guide alone; full probe, plan and teach; a busy port handled; plain-text questions had no screenshot; a table question got one; card order used. CLI edge harness 26/26; Bot Teacher UX edges 5 PASS, VM control not run (needs Take over).
+- [x] Guide fixes from that package: LearnHarness adds "Other" to an options `ask`, so never author a free-text option; widget lists only the card's options, typed text in place of a pick goes in `other`, beside a pick in `thinking`; wrong options written as near-misses; a retry must resend the same body, `thinking` included.
+- Follow-ups, not in this ticket (code): plan `version` stays 1 on every replace (page redraw unverified); an invalid `explain` type returns a raw AJV dump; `lh show`'s openQuestion omits the lead-in `text`; the card's "Before the question" can show an older `say`.
