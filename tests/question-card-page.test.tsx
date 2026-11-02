@@ -334,3 +334,34 @@ describe("question card page", () => {
 		assert.equal(byTestId(doc, "card-no-question")?.textContent, "No open question");
 	});
 });
+
+describe("question card in the browser", () => {
+	it("hides the app shell around it while mounted and restores it after", async () => {
+		const { act } = await import("react");
+		const { createRoot } = await import("react-dom/client");
+		const { PracticeCardNote } = await import("../components/question-card.tsx");
+		const dom = parseHTML(`<html><body><aside id="sidebar">Sessions</aside><div id="shell"><div id="banner">Update</div><div id="host"></div></div><div id="toast"></div></body></html>`);
+		const globals = {
+			window: dom.window, document: dom.document, Element: dom.window.Element, HTMLElement: dom.window.HTMLElement,
+			IS_REACT_ACT_ENVIRONMENT: true, getComputedStyle: () => ({ display: "block", overflowX: "visible" }),
+		};
+		const previous = Object.getOwnPropertyDescriptors(globalThis);
+		Object.assign(globalThis, globals);
+		try {
+			const byId = (id: string) => dom.document.getElementById(id) as unknown as HTMLElement;
+			byId("toast").style.display = "flex";
+			const root = createRoot(byId("host"));
+			await act(async () => root.render(<PracticeCardNote title="Practice" />));
+			assert.deepEqual(["sidebar", "banner", "toast"].map((id) => byId(id).style.display), ["none", "none", "none"]);
+			assert.notEqual(byId("host").style.display, "none");
+			assert.notEqual(byId("shell").style.display, "none");
+			await act(async () => root.unmount());
+			assert.deepEqual(["sidebar", "banner", "toast"].map((id) => byId(id).style.display), ["", "", "flex"]);
+		} finally {
+			for (const key of Object.keys(globals)) {
+				if (previous[key]) Object.defineProperty(globalThis, key, previous[key]);
+				else Reflect.deleteProperty(globalThis, key);
+			}
+		}
+	});
+});

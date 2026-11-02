@@ -1,13 +1,25 @@
 # Ticket 22 card screenshots
 
-Made 2026-11-02 on linuxdev. Retaken after the round-3 plan-map fix (the commit that adds card-plan9-390.png). The probe lesson's call id is new each run, so its shuffle differs between captures.
+Made 2026-11-02 on linuxdev, retaken after the round-4 fixes (the card is in the page flow and hides the app shell, and wide content fits the column). The probe lesson's call id is new each run, so its shuffle differs between captures.
 
 - Server: `LH_DATA_DIR=<temp dir> LH_IGNORE_ENV_KEYS=1 npx next dev -H 127.0.0.1 -p 3722`, with the desktop variables unset and no keys.
 - Lessons were created with `scripts/lh.mjs`. Every JSON payload containing `$` went through `--file` (the files are in this folder):
   - probe: `lesson new`, `say --file say.txt`, then `probe --file probe.json`
   - quiz: `lesson new`, `probe-done --file done.json`, `plan --file plan.mmd`, `say --file say.txt`, then `quiz --file quiz.json`
   - plan9: as quiz, with `plan --file plan9.mmd` (a nine-node plan; its titles must stay readable at 390 px)
+  - wide: `lesson new`, `say --file wide-say.txt` (a wide table and display math), then `probe --file wide-probe.json` (display math in the question, a code block in the details)
   - none: `lesson new`, then `say --file say.txt`
-- Capture: `node shot.mjs http://127.0.0.1:3722 <out dir> probe=<id> quiz=<id> plan9=<id> none=<id>`. It uses puppeteer-core with chrome-headless-shell at 390 x 844 CSS px, DPR 2, and crops each image to the card's height.
-- The script printed `non-GET requests: []` for all four page loads. The card sent no POST, so no `continue` and no answer.
-- The round "N" in the bottom-left corner is Next's dev-mode indicator. It appears only under `next dev`, and the card's bottom padding keeps it clear of the content.
+- Capture: `node shot.mjs http://127.0.0.1:3722 <out dir> probe=<id> quiz=<id> plan9=<id> wide=<id> none=<id>`. It uses puppeteer-core with chrome-headless-shell at 390 x 844 CSS px, DPR 2, and a plain full-page screenshot, the way a bot would take one.
+- Its output for this capture:
+
+```
+probe {"documentHeight":844,"cardHeight":844,"documentWidth":390,"clipped":[]}
+quiz {"documentHeight":1166,"cardHeight":1166,"documentWidth":390,"clipped":[]}
+plan9 {"documentHeight":1465,"cardHeight":1466,"documentWidth":390,"clipped":[]}
+wide {"documentHeight":1086,"cardHeight":1087,"documentWidth":390,"clipped":[]}
+none {"documentHeight":844,"cardHeight":844,"documentWidth":390,"clipped":[]}
+non-GET requests: []
+```
+
+  The document is as tall and as wide as the card, nothing is cut off at the right edge, and the card sent no POST (no `continue`, no answer).
+- In the wide capture, the 491 px display equation in the question is shrunk to fit the column: complete, but small. Code wraps, and the table shrinks to fit.

@@ -1,6 +1,6 @@
 "use client";
 
-import { useId } from "react";
+import { useEffect, useId, useRef } from "react";
 import { ToolContentResponse, MessageResponse } from "@/components/ai-elements/message";
 import { blockLayout, GRAPH_PAD, PlanDiagram, TEXT_CAP_SCALE } from "@/components/plan-block";
 import { CONFIDENCE_STOPS, type QuestionCard as QuestionCardData, type QuestionCardQuestion } from "@/src/core";
@@ -76,13 +76,70 @@ function PlanMap({ plan }: { plan: NonNullable<QuestionCardData["plan"]> }) {
 	);
 }
 
+/** A screenshot cannot scroll sideways. The page's renderers put wide
+ *  display math and tables in horizontal scrollers; shrink their content
+ *  to the column instead (CSS zoom). Code blocks wrap (the sheet's
+ *  classes). Runs again once fonts load, since KaTeX widths change then. */
+function useFitWideContent(ref: React.RefObject<HTMLDivElement | null>) {
+	useEffect(() => {
+		const fit = () => {
+			const root = ref.current;
+			if (!root) return;
+			for (const el of root.querySelectorAll<HTMLElement>("*")) {
+				if (el.classList.contains("katex-mathml")) continue; // visually hidden
+				const overflow = getComputedStyle(el).overflowX;
+				if (overflow !== "auto" && overflow !== "scroll") continue;
+				if (el.scrollWidth <= el.clientWidth + 1) continue;
+				const factor = el.clientWidth / el.scrollWidth;
+				for (const child of el.children) {
+					const c = child as HTMLElement;
+					c.style.zoom = String((Number(c.style.zoom) || 1) * factor);
+				}
+			}
+		};
+		fit();
+		void document.fonts?.ready.then(fit);
+	}, [ref]);
+}
+
+/** The card renders inside the root layout's app shell (sidebar, banners).
+ *  Hide every sibling on the path from the card up to <body>, so the card
+ *  is the whole page: a full-page screenshot then holds the whole card and
+ *  nothing else, and no shell control sits on the page. Restored on
+ *  unmount. Keeps the upstream root layout untouched. */
+function useCardOnlyPage(ref: React.RefObject<HTMLDivElement | null>) {
+	useEffect(() => {
+		const hidden: Array<[HTMLElement, string]> = [];
+		let node: HTMLElement | null = ref.current;
+		while (node && node !== document.body) {
+			const parent: HTMLElement | null = node.parentElement;
+			if (!parent) break;
+			for (const sibling of parent.children) {
+				if (sibling === node || !(sibling instanceof HTMLElement)) continue;
+				hidden.push([sibling, sibling.style.display]);
+				sibling.style.display = "none";
+			}
+			node = parent;
+		}
+		return () => {
+			for (const [el, display] of hidden) el.style.display = display;
+		};
+	}, [ref]);
+}
+
 function CardSheet({ title, tag, children }: { title: string; tag: string; children: React.ReactNode }) {
+	const ref = useRef<HTMLDivElement>(null);
+	useCardOnlyPage(ref);
+	useFitWideContent(ref);
 	return (
+		// In the page flow (not a fixed layer) so the document is as tall as
+		// the card and a full-page screenshot captures all of it.
 		<div
+			ref={ref}
 			data-testid="question-card"
-			className="fixed inset-0 z-50 overflow-y-auto bg-background text-foreground"
+			className="min-h-dvh w-full bg-background text-foreground [&_pre]:whitespace-pre-wrap [&_pre]:break-words"
 		>
-			<main className="mx-auto w-full max-w-[430px] px-4 pb-20 pt-5">
+			<main className="mx-auto w-full max-w-[430px] px-4 pb-10 pt-5">
 				<header className="mb-5 border-b border-border pb-3">
 					<div className="flex items-baseline justify-between gap-3 text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
 						<span>LearnHarness</span>
