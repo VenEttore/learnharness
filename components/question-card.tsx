@@ -145,8 +145,15 @@ function useFitWideContent(ref: React.RefObject<HTMLDivElement | null>) {
 				if (!block) continue;
 				const style = getComputedStyle(block);
 				const room = block.clientWidth - (parseFloat(style.paddingLeft) || 0) - (parseFloat(style.paddingRight) || 0);
-				const width = math.getBoundingClientRect().width;
-				if (room > 0 && width > room + 1) math.style.zoom = String(room / width);
+				if (room <= 0) continue;
+				// Zoom is not linear here either: step with the same undershoot.
+				let zoom = 1;
+				for (let step = 0; step < 10; step++) {
+					const width = math.getBoundingClientRect().width;
+					if (width <= room + 1) break;
+					zoom *= (room / width) * 0.97;
+					math.style.zoom = String(zoom);
+				}
 			}
 		};
 		fit();
