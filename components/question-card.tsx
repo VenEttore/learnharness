@@ -77,11 +77,20 @@ function PlanMap({ plan }: { plan: NonNullable<QuestionCardData["plan"]> }) {
 }
 
 /** A screenshot cannot scroll sideways. The page's renderers put wide
- *  display math and tables in horizontal scrollers; shrink their content
- *  to the column instead (CSS zoom). Code blocks wrap (the sheet's
- *  classes). Runs again once fonts load, since KaTeX widths change then. */
+ *  display math, tables and code blocks in horizontal scrollers; shrink
+ *  their content to the column instead (CSS zoom). Runs again once fonts
+ *  load (KaTeX widths change) and whenever the card's DOM changes (code
+ *  highlighting replaces its nodes after mount), once per frame. */
 function useFitWideContent(ref: React.RefObject<HTMLDivElement | null>) {
 	useEffect(() => {
+		let frame = 0;
+		const schedule = () => {
+			if (frame) return;
+			frame = requestAnimationFrame(() => {
+				frame = 0;
+				fit();
+			});
+		};
 		const fit = () => {
 			const root = ref.current;
 			if (!root) return;
@@ -98,7 +107,15 @@ function useFitWideContent(ref: React.RefObject<HTMLDivElement | null>) {
 			}
 		};
 		fit();
-		void document.fonts?.ready.then(fit);
+		void document.fonts?.ready.then(schedule);
+		// Only content changes re-fit: zoom writes are style attributes,
+		// which this observer ignores, so a fit never re-triggers itself.
+		const observer = typeof MutationObserver === "undefined" ? null : new MutationObserver(schedule);
+		if (ref.current) observer?.observe(ref.current, { childList: true, subtree: true, characterData: true });
+		return () => {
+			observer?.disconnect();
+			if (frame) cancelAnimationFrame(frame);
+		};
 	}, [ref]);
 }
 
@@ -135,11 +152,13 @@ function CardSheet({ title, tag, children }: { title: string; tag: string; child
 		// In the page flow (not a fixed layer) so the document is as tall as
 		// the card and a full-page screenshot captures all of it. Long words
 		// break instead of widening the page; the shared renderers' copy
-		// buttons (code, tables) are hidden: the card has no controls.
+		// buttons (code, tables) are hidden: the card has no controls. Code
+		// blocks do not wrap (a wrapped line would run into the line-number
+		// gutter); useFitWideContent shrinks them to the column instead.
 		<div
 			ref={ref}
 			data-testid="question-card"
-			className="min-h-dvh w-full bg-background text-foreground [overflow-wrap:anywhere] [&_pre]:whitespace-pre-wrap [&_button]:hidden"
+			className="min-h-dvh w-full bg-background text-foreground [overflow-wrap:anywhere] [&_button]:hidden"
 		>
 			<main className="mx-auto w-full max-w-[430px] px-4 pb-10 pt-5">
 				<header className="mb-5 border-b border-border pb-3">
