@@ -397,6 +397,29 @@ describe("ordinary lessons, and which order a hand-built answer used", () => {
 		assert.equal(details.options![0]!.label, "/2^k$", "16,000 rows naming one option: none binds");
 	});
 
+	it("a pick with no index still gets its option's label by value", () => {
+		const sent = quizAnswer("quiz", PROBE, PAGE, "halved", shell) as unknown as Json;
+		sent.answers = [{ label: "/2^k$", value: "halved" }];
+		assert.deepEqual((stored(CALL, "quiz", PROBE, sent) as unknown as Json).answers, [{ label: "$n/2^k$", value: "halved" }]);
+	});
+
+	it("a pick pointing at no row does not stop a row's own label from binding", () => {
+		for (const index of [0, 4]) {
+			const sent = quizAnswer("quiz", PROBE, AUTHORED, "halved", shell);
+			sent.answers = [{ index, label: "/2^k$", value: "halved" }];
+			const details = stored(CALL, "quiz", PROBE, sent);
+			assert.deepEqual(details.options, AUTHORED.map((o, i) => ({ index: i + 1, label: o.label })), `pick index ${index}`);
+		}
+	});
+
+	it("rows sharing an index stay as sent; neither takes the other's label", () => {
+		const sent = quizAnswer("quiz", PROBE, AUTHORED, "halved", shell);
+		sent.answers = [];
+		sent.options = [{ index: 1, label: "It depends" }, { index: 1, label: "/2^k$" }, { index: 2, label: "-k$" }, { index: 3, label: "/k$" }];
+		const details = stored(CALL, "quiz", PROBE, sent);
+		assert.deepEqual(details.options, [{ index: 1, label: "It depends" }, { index: 1, label: "/2^k$" }, { index: 2, label: "$n-k$" }, { index: 3, label: "$n/k$" }]);
+	});
+
 	it("a pick's value binds its own row even when the row's label could be two options", () => {
 		const OPTS = [{ label: "$n$", value: "n" }, { label: "$k$", value: "k" }, { label: "$2$", value: "two" }];
 		const sent = {
@@ -440,7 +463,7 @@ describe("ordinary lessons, and which order a hand-built answer used", () => {
  *  JSON with each `"` escaped for the shell), as bash hands it on. */
 function viaBash(body: unknown): unknown {
 	const text = JSON.stringify(body).replaceAll('"', '\\"');
-	const env = { PATH: process.env.PATH ?? "/usr/bin:/bin" }; // no $n, $k
+	const env: NodeJS.ProcessEnv = { NODE_ENV: "test", PATH: process.env.PATH ?? "/usr/bin:/bin" }; // no $n, $k
 	const out = spawnSync("bash", ["-c", `printf '%s' "${text}"`], { env, encoding: "utf8" });
 	assert.equal(out.status, 0, out.stderr);
 	return JSON.parse(out.stdout);

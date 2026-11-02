@@ -45,13 +45,16 @@ export function withAuthoredText(
 	const picks = Array.isArray(answer.answers) ? answer.answers : [];
 	const rows = Array.isArray(answer.options) ? answer.options : [];
 	// Each pick's value names its option; each row's label names its own.
-	const pickOption = picks.map((a) => (isRow(a) && typeof a.value === "string" ? only(authored, (o) => names(a.value as string, o.value)) : undefined));
+	const pickOption = picks.map((a) => {
+		const value = isEntry(a) ? a.value : undefined;
+		return typeof value === "string" ? only(authored, (o) => names(value, o.value)) : undefined;
+	});
 	const rowOption = bindRows(rows, picks, pickOption, authored);
 
 	if (Array.isArray(answer.answers)) {
 		out.answers = answer.answers.map((a, i) => {
-			if (!isRow(a)) return a;
-			const option = pickOption[i] ?? rowOption.get(a.index);
+			if (!isEntry(a)) return a;
+			const option = pickOption[i] ?? (isRow(a) ? rowOption.get(a.index) : undefined);
 			return option ? { ...a, label: option.label } : a;
 		});
 	}
@@ -65,11 +68,13 @@ export function withAuthoredText(
 }
 
 /** Row index -> the option that row shows, for rows whose content settles
- *  it. A pick's value claims its row; a row's label claims its option when
- *  it names just one. A label that names several (`$n$` and `$k$` both
- *  arrive as `$`) claims nothing but still rules out options it cannot be.
- *  A binding is kept only when it is unique both ways (one option per row,
- *  one row per option); anything else stays as sent. */
+ *  it. A pick's value claims the row at its index; a row's label claims its
+ *  option when it names just one. A label that names several (`$n$` and
+ *  `$k$` both arrive as `$`) claims nothing but still rules out options it
+ *  cannot be. A binding is kept only when it is unique both ways (one
+ *  option per row, one row per option). Only an index exactly one row
+ *  carries can bind: a pick pointing at no row claims nothing, and rows
+ *  sharing an index stay as sent. */
 function bindRows(rows: unknown[], picks: unknown[], pickOption: (QuizOption | undefined)[], authored: QuizOption[]): Map<number, QuizOption> {
 	const claims = new Map<number, Set<QuizOption>>();
 	const possible = new Map<number, QuizOption[]>(); // what each row's label could be
@@ -78,11 +83,14 @@ function bindRows(rows: unknown[], picks: unknown[], pickOption: (QuizOption | u
 		set.add(option);
 		claims.set(index, set);
 	};
+	const rowsAt = new Map<number, number>();
+	for (const row of rows) if (isRow(row)) rowsAt.set(row.index, (rowsAt.get(row.index) ?? 0) + 1);
+	const single = (index: number) => rowsAt.get(index) === 1;
 	picks.forEach((a, i) => {
-		if (isRow(a) && pickOption[i]) claim(a.index, pickOption[i]!);
+		if (isRow(a) && single(a.index) && pickOption[i]) claim(a.index, pickOption[i]!);
 	});
 	for (const row of rows) {
-		if (!isRow(row) || typeof row.label !== "string") continue;
+		if (!isRow(row) || !single(row.index) || typeof row.label !== "string") continue;
 		const label = row.label;
 		const named = authored.filter((o) => names(label, o.label));
 		if (named.length === 1) claim(row.index, named[0]!);
@@ -126,6 +134,9 @@ function only<T>(list: T[], test: (item: T) => boolean): T | undefined {
 }
 
 /** A hand-built request's entries are not checked anywhere else. */
+function isEntry(entry: unknown): entry is { index?: unknown; label?: unknown; value?: unknown } {
+	return typeof entry === "object" && entry !== null;
+}
 function isRow(row: unknown): row is { index: number; label?: unknown; value?: unknown } {
-	return typeof row === "object" && row !== null && Number.isInteger((row as { index?: unknown }).index);
+	return isEntry(row) && Number.isInteger(row.index);
 }
