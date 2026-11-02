@@ -4,17 +4,21 @@ This is a fork of [amosblomqvist/learnharness](https://github.com/amosblomqvist/
 
 ## What the fork adds
 
-LearnHarness teaches through its own AI models, which need API keys and bill per call. This fork lets an outside agent teach instead. A Grok Bot (a Cursor cloud agent) runs the lesson through LearnHarness's HTTP API and a small `lh` command-line tool, and LearnHarness makes no model calls of its own.
+LearnHarness teaches through its own AI models, which need API keys and bill per call. This fork lets an outside agent teach instead. A Grok Bot runs the lesson through LearnHarness's HTTP API and a small `lh` command-line tool, and LearnHarness makes no model calls of its own.
 
 ## Goals
 
-- **Bot-run lessons.** A bot creates a lesson, probes what the learner already knows, posts a plan, and teaches with questions tied to that plan. The learner uses the normal LearnHarness page, and the bot's turns show up the same way the built-in model's do.
+- **Bot-run lessons.** A bot creates a lesson, probes what the learner already knows, posts a plan, and teaches with questions tied to that plan. The learner answers on the normal LearnHarness page or in the bot's chat, and the bot's turns show up the same way the built-in model's do.
 - **No API keys.** A bot-run lesson never calls a LearnHarness model, by any path. LearnHarness runs with no keys configured.
 - **Clean upstream merges.** Fork changes go in new files where possible, and edits to upstream files stay small, so upstream releases merge in cleanly.
 
-## Status
+## Getting started
 
-Round 1, the lesson loop, is in progress. It is done when a Grok Bot teaches one full lesson, from probe to plan to teaching, on the bots' shared cloud computer.
+Give a Grok Bot this prompt, with your topic filled in:
+
+> I want to learn [your topic] with LearnHarness. Use the fork at https://github.com/VenEttore/learnharness: clone it to /workspace/learnharness, then follow docs/external-teacher.md to set it up and start it. Then teach me the lesson yourself as the Bot Teacher.
+
+The bot sets up LearnHarness on its computer, then asks how you want to answer: phone-ready (it sends each question as a screenshot and you answer in its chat) or VM control (you open its desktop with Take over and use the full lesson page). The details the bot follows are in [docs/external-teacher.md](docs/external-teacher.md).
 
 ---
 

@@ -4,9 +4,15 @@ This guide is for the Bot Teacher, the Grok Bot on the shared cloud computer tha
 
 You run the whole lesson: probe, then plan, then teach. The learner is the owner of this computer. They answer on the lesson page in your browser, through the "Take over" button in the Cursor app, or, from a phone, in your own chat, and you save their answer with `lh submit` (section 4, "Answers outside the page").
 
+**Ask the learner first.** Once LearnHarness is running (section 1), and before you create the lesson, ask the learner which way they want to answer. Say what each one means:
+- **Phone-ready:** you send each question as a screenshot of the question card, they answer in your chat, and you save the answer with `lh submit`. Best when they're on a phone.
+- **VM control:** they open your desktop with "Take over" and answer on the full lesson page. Best at a computer; slow on a phone.
+
+Use their choice for the whole lesson, and switch if they ask.
+
 ## 1. Start LearnHarness
 
-The examples assume the repo is at `/workspace/learnharness`. Use your own path if it is elsewhere.
+The examples assume the repo is at `/workspace/learnharness`. Use your own path if it is elsewhere. If it is not there yet, clone it: `git clone https://github.com/VenEttore/learnharness /workspace/learnharness`.
 
 1. Check Node: `node -v` must print `v22.x` or newer. On Node 14.13.1 to 21, `lh` refuses every command with `"code":"node_version"`. Older Node crashes before `lh` can check and prints no JSON line: tested, Node 12.22.12 and 14.7.0 stop with a `SyntaxError`, and 14.8.0 and 14.13.0 with `ERR_UNSUPPORTED_ESM_URL_SCHEME`.
 2. Install once: `cd /workspace/learnharness && npm ci`.
