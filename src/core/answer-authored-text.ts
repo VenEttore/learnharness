@@ -22,7 +22,7 @@ import { parseAskInput, parseExplainInput, parseQuizInput } from "./tool-parts.t
 
 export function withAuthoredText(
 	answer: QuestionAnswerData,
-	question: { toolCallId: string; tool: string; input: unknown },
+	question: { tool: string; input: unknown },
 ): QuestionAnswerData {
 	const kind = toolQuestionKind(question.tool);
 	const quiz = kind === "quiz" ? parseQuizInput(question.input) : undefined;
@@ -39,12 +39,8 @@ export function withAuthoredText(
 
 	const options = quiz?.options ?? ask?.options;
 	if (!options?.length) return out;
-	let authored: QuizOption[];
-	try {
-		authored = normalizeOptions(options);
-	} catch {
-		return out; // duplicate values: the call could not have been posed
-	}
+	// The parsers refuse duplicate values, so this cannot throw.
+	const authored = normalizeOptions(options);
 
 	const picks = Array.isArray(answer.answers) ? answer.answers : [];
 	const rows = Array.isArray(answer.options) ? answer.options : [];
@@ -69,12 +65,14 @@ export function withAuthoredText(
 }
 
 /** Row index -> the option that row shows, for rows whose content settles
- *  it: a pick's value at that index, else the row's label. A binding is
- *  kept only when it is unique both ways (one option per row, one row per
- *  option); anything else stays as sent. */
+ *  it. A pick's value claims its row; a row's label claims its option when
+ *  it names just one. A label that names several (`$n$` and `$k$` both
+ *  arrive as `$`) claims nothing but still rules out options it cannot be.
+ *  A binding is kept only when it is unique both ways (one option per row,
+ *  one row per option); anything else stays as sent. */
 function bindRows(rows: unknown[], picks: unknown[], pickOption: (QuizOption | undefined)[], authored: QuizOption[]): Map<number, QuizOption> {
 	const claims = new Map<number, Set<QuizOption>>();
-	const ambiguous = new Set<number>();
+	const possible = new Map<number, QuizOption[]>(); // what each row's label could be
 	const claim = (index: number, option: QuizOption) => {
 		const set = claims.get(index) ?? new Set<QuizOption>();
 		set.add(option);
@@ -85,25 +83,38 @@ function bindRows(rows: unknown[], picks: unknown[], pickOption: (QuizOption | u
 	});
 	for (const row of rows) {
 		if (!isRow(row) || typeof row.label !== "string") continue;
-		const option = only(authored, (o) => names(row.label, o.label));
-		if (option) claim(row.index, option);
-		else if (authored.some((o) => names(row.label, o.label))) ambiguous.add(row.index); // `$n$`, `$k$` -> `$`
+		const label = row.label;
+		const named = authored.filter((o) => names(label, o.label));
+		if (named.length === 1) claim(row.index, named[0]!);
+		if (named.length > 0) possible.set(row.index, named);
 	}
 	const bound = new Map<number, QuizOption>();
 	for (const [index, set] of claims) {
-		if (set.size !== 1 || ambiguous.has(index)) continue;
+		if (set.size !== 1) continue;
 		const option = [...set][0]!;
+		if (possible.has(index) && !possible.get(index)!.includes(option)) continue; // the row's label says otherwise
 		const rivals = [...claims].filter(([other, s]) => other !== index && s.has(option));
 		if (rivals.length === 0) bound.set(index, option);
 	}
 	return bound;
 }
 
-/** Does `sent` name `authored`: the same text, or the text a double-quoted
- *  shell string makes of it, with every `$name` and `$1`..`$9` gone (unset
- *  variables expand to nothing)? */
+/** Does `sent` name `authored`: the same text, or what a bot's JSON body
+ *  makes of it inside a double-quoted shell string? There bash expands every
+ *  `$name` and `$1`..`$9` (unset: to nothing) and turns the JSON's `\\` into
+ *  `\`, so JSON then reads the authored TeX `\frac` as a form feed and
+ *  `rac`, `\times` as a tab and `imes`. */
 function names(sent: string, authored: string): boolean {
-	return sent === authored || sent === authored.replace(/\$(?:[A-Za-z_][A-Za-z0-9_]*|[1-9])/g, "");
+	return sent === authored || sent === throughShell(authored);
+}
+
+const JSON_ESCAPES: Record<string, string> = { "\"": "\"", "\\": "\\", "/": "/", b: "\b", f: "\f", n: "\n", r: "\r", t: "\t" };
+
+function throughShell(authored: string): string {
+	return authored
+		.replace(/\$(?:[A-Za-z_][A-Za-z0-9_]*|[1-9])/g, "")
+		.replace(/\\(["\\/bfnrt]|u[0-9a-fA-F]{4})/g, (_, e: string) =>
+			e.length === 5 ? String.fromCharCode(parseInt(e.slice(1), 16)) : JSON_ESCAPES[e]!);
 }
 
 function only<T>(list: T[], test: (item: T) => boolean): T | undefined {
@@ -112,6 +123,6 @@ function only<T>(list: T[], test: (item: T) => boolean): T | undefined {
 }
 
 /** A hand-built request's entries are not checked anywhere else. */
-function isRow(row: unknown): row is { index: number; label: string; value?: unknown } {
+function isRow(row: unknown): row is { index: number; label?: unknown; value?: unknown } {
 	return typeof row === "object" && row !== null && Number.isInteger((row as { index?: unknown }).index);
 }

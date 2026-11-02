@@ -19,6 +19,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { spawnSync } from "node:child_process";
 import { after, describe, it } from "node:test";
 
 const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), "lh-answer-authored-text-"));
@@ -126,7 +127,7 @@ async function postAnswer(chatId: string, toolCallId: string, answer: Json): Pro
 /** A quiz answer built in `order`, every string run through `mangle`. */
 function quizAnswer(
 	tool: string,
-	payload: typeof PROBE,
+	payload: { question: string; explanation: string; correctAnswer: string },
 	order: { label: string; value: string }[],
 	pick: string,
 	mangle: (s: string) => string,
@@ -228,7 +229,7 @@ describe("an answer's question text, labels and explanation are the call's", () 
 		const call = pendingQuestionOf(messages(id))!;
 		const order = pageOrder(call.toolCallId, QUIZ.options);
 		const pick = order.find((o, i) => QUIZ.options[i]!.value !== o.value)?.value ?? "linear";
-		await postAnswer(id, call.toolCallId, quizAnswer("quiz", QUIZ as unknown as typeof PROBE, order, pick, shell));
+		await postAnswer(id, call.toolCallId, quizAnswer("quiz", QUIZ, order, pick, shell));
 		const details = lastDetails(id);
 		assert.equal(details.questionText, QUIZ.question);
 		assert.deepEqual(details.options, order.map((o, i) => ({ index: i + 1, label: o.label })));
@@ -309,7 +310,6 @@ describe("ordinary lessons, and which order a hand-built answer used", () => {
 	});
 
 	it("an answer in a third order (the bot's own widget), values mangled too, keeps each row's own option", () => {
-		// Interrogate round 1, seat A: neither the page order nor the authored order.
 		const OPTS = [{ label: "$n/2^k$" }, { label: "$n-k$" }, { label: "It depends on the order" }];
 		const seen = ["$n/2^k$", "It depends on the order", "$n-k$"];
 		const sent = {
@@ -354,9 +354,7 @@ describe("ordinary lessons, and which order a hand-built answer used", () => {
 		assert.deepEqual(details.options, PAGE.map((o, i) => ({ index: i + 1, label: o.label })));
 	});
 
-	// A null pick entry already throws in compactAnswerForModel, before
-	// and after this guard; only option rows are the guard's to tolerate.
-	it("a hand-built answer without the explanation or commitment gets the call's (seat C, round 1)", () => {
+	it("a hand-built answer without the explanation or commitment gets the call's", () => {
 		const sent = quizAnswer("quiz", PROBE, PAGE, "halved", shell) as unknown as Json;
 		delete sent.explanation;
 		assert.equal(stored(CALL, "quiz", PROBE, sent).explanation, PROBE.explanation);
@@ -364,6 +362,8 @@ describe("ordinary lessons, and which order a hand-built answer used", () => {
 		assert.equal(recall.committed, RECALL.correctAnswer);
 	});
 
+	// A null pick entry already throws in compactAnswerForModel, before
+	// and after this guard; only option rows are the guard's to tolerate.
 	it("a hand-added row, an index past the options and a null option row are kept, not thrown on", () => {
 		const sent = quizAnswer("quiz", PROBE, PAGE, "halved", shell) as unknown as Json;
 		sent.options = [...sent.options, { index: 4, label: "I don't know" }, null];
@@ -385,5 +385,81 @@ describe("ordinary lessons, and which order a hand-built answer used", () => {
 		assert.equal(details.questionText, ASK.question);
 		assert.deepEqual(details.options, [{ index: 1, label: "$4$ items" }, { index: 2, label: "$n$ halves" }]);
 		assert.deepEqual(details.answers, [{ index: 2, label: "$n$ halves", value: "$ halves" }], "the value is the learner's part and stays as sent");
+	});
+	it("a pick's value binds its own row even when the row's label could be two options", () => {
+		const OPTS = [{ label: "$n$", value: "n" }, { label: "$k$", value: "k" }, { label: "$2$", value: "two" }];
+		const sent = {
+			kind: "quiz", tool: "quiz", questionText: "q", dontKnow: false,
+			options: [{ index: 1, label: "$" }, { index: 2, label: "$" }, { index: 3, label: "$2$" }],
+			answers: [{ index: 2, label: "$", value: "k" }],
+			correct: false, correctIndices: [3], answeredAt: new Date().toISOString(),
+		};
+		const details = stored(CALL, "quiz", { question: "Which?", options: OPTS, explanation: "e", correctAnswer: "two" }, sent);
+		assert.deepEqual(details.options, [{ index: 1, label: "$" }, { index: 2, label: "$k$" }, { index: 3, label: "$2$" }]);
+		assert.deepEqual(details.answers, [{ index: 2, label: "$k$", value: "k" }]);
+	});
+
+	it("two rows naming the same option both stay as sent; the rest still bind", () => {
+		const sent = quizAnswer("quiz", PROBE, AUTHORED, "divided", shell);
+		sent.options = [{ index: 1, label: "/2^k$" }, { index: 2, label: "/2^k$" }, { index: 3, label: "/k$" }];
+		const details = stored(CALL, "quiz", PROBE, sent);
+		assert.deepEqual(details.options, [{ index: 1, label: "/2^k$" }, { index: 2, label: "/2^k$" }, { index: 3, label: "$n/k$" }]);
+	});
+
+	it("a row whose label names another option than the pick's value stays as sent", () => {
+		const sent = quizAnswer("quiz", PROBE, AUTHORED, "halved", shell);
+		sent.answers = [{ index: 1, label: "-k$", value: "minus" }];
+		const details = stored(CALL, "quiz", PROBE, sent);
+		assert.deepEqual(details.options![0], { index: 1, label: "/2^k$" }, "row 1's label says halved, the pick says minus");
+		assert.deepEqual(details.answers, [{ index: 1, label: "$n-k$", value: "minus" }], "the pick's value is its identity");
+
+		// A label that could be two options still rules out a third.
+		const OPTS = [{ label: "$n$", value: "n" }, { label: "$k$", value: "k" }, { label: "plain", value: "p" }];
+		const odd = stored(CALL, "quiz", { question: "Which?", options: OPTS, explanation: "e", correctAnswer: "p" }, {
+			kind: "quiz", tool: "quiz", questionText: "q", dontKnow: false,
+			options: [{ index: 1, label: "$" }, { index: 2, label: "$" }, { index: 3, label: "(blank)" }],
+			answers: [{ index: 1, label: "$", value: "p" }],
+			correct: true, correctIndices: [1], answeredAt: new Date().toISOString(),
+		});
+		assert.deepEqual(odd.options![0], { index: 1, label: "$" }, "row 1 reads `$`, which cannot be `plain`");
+	});
+});
+
+/** The request body a bot writes inside a double-quoted bash string (its
+ *  JSON with each `"` escaped for the shell), as bash hands it on. */
+function viaBash(body: unknown): unknown {
+	const text = JSON.stringify(body).replaceAll('"', '\\"');
+	const env = { PATH: process.env.PATH ?? "/usr/bin:/bin" }; // no $n, $k
+	const out = spawnSync("bash", ["-c", `printf '%s' "${text}"`], { env, encoding: "utf8" });
+	assert.equal(out.status, 0, out.stderr);
+	return JSON.parse(out.stdout);
+}
+
+describe("backslash TeX through a real double-quoted bash string", () => {
+	const TEX = {
+		question: "After $k$ halvings, which is $\\frac{n}{2^k}$?",
+		options: [
+			{ label: "$\\frac{n}{2^k}$", value: "frac" },
+			{ label: "$n \\times k$", value: "times" },
+			{ label: "$\\theta$ items", value: "theta" },
+		],
+		explanation: "Halving $k$ times divides by $2^k$: $\\frac{n}{2^k}$.",
+		correctAnswer: "frac",
+	};
+
+	it("bash mangles the labels as the review found (form feed, tab, lost $n)", () => {
+		const sent = viaBash({ labels: TEX.options.map((o) => o.label) }) as { labels: string[] };
+		// "\f" and "\t" here are the form feed and tab JSON made of `\frac`, `\times`, `\theta`.
+		assert.deepEqual(sent.labels, ["$\frac{n}{2^k}$", " \times k$", "$\theta$ items"]);
+	});
+
+	it("an answer sent that way gets every row and the pick back", () => {
+		const order = pageOrder(CALL, TEX.options);
+		const answer = viaBash(quizAnswer("quiz", TEX, order, "times", (x) => x)) as QuestionAnswerData;
+		const details = stored(CALL, "quiz", TEX, answer);
+		assert.equal(details.questionText, TEX.question);
+		assert.equal(details.explanation, TEX.explanation);
+		assert.deepEqual(details.options, order.map((o, i) => ({ index: i + 1, label: o.label })));
+		assert.deepEqual(details.answers.map((a) => [a.label, a.value]), [["$n \\times k$", "times"]]);
 	});
 });
