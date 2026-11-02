@@ -1,0 +1,1 @@
+Logarithms undo exponents. Read [the change-of-base rule](https://example.com/rule) before you answer, or see https://example.com/logs for worked examples.

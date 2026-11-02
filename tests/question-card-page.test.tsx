@@ -324,6 +324,17 @@ describe("question card page", () => {
 		assert.match(byTestId(doc, "question-card")?.getAttribute("class") ?? "", /\[&_button\]:hidden/);
 	});
 
+	it("links keep their words: they render as links, not hidden buttons", async () => {
+		const { id, cursor } = await lesson();
+		const said = await turn(id, { kind: "say", after: cursor, text: "Read [the change-of-base rule](https://example.com/rule) first." });
+		await turn(id, { kind: "ask", after: said, question: "Which source?", options: [{ label: "[Wikipedia: Logarithm](https://en.wikipedia.org/wiki/Logarithm)" }, { label: "A cookbook" }] });
+		const doc = await card(id);
+		const links = [...doc.querySelectorAll('[data-testid="question-card"] a')].map((a) => a.textContent);
+		assert.deepEqual(links.toSorted(), ["Wikipedia: Logarithm", "the change-of-base rule"]);
+		assert.equal(doc.querySelectorAll('[data-testid="question-card"] button[data-streamdown="link"]').length, 0);
+		assert.match(byTestId(doc, "card-option")?.textContent ?? "", /Wikipedia: Logarithm/);
+	});
+
 	it("a practice session gets a note, not a phase or a question", async () => {
 		const chat = chatStore.createChat("Group theory practice", "practice");
 		const doc = await card(chat.id);

@@ -17,6 +17,11 @@ import { CONFIDENCE_STOPS, type QuestionCard as QuestionCardData, type QuestionC
  * the screenshot holds only the card.
  */
 
+// Streamdown's link safety draws every link as a <button> (it opens a
+// confirm dialog on click). The card hides buttons, which hid the link
+// text with them; plain <a> links keep the words in the screenshot.
+const PLAIN_LINKS = { enabled: false } as const;
+
 const PHASE_LABEL = { probe: "Probe", plan: "Plan", teach: "Teach" } as const;
 
 function Label({ children }: { children: React.ReactNode }) {
@@ -91,32 +96,55 @@ function useFitWideContent(ref: React.RefObject<HTMLDivElement | null>) {
 				fit();
 			});
 		};
+		// Each pass starts from the natural layout (its own zoom and wrap
+		// cleared), so repeated passes give the same result.
 		const fit = () => {
 			const root = ref.current;
 			if (!root) return;
+			const scrollers: HTMLElement[] = [];
 			for (const el of root.querySelectorAll<HTMLElement>("*")) {
 				if (el.classList.contains("katex-mathml")) continue; // visually hidden
 				const overflow = getComputedStyle(el).overflowX;
-				if (overflow !== "auto" && overflow !== "scroll") continue;
+				if (overflow === "auto" || overflow === "scroll") scrollers.push(el);
+			}
+			const maths = [...root.querySelectorAll<HTMLElement>(".katex")].filter((m) => !m.closest(".katex-display"));
+			for (const el of scrollers) {
+				for (const child of el.children) (child as HTMLElement).style.zoom = "";
+				const pre = el.querySelector("pre");
+				if (pre) pre.style.whiteSpace = "";
+			}
+			for (const math of maths) math.style.zoom = "";
+			for (const el of scrollers) {
 				if (el.scrollWidth <= el.clientWidth + 1) continue;
 				const factor = el.clientWidth / el.scrollWidth;
-				for (const child of el.children) {
-					const c = child as HTMLElement;
-					c.style.zoom = String((Number(c.style.zoom) || 1) * factor);
+				// Text stops shrinking near 3 px, so a very long code line
+				// cannot zoom to fit: past half size, wrap that block instead
+				// (complete, if its continuation lines start under the gutter).
+				const pre = el.querySelector("pre");
+				if (pre && factor < 0.5) {
+					pre.style.whiteSpace = "pre-wrap";
+					continue;
+				}
+				// Text does not scale exactly with zoom (a w-full table also
+				// re-flows), so step until it fits, from this pass's clean start.
+				let zoom = factor;
+				for (let step = 0; step < 4; step++) {
+					for (const child of el.children) (child as HTMLElement).style.zoom = String(zoom);
+					if (el.scrollWidth <= el.clientWidth + 1) break;
+					zoom *= el.clientWidth / el.scrollWidth;
 				}
 			}
 			// Inline math is no scroller: KaTeX keeps a formula on one line
 			// (white-space: nowrap), so one with no break point can run past
 			// its box. Shrink it to its nearest block's content width.
-			for (const math of root.querySelectorAll<HTMLElement>(".katex")) {
-				if (math.closest(".katex-display")) continue; // fitted above
+			for (const math of maths) {
 				let block = math.parentElement;
 				while (block && block !== root && getComputedStyle(block).display.startsWith("inline")) block = block.parentElement;
 				if (!block) continue;
 				const style = getComputedStyle(block);
 				const room = block.clientWidth - (parseFloat(style.paddingLeft) || 0) - (parseFloat(style.paddingRight) || 0);
 				const width = math.getBoundingClientRect().width;
-				if (room > 0 && width > room + 1) math.style.zoom = String((Number(math.style.zoom) || 1) * (room / width));
+				if (room > 0 && width > room + 1) math.style.zoom = String(room / width);
 			}
 		};
 		fit();
@@ -210,7 +238,7 @@ export function QuestionCard({ title, card }: { title: string; card: QuestionCar
 				{card.teaching && (
 					<section className="mb-5" data-testid="card-teaching">
 						<Label>{q ? "Before the question" : "Latest"}</Label>
-						<MessageResponse className="text-[15px] leading-relaxed">{card.teaching}</MessageResponse>
+						<MessageResponse linkSafety={PLAIN_LINKS} className="text-[15px] leading-relaxed">{card.teaching}</MessageResponse>
 					</section>
 				)}
 
@@ -230,15 +258,15 @@ export function QuestionCard({ title, card }: { title: string; card: QuestionCar
 						</div>
 						{q.leadIn && (
 							<div data-testid="card-lead-in" className="mb-3 text-[15px] leading-relaxed">
-								<MessageResponse>{q.leadIn}</MessageResponse>
+								<MessageResponse linkSafety={PLAIN_LINKS}>{q.leadIn}</MessageResponse>
 							</div>
 						)}
 						<div data-testid="card-question-text" className="mb-3 text-base font-medium leading-snug">
-							<ToolContentResponse>{q.question}</ToolContentResponse>
+							<ToolContentResponse linkSafety={PLAIN_LINKS}>{q.question}</ToolContentResponse>
 						</div>
 						{q.details && (
 							<div className="mb-3 text-sm text-muted-foreground">
-								<ToolContentResponse>{q.details}</ToolContentResponse>
+								<ToolContentResponse linkSafety={PLAIN_LINKS}>{q.details}</ToolContentResponse>
 							</div>
 						)}
 
@@ -255,9 +283,9 @@ export function QuestionCard({ title, card }: { title: string; card: QuestionCar
 											{opt.number}
 										</span>
 										<span className="min-w-0 flex-1 text-[15px] leading-6">
-											<ToolContentResponse>{opt.label}</ToolContentResponse>
+											<ToolContentResponse linkSafety={PLAIN_LINKS}>{opt.label}</ToolContentResponse>
 											{opt.description && (
-												<ToolContentResponse className="lh-prose block text-xs text-muted-foreground">
+												<ToolContentResponse linkSafety={PLAIN_LINKS} className="lh-prose block text-xs text-muted-foreground">
 													{opt.description}
 												</ToolContentResponse>
 											)}
