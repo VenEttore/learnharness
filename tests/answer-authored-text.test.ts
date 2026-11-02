@@ -376,7 +376,7 @@ describe("ordinary lessons, and which order a hand-built answer used", () => {
 		assert.deepEqual(details.answers, [{ index: 2, label: "$n$ halves", value: "$ halves" }], "the value is the learner's part and stays as sent");
 	});
 	it("a request not shaped like the page's keeps its rows and picks as sent, and never throws", () => {
-		// Ticket 21's lh submit refuses these before they reach the server; the
+		// Ticket 21's lh submit (still open) is to refuse these before they reach the server; the
 		// guard only restores the question text and must not make them worse.
 		// (A null pick entry throws in upstream compactAnswerForModel, before and
 		// after this guard, so no case sends one.)
@@ -402,7 +402,7 @@ describe("ordinary lessons, and which order a hand-built answer used", () => {
 	});
 
 	it("the page's answer to an 8,000-option quiz stores in linear time", () => {
-		// Interrogate round 3: pairwise matching took about 14 s here.
+		// Interrogate round 3: pairwise matching took 15.7 s here (1 run, load under 12).
 		const OPTS = Array.from({ length: 8_000 }, (_, i) => ({ label: `$x_{${i}}$`, value: `v${i}` }));
 		const order = pageOrder("call_big", OPTS);
 		const qd = {
@@ -415,6 +415,25 @@ describe("ordinary lessons, and which order a hand-built answer used", () => {
 		const ms = performance.now() - started;
 		assert.ok(ms < 3_000, `took ${Math.round(ms)} ms`);
 		assert.deepEqual(JSON.parse(JSON.stringify(details)), JSON.parse(JSON.stringify(fromPage)), "stored as the page sent it");
+	});
+
+	it("a page-shaped request built to chain eliminations stores in linear time", () => {
+		// Code-review round 4: a repeated elimination pass took 4.6-6.4 s here (2 runs, load 11-13).
+		// Chain options A_k = "$"*k + "1"*(k-1) + "c": bash makes A_k of A_{k+1}. Plus options `$aN$`, all sent as `$`.
+		const chain = Array.from({ length: 200 }, (_, i) => ({ label: "$".repeat(i + 1) + "1".repeat(i) + "c", value: `c${i}` }));
+		const big = Array.from({ length: 4_000 }, (_, i) => ({ label: `$a${i}$`, value: `b${i}` }));
+		const options = [...chain, ...big];
+		const labels = [...chain.map((_, i) => (i === 0 ? "" : chain[i - 1]!.label)), ...big.map(() => "$")];
+		const sent = {
+			kind: "quiz", tool: "quiz", questionText: "q", dontKnow: false,
+			options: labels.map((label, i) => ({ index: i + 1, label })),
+			answers: [], correct: false, correctIndices: [1], answeredAt: new Date().toISOString(),
+		};
+		const started = performance.now();
+		const details = stored(CALL, "quiz", { question: "Which?", options, explanation: "e", correctAnswer: "c0" }, sent);
+		const ms = performance.now() - started;
+		assert.ok(ms < 3_000, `took ${Math.round(ms)} ms`);
+		assert.deepEqual(details.options!.slice(200), sent.options.slice(200), "4,000 rows sharing `$` settle nothing");
 	});
 
 	it("a pick's value binds its own row even when the row's label could be two options, and settles the other", () => {
