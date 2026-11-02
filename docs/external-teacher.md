@@ -228,7 +228,7 @@ EOF
 | `confidence` | `probe`, `quiz` | required with a pick: 0, 30, 50, 70, 90 or 100 |
 | `dontKnow` | `probe`, `quiz` | `true` for "I don't know"; no picks and no confidence |
 | `thinking` | any question with options | the learner's reasoning, optional |
-| `other` | `ask` with options | the learner's own answer in place of, or beside, a pick |
+| `other` | `ask` with options | the learner's own answer in place of a pick, or beside picks on a multi-select question |
 | `text` | `recall`, `explain`, `ask` without options | the typed answer |
 
 A skip is `lh submit "$L" --after "$C" --skip`, with no JSON.

@@ -19,7 +19,7 @@
  * scripts/lh.mjs is plain Node with no build step, so it loads this file
  * through tsx (`tsImport`), a dev dependency `npm ci` installs.
  */
-import { buildAnswer, CONFIDENCE_STOPS, dismissedAnswer, normalizeOptions, normalizeQuizType, resolveCorrect, type AnswerRequest, type AskToolInput, type ExplainToolInput, type QuestionAnswerData, type QuestionData, type QuestionMode, type QuizToolInput } from "./question-core.ts";
+import { buildAnswer, compactAnswerForModel, CONFIDENCE_STOPS, dismissedAnswer, normalizeOptions, normalizeQuizType, resolveCorrect, type AnswerRequest, type AskToolInput, type ExplainToolInput, type QuestionAnswerData, type QuestionData, type QuestionMode, type QuizToolInput } from "./question-core.ts";
 import { displayedQuestionOptions } from "./question-card.ts";
 import { QUESTION_TOOLS, toolQuestionKind } from "./pending.ts";
 import { parseAskInput, parseExplainInput, parseQuizInput } from "./tool-parts.ts";
@@ -157,8 +157,8 @@ function questionOpenAt(messages: readonly ShownMessage[], at: number): { toolCa
 }
 
 /** The learner-side fields of an answer, as the model-facing compact form
- *  (the stored result's text) carries them. Two answers with the same
- *  fields are the same answer. */
+ *  (compactAnswerForModel, the stored result's text) carries them. Two
+ *  answers with the same fields are the same answer. */
 function answerKey(compact: Record<string, unknown>): string {
 	const answers = Array.isArray(compact.answers) ? compact.answers.map((a) => (a as { index?: unknown }).index) : [];
 	return JSON.stringify([
@@ -170,20 +170,6 @@ function answerKey(compact: Record<string, unknown>): string {
 		compact.thinking ?? null,
 		compact.confidence ?? null,
 	]);
-}
-
-/** The compact form `buildAnswer`'s record would be stored as
- *  (compactAnswerForModel's learner fields). */
-function compactOf(ad: QuestionAnswerData): Record<string, unknown> {
-	if (ad.dismissed) return { dismissed: true };
-	return {
-		...(ad.dontKnow ? { dontKnow: true } : {}),
-		answers: ad.answers.map((a) => ({ index: a.index })),
-		...(ad.text ? { text: ad.text } : {}),
-		...(ad.other ? { other: ad.other } : {}),
-		...(ad.thinking ? { thinking: ad.thinking } : {}),
-		...(ad.confidence !== undefined ? { confidence: ad.confidence } : {}),
-	};
 }
 
 function refuse(code: string, extra: Record<string, unknown>): SubmitPlan {
@@ -226,6 +212,8 @@ function inputProblems(qd: QuestionData, tool: string, input: Exclude<SubmitInpu
 		forbid("dontKnow", `does not apply: only probe and quiz offer "I don't know"`);
 		forbid("confidence", "does not apply: only probe and quiz take a confidence");
 		if (picks.length === 0 && !input.other?.trim()) problems.push(`pick an option, or give the learner's own answer in "other"`);
+		// The dock's single-select displaces: a pick and Other never ride together.
+		if (qd.mode === "single-select" && picks.length > 0 && input.other?.trim()) problems.push(`this question takes a pick or "other", not both`);
 	}
 	return problems;
 }
@@ -275,7 +263,7 @@ export function planSubmit(lessonId: string, show: ShowReply, after: string, inp
 		} catch {
 			// unreadable: never equal, so refused below
 		}
-		if (answerKey(saved) === answerKey(compactOf(answer))) return { action: "repeat", toolCallId: call.toolCallId };
+		if (answerKey(saved) === answerKey(compactAnswerForModel(answer))) return { action: "repeat", toolCallId: call.toolCallId };
 		return refuse("answered", { error: "the question already has a different answer or skip; read it with lh answer", toolCallId: call.toolCallId, cursor, items });
 	}
 	if (cursor !== after) return refuse("unread_input", { error: "the learner added input after --after; read items, then submit with the new cursor", cursor, items });

@@ -266,6 +266,15 @@ describe("lh submit", () => {
 		const own = await lh(["submit", other.id, "--after", other.cursor], JSON.stringify({ other: "  just curious  " }));
 		assert.equal(own.code, 0, JSON.stringify(own.json));
 		assert.equal(storedAnswers(other.id)[0]!.other, "just curious");
+		const both = await asked("ask", ASK);
+		const mixed = await lh(["submit", both.id, "--after", both.cursor], JSON.stringify({ picks: [1], other: "my own" }));
+		assert.equal(mixed.json.code, "invalid", "a single-select pick and Other never ride together on the page");
+		assert.equal(storedAnswers(both.id).length, 0);
+		const multi = await asked("ask", { ...ASK, multiSelect: true });
+		const beside = await lh(["submit", multi.id, "--after", multi.cursor], JSON.stringify({ picks: [1, 3], other: "my own" }));
+		assert.equal(beside.code, 0, JSON.stringify(beside.json));
+		assert.deepEqual(storedAnswers(multi.id)[0]!.answers.map((a: Json) => a.index), [1, 3]);
+		assert.equal(storedAnswers(multi.id)[0]!.other, "my own");
 		const conf = await lh(["submit", other.id, "--after", other.cursor], JSON.stringify({ picks: [1] }));
 		assert.equal(conf.json.code, "answered");
 	});
