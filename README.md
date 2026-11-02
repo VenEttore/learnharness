@@ -1,3 +1,23 @@
+# LearnHarness: Matt's fork
+
+This is a fork of [amosblomqvist/learnharness](https://github.com/amosblomqvist/learnharness). This section covers what the fork is for. The original README follows it, unchanged.
+
+## What the fork adds
+
+LearnHarness teaches through its own AI models, which need API keys and bill per call. This fork lets an outside agent teach instead. A Grok Bot (a Cursor cloud agent) runs the lesson through LearnHarness's HTTP API and a small `lh` command-line tool, and LearnHarness makes no model calls of its own.
+
+## Goals
+
+- **Bot-run lessons.** A bot creates a lesson, probes what the learner already knows, posts a plan, and teaches with questions tied to that plan. The learner uses the normal LearnHarness page, and the bot's turns show up the same way the built-in model's do.
+- **No API keys.** A bot-run lesson never calls a LearnHarness model, by any path. LearnHarness runs with no keys configured.
+- **Clean upstream merges.** Fork changes go in new files where possible, and edits to upstream files stay small, so upstream releases merge in cleanly.
+
+## Status
+
+Round 1, the lesson loop, is in progress. It is done when a Grok Bot teaches one full lesson, from probe to plan to teaching, on the bots' shared cloud computer.
+
+---
+
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/assets/lh_banner_dark.png">
