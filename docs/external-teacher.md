@@ -231,7 +231,13 @@ EOF
 | `other` | `ask` with options | the learner's own answer in place of a pick, or beside picks on a multi-select question |
 | `text` | `recall`, `explain`, `ask` without options | the typed answer |
 
-A skip is `lh submit "$L" --after "$C" --skip`, with no JSON.
+A skip is `{"skip":true}`, alone:
+
+```bash
+lh submit "$L" --after "$C" <<'EOF'
+{"skip":true}
+EOF
+```
 
 `lh submit` reads the lesson, checks the answer against the question that was open at `--after`, and saves it through the lesson page's own routes, so the stored answer, grade included, is the one the page would store. The reply is what `lh answer` returns right after the save, plus `"repeat"` and the question's `toolCallId`. Its answer item has `correct`; tell the learner the result from that. `--after` must be the current cursor. A refusal saves nothing:
 

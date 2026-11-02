@@ -218,10 +218,12 @@ describe("lh submit", () => {
 
 	it("skips the way the page's Skip does", async () => {
 		const { id, cursor, toolCallId } = await asked("probe", PROBE);
-		const piped = await lh(["submit", id, "--after", cursor, "--skip"], JSON.stringify({ picks: [1], confidence: 70 }));
-		assert.equal(piped.json.code, "usage", "an answer piped beside --skip is refused, not dropped");
+		const mixed = await lh(["submit", id, "--after", cursor], JSON.stringify({ skip: true, picks: [1], confidence: 70 }));
+		assert.equal(mixed.json.code, "usage", "an answer beside a skip is refused, never turned into a skip");
+		const flag = await lh(["submit", id, "--after", cursor, "--skip"], "{}");
+		assert.equal(flag.json.code, "usage");
 		assert.equal(storedAnswers(id).length, 0);
-		const res = await lh(["submit", id, "--after", cursor, "--skip"]);
+		const res = await lh(["submit", id, "--after", cursor], '{"skip":true}');
 		assert.equal(res.code, 0, JSON.stringify(res.json));
 		assert.deepEqual(res.json.items.at(-1), { type: "skip", id: res.json.cursor, toolCallId, kind: "quiz" });
 		const { answeredAt, ...rest } = storedAnswers(id)[0]!;
@@ -248,7 +250,7 @@ describe("lh submit", () => {
 		assert.equal(other.json.code, "answered");
 		assert.deepEqual(other.json.saved.answers.map((a: Json) => a.index), [2]);
 		assert.equal(other.json.saved.confidence, 30);
-		const skip = await lh(["submit", id, "--after", cursor, "--skip"]);
+		const skip = await lh(["submit", id, "--after", cursor], '{"skip":true}');
 		assert.equal(skip.json.code, "answered");
 		const replied = await lh(["say", id, "--after", first.json.cursor], "Noted.");
 		assert.equal(replied.code, 0, JSON.stringify(replied.json));
@@ -280,8 +282,8 @@ describe("lh submit", () => {
 
 	it("a retried skip and a retried \"I don't know\" are repeats", async () => {
 		const skipped = await asked("probe", PROBE);
-		assert.equal((await lh(["submit", skipped.id, "--after", skipped.cursor, "--skip"])).code, 0);
-		assert.equal((await lh(["submit", skipped.id, "--after", skipped.cursor, "--skip"])).json.repeat, true);
+		assert.equal((await lh(["submit", skipped.id, "--after", skipped.cursor], '{"skip":true}')).code, 0);
+		assert.equal((await lh(["submit", skipped.id, "--after", skipped.cursor], '{"skip":true}')).json.repeat, true);
 		const declined = await asked("probe", PROBE);
 		assert.equal((await lh(["submit", declined.id, "--after", declined.cursor], '{"dontKnow":true}')).code, 0);
 		assert.equal((await lh(["submit", declined.id, "--after", declined.cursor], '{"dontKnow":true}')).json.repeat, true);

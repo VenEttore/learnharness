@@ -18,7 +18,7 @@
  *                                 the learner's answer to the open question,
  *                                 a JSON object from --file, else stdin:
  *                                 {"picks":[2],"confidence":70,"thinking":"..."}
- *   lh submit <lesson> --after <cursor> --skip
+ *                                 or a skip, {"skip":true}
  *
  * Exit codes: 0 ok; 1 any reply that is not ok (a refusal, bad_reply, or
  * a reply without "ok":true or on a non-2xx status); 2 `answer --wait`
@@ -41,15 +41,12 @@ const STDIN_TIMEOUT_MS = Number(process.env.LH_STDIN_TIMEOUT_MS) || 30_000;
 /** How often `answer --wait` checks. LH_WAIT_POLL_MS is for tests. */
 const WAIT_POLL_MS = Number(process.env.LH_WAIT_POLL_MS) || 2_000;
 const WAIT_TIMEOUT_S = 600;
-/** How long `submit --skip` waits on a stdin nobody closes before it
- *  takes it as empty. A heredoc or pipe closes at once. */
-const SKIP_STDIN_MS = 1_000;
 
 /** Bad input on the command line: exit 1 with a usage refusal. */
 class UsageError extends Error {}
 
 /** Flags that take no value. */
-const SWITCHES = ["wait", "skip"];
+const SWITCHES = ["wait"];
 
 /** Split argv into positionals and flags, `--name value` or `--name=value`
  *  (the second form takes a value that itself starts with `--`). A switch
@@ -97,16 +94,13 @@ function requireAfter(flags) {
  *  hang the bot. (A sync read of fd 0 can neither time out nor survive a
  *  slow writer: once process.stdin exists, fd 0 is non-blocking and the
  *  read fails with EAGAIN.) */
-function readStdin(quietAfterMs) {
+function readStdin() {
 	return new Promise((resolve, reject) => {
 		const chunks = [];
 		const timer = setTimeout(() => {
 			process.stdin.destroy();
-			// A stdin nobody writes to or closes: with a quiet deadline, what
-			// arrived so far is the input.
-			if (quietAfterMs !== undefined) resolve(Buffer.concat(chunks).toString("utf-8"));
-			else reject(new UsageError(`stdin was not closed within ${STDIN_TIMEOUT_MS / 1000} s; pass the text with --file <path>`));
-		}, quietAfterMs ?? STDIN_TIMEOUT_MS);
+			reject(new UsageError(`stdin was not closed within ${STDIN_TIMEOUT_MS / 1000} s; pass the text with --file <path>`));
+		}, STDIN_TIMEOUT_MS);
 		process.stdin.on("data", (chunk) => chunks.push(chunk));
 		process.stdin.on("end", () => {
 			clearTimeout(timer);
@@ -166,11 +160,11 @@ const FLAGS = {
 	...Object.fromEntries(JSON_KINDS.map((k) => [k, ["after", "file"]])),
 	answer: ["wait", "timeout"],
 	show: [],
-	submit: ["after", "file", "skip"],
+	submit: ["after", "file"],
 };
 
 /** The HTTP request a command line makes, `{ method, path, body? }`, or
- *  for `submit` the answer to save, `{ submit: { lesson, after, input | raw } }`. */
+ *  for `submit` the answer to save, `{ submit: { lesson, after, raw } }`. */
 async function requestFor(argv) {
 	const { positionals, flags } = parseArgs(argv);
 	const [command, ...rest] = positionals;
@@ -220,12 +214,6 @@ async function requestFor(argv) {
 		case "submit": {
 			lessonPath(rest[0]);
 			const after = requireAfter(flags);
-			if (flags.skip) {
-				if (flags.file !== undefined) throw new UsageError("--skip takes no --file");
-				// An answer piped in beside --skip must not turn into a skip.
-				if (!isatty(0) && (await readStdin(SKIP_STDIN_MS)).trim()) throw new UsageError("--skip takes no input; to save an answer, leave out --skip");
-				return { submit: { lesson: rest[0], after, input: { skip: true } } };
-			}
 			const text = await readInput(flags);
 			let raw;
 			try {
@@ -300,7 +288,7 @@ async function submitCore() {
 /** `lh submit`: read the lesson, check the answer against its open
  *  question, then save it through the page's own route, as the page
  *  does. A retry finds its answer already saved and reports a repeat. */
-async function submit({ lesson, after, input, raw }, base) {
+async function submit({ lesson, after, raw }, base) {
 	let core;
 	try {
 		core = await submitCore();
@@ -309,14 +297,12 @@ async function submit({ lesson, after, input, raw }, base) {
 		print({ ok: false, code: "usage", error: err.message });
 		return 1;
 	}
-	if (!input) {
-		const parsed = core.parseSubmitPayload(raw);
-		if (!parsed.ok) {
-			print({ ok: false, code: "usage", error: parsed.problems.join("; ") });
-			return 1;
-		}
-		input = parsed.input;
+	const parsed = core.parseSubmitPayload(raw);
+	if (!parsed.ok) {
+		print({ ok: false, code: "usage", error: parsed.problems.join("; ") });
+		return 1;
 	}
+	const input = parsed.input;
 	const lessonUrl = lessonPath(lesson);
 	// Once more after a refused send: a racing save (the page, or another
 	// submit) may have taken the question, and the plan then says repeat

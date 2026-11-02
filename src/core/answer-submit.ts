@@ -97,14 +97,23 @@ export type SubmitInput =
 
 const ANSWER_FIELDS = ["picks", "dontKnow", "confidence", "thinking", "text", "other"] as const;
 
+/* A skip is `{"skip":true}` and nothing else, in the same input as an
+ * answer, never a flag beside it: an answer can then never turn into a
+ * skip, and submit reads stdin exactly as the other JSON commands do. */
+
 /** The JSON payload of `lh submit`, checked for shape only: field names
  *  and types. What fits the question is `planSubmit`'s job. */
 export function parseSubmitPayload(raw: unknown): { ok: true; input: SubmitInput } | { ok: false; problems: string[] } {
 	if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return { ok: false, problems: ["the input must be a JSON object"] };
 	const o = raw as Record<string, unknown>;
+	if (Object.hasOwn(o, "skip")) {
+		if (o.skip !== true) return { ok: false, problems: ["skip must be true"] };
+		if (Object.keys(o).length > 1) return { ok: false, problems: [`a skip is {"skip":true} alone; drop ${Object.keys(o).filter((k) => k !== "skip").join(", ")}, or drop skip to save an answer`] };
+		return { ok: true, input: { skip: true } };
+	}
 	const problems: string[] = [];
 	for (const key of Object.keys(o)) {
-		if (!(ANSWER_FIELDS as readonly string[]).includes(key)) problems.push(`unknown field "${key}"; fields: ${ANSWER_FIELDS.join(", ")}`);
+		if (!(ANSWER_FIELDS as readonly string[]).includes(key)) problems.push(`unknown field "${key}"; fields: ${ANSWER_FIELDS.join(", ")}, or skip alone`);
 	}
 	if (o.picks !== undefined) {
 		if (!Array.isArray(o.picks)) problems.push("picks must be an array of option numbers, e.g. [2]");

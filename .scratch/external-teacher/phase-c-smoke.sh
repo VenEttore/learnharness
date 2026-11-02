@@ -350,8 +350,8 @@ lh_run 0 '.ok' ask "$S" --after "$C" <<'EOF'
 {"question":"Shall we go on?","options":[{"label":"Yes","value":"yes"},{"label":"Later","value":"later"}]}
 EOF
 cursor
-lh_run 0 '.items[0].type=="skip" and .items[0].kind=="ask" and .openQuestion==null' submit "$S" --after "$C" --skip
-lh_run 0 '.repeat==true' submit "$S" --after "$C" --skip
+lh_run 0 '.items[0].type=="skip" and .items[0].kind=="ask" and .openQuestion==null' submit "$S" --after "$C" <<<'{"skip":true}'
+lh_run 0 '.repeat==true' submit "$S" --after "$C" <<<'{"skip":true}'
 
 say "10. No model ran"
 printf '$ grep -iE "agent|provider|api key|error" %s\n' "$LOG"

@@ -140,7 +140,7 @@ The work comes in four phases:
     - `ask`, `probe`, `recall`, `probe-done`, `quiz` and `explain`, which read JSON
     - `answer [--wait] [--timeout]`; `--wait` checks every 2 s until there is at least one item, up to 10 minutes by default
     - `show`
-    - `submit --after [--file] [--skip]` (ticket 21): saves a learner's answer given outside the page through the page's own routes
+    - `submit --after [--file]` (ticket 21): saves a learner's answer, or a skip (`{"skip":true}`), given outside the page, through the page's own routes
 
     Turn commands require `--after <cursor>`. Long input comes from `--file` or stdin.
 - **Teacher guide.** A short Markdown guide for the Bot Teacher, at `docs/external-teacher.md`. It covers:
