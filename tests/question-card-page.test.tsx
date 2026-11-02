@@ -279,6 +279,14 @@ describe("question card page", () => {
 		assert.equal(doc.querySelectorAll("input, textarea, button, form, select, [contenteditable]").length, 0);
 	});
 
+	it("a practice session gets a note, not a phase or a question", async () => {
+		const chat = chatStore.createChat("Group theory practice", "practice");
+		const doc = await card(chat.id);
+		assert.equal(byTestId(doc, "card-phase")?.textContent, "Practice");
+		assert.ok(byTestId(doc, "card-practice-note"));
+		assert.equal(byTestId(doc, "card-no-question"), null);
+	});
+
 	it("an ordinary lesson renders the same card", async () => {
 		const chat = chatStore.createChat("plain");
 		const doc = await card(chat.id);

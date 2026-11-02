@@ -63,8 +63,7 @@ function PlanMap({ plan }: { plan: NonNullable<QuestionCardData["plan"]> }) {
 	);
 }
 
-export function QuestionCard({ title, card }: { title: string; card: QuestionCardData }) {
-	const q = card.question;
+function CardSheet({ title, tag, children }: { title: string; tag: string; children: React.ReactNode }) {
 	return (
 		<div
 			data-testid="question-card"
@@ -74,10 +73,35 @@ export function QuestionCard({ title, card }: { title: string; card: QuestionCar
 				<header className="mb-5 border-b border-border pb-3">
 					<div className="flex items-baseline justify-between gap-3 text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
 						<span>LearnHarness</span>
-						<span data-testid="card-phase">Phase · {PHASE_LABEL[card.phase]}</span>
+						<span data-testid="card-phase">{tag}</span>
 					</div>
 					<h1 className="mt-1.5 font-title text-lg leading-snug">{title}</h1>
 				</header>
+				{children}
+			</main>
+		</div>
+	);
+}
+
+/** Practice sessions have no phases or question dock; their problem dock
+ *  is not on the card, so the card says so instead of claiming a phase. */
+export function PracticeCardNote({ title }: { title: string }) {
+	return (
+		<CardSheet title={title} tag="Practice">
+			<section
+				data-testid="card-practice-note"
+				className="rounded-xl border border-dashed border-border px-4 py-5 text-center text-sm text-muted-foreground"
+			>
+				The question card covers lessons only. Open this practice session on its page.
+			</section>
+		</CardSheet>
+	);
+}
+
+export function QuestionCard({ title, card }: { title: string; card: QuestionCardData }) {
+	const q = card.question;
+	return (
+		<CardSheet title={title} tag={`Phase · ${PHASE_LABEL[card.phase]}`}>
 
 				{card.plan && card.phase !== "probe" && (
 					<section className="mb-5">
@@ -173,7 +197,6 @@ export function QuestionCard({ title, card }: { title: string; card: QuestionCar
 						</p>
 					</section>
 				)}
-			</main>
-		</div>
+		</CardSheet>
 	);
 }
