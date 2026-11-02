@@ -8,7 +8,7 @@ You run the whole lesson: probe, then plan, then teach. The learner is the owner
 
 The examples assume the repo is at `/workspace/learnharness`. Use your own path if it is elsewhere.
 
-1. Check Node: `node -v` must print `v22.x` or newer. On an older Node, `lh` refuses every command with `"code":"node_version"`.
+1. Check Node: `node -v` must print `v22.x` or newer. On Node 14.13.1 to 21, `lh` refuses every command with `"code":"node_version"`. Older Node crashes before `lh` can check and prints no JSON line: tested, Node 12.22.12 and 14.7.0 stop with a `SyntaxError`, and 14.8.0 and 14.13.0 with `ERR_UNSUPPORTED_ESM_URL_SCHEME`.
 2. Install once: `cd /workspace/learnharness && npm ci`.
 3. Put `lh` on your PATH: `mkdir -p ~/.local/bin && ln -sf /workspace/learnharness/scripts/lh.mjs ~/.local/bin/lh`. Check that `~/.local/bin` is on `PATH`. Without the link, run `node /workspace/learnharness/scripts/lh.mjs` wherever this guide says `lh`.
 4. Start the server, bound to 127.0.0.1. First run both checks in step 5. If they pass, a LearnHarness is already running, so skip this step; section 3 confirms it is yours. Rerunning the start line empties the log, and the second server fails on the busy port. To restart, stop the old process first.

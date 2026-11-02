@@ -24,7 +24,9 @@
  * a reply without "ok":true or on a non-2xx status); 2 `answer --wait`
  * timed out; 3 LearnHarness unreachable or no answer.
  * No dependencies, except that `submit` loads the repo's own answer code
- * through tsx (installed by `npm ci`). Node 22 or newer.
+ * through tsx (installed by `npm ci`). Node 22 or newer: Node 14.13.1 to
+ * 21 get the `node_version` refusal; older Node cannot load this file
+ * (`node:` imports, `??`, top-level await) and crashes before the check.
  * The base URL is LH_URL, default http://127.0.0.1:3000: not localhost,
  * which can resolve to the IPv6 address while LearnHarness listens on
  * 127.0.0.1 only. Stdin must close within LH_STDIN_TIMEOUT_MS (default
