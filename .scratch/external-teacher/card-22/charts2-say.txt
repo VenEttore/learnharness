@@ -22,3 +22,20 @@ quadrantChart
   Halving: [0.3, 0.8]
   Counting: [0.7, 0.4]
 ```
+
+Relations:
+
+```mermaid
+erDiagram
+  ITEM_PILE ||--o{ THE_HALF_OF_PILE : splits
+  ITEM_PILE ||--o{ THE_HALVING_COUNT : records
+```
+
+Classes:
+
+```mermaid
+classDiagram
+  Pile "1" --> "*" HalfPile : splits
+  Pile "1" --> "*" HalvingCount : records
+  Pile "1" --> "*" StepLog : takes
+```

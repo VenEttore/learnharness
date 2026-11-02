@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Ticket 22: retake the committed 390 px card screenshots.
 # Run from the repo root: bash .scratch/external-teacher/card-22/retake.sh
-# Starts `next dev` on 127.0.0.1:3722 with a fresh data folder and no keys,
+# Starts `next dev` on 127.0.0.1:$PORT (3722) with a fresh data folder and no keys,
 # builds each lesson with scripts/lh.mjs (JSON with `$` goes through --file),
 # captures with shot.mjs, prints its report to /tmp/lh22-shot.txt, then stops
 # the server it started. Every path is literal; nothing is removed by a
@@ -10,41 +10,57 @@ set -euo pipefail
 
 S=.scratch/external-teacher/card-22
 L=scripts/lh.mjs
-export LH_URL=http://127.0.0.1:3722
+PORT=3722
+export LH_URL=http://127.0.0.1:$PORT
 
 # Safe to run twice: refuse to start over a server already on the port,
-# and stop this script's server on any exit, failures included.
-if ss -ltn | grep -q ":3722 "; then
-	echo "port 3722 is in use; stop that server first" >&2
+# and on any exit stop only the server this script started (its own
+# session, killed as a process group; nothing is killed by port).
+if ss -ltn | grep -q ":$PORT "; then
+	echo "port $PORT is in use; stop that server first" >&2
 	exit 1
 fi
 # next dev rewrites AGENTS.md; restore exactly what was there before.
 cp AGENTS.md /tmp/lh22-AGENTS.md
+rm -f /tmp/lh22-server.pid
 stop_server() {
-	local child
-	child=$(ss -ltnp | grep ":3722 " | grep -o "pid=[0-9]*" | cut -d= -f2 || true)
-	if [ -f /tmp/lh22-server.pid ]; then kill "$(cat /tmp/lh22-server.pid)" 2> /dev/null || true; fi
-	if [ -n "$child" ]; then kill "$child" 2> /dev/null || true; fi
-	sleep 3
-	if ss -ltn | grep -q ":3722 "; then echo "port 3722 still in use"; else echo "server stopped"; fi
+	if [ -f /tmp/lh22-server.pid ]; then
+		kill -- "-$(cat /tmp/lh22-server.pid)" 2> /dev/null || true
+		sleep 3
+	fi
 	cp /tmp/lh22-AGENTS.md AGENTS.md
-	rm -f ./.lh22-shot.mjs
+	rm -f ./.lh22-shot.mjs /tmp/lh22-server.pid
 	rm -rf /tmp/lh22-data
+	if ss -ltn | grep -q ":$PORT "; then echo "port $PORT still in use" >&2; return 1; fi
+	echo "server stopped"
 }
 trap stop_server EXIT
 
 rm -rf /tmp/lh22-data
 mkdir -p /tmp/lh22-data
 
+# setsid: the server leads its own session, so its PID is its process
+# group and stop_server can kill the whole tree (npx, next, next-server).
 (
 	unset LH_DESKTOP_SERVER LH_DESKTOP_API_SECRET
-	LH_DATA_DIR=/tmp/lh22-data LH_IGNORE_ENV_KEYS=1 nohup npx next dev -H 127.0.0.1 -p 3722 > /tmp/lh22-server.log 2>&1 &
+	LH_DATA_DIR=/tmp/lh22-data LH_IGNORE_ENV_KEYS=1 setsid nohup npx next dev -H 127.0.0.1 -p "$PORT" > /tmp/lh22-server.log 2>&1 &
 	echo $! > /tmp/lh22-server.pid
 )
+SERVER=$(cat /tmp/lh22-server.pid)
 
+# Ready means our server answers: it is still alive, and the process
+# listening on the port is in its process group (not some other server).
 UP=0
 for _ in $(seq 1 60); do
-	if curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:3722/ | grep -q 200; then UP=1; break; fi
+	if ! kill -0 "$SERVER" 2> /dev/null; then echo "next dev exited; see /tmp/lh22-server.log" >&2; exit 1; fi
+	LISTENER=$(ss -ltnp | grep ":$PORT " | grep -o "pid=[0-9]*" | head -1 | cut -d= -f2 || true)
+	if [ -n "$LISTENER" ]; then
+		if [ "$(ps -o pgid= -p "$LISTENER" | tr -d ' ')" != "$SERVER" ]; then
+			echo "another process is listening on port $PORT" >&2
+			exit 1
+		fi
+		if curl -s -o /dev/null -w "%{http_code}" "$LH_URL/" | grep -q 200; then UP=1; break; fi
+	fi
 	sleep 3
 done
 if [ "$UP" != 1 ]; then echo "next dev did not come up; see /tmp/lh22-server.log" >&2; exit 1; fi
@@ -91,4 +107,4 @@ turn say "$NONE" "$C" $S/say.txt > /dev/null
 
 # shot.mjs imports puppeteer-core, so it runs from the repo root.
 cp $S/shot.mjs ./.lh22-shot.mjs
-node ./.lh22-shot.mjs http://127.0.0.1:3722 $S probe="$PROBE" quiz="$QUIZ" plan9="$PLAN9" wide="$WIDE" longword="$LONG" links="$LINKS" charts="$CHARTS" charts2="$CHARTS2" none="$NONE" | tee /tmp/lh22-shot.txt
+node ./.lh22-shot.mjs "$LH_URL" $S probe="$PROBE" quiz="$QUIZ" plan9="$PLAN9" wide="$WIDE" longword="$LONG" links="$LINKS" charts="$CHARTS" charts2="$CHARTS2" none="$NONE" | tee /tmp/lh22-shot.txt

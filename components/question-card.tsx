@@ -48,7 +48,7 @@ function replyHint(q: QuestionCardQuestion): string {
 // current node's title alone, or a note for a chart.
 const CARD_MAP_WIDTH = 358;
 const NODE_TEXT_UNITS = 11;
-const MIN_NODE_TEXT_PX = 10;
+const MIN_LABEL_PX = 10;
 const MAP_PAD = GRAPH_PAD + 8;
 
 /** The plan map, when its node titles stay readable at 390 px. Height is
@@ -60,7 +60,7 @@ function PlanMap({ plan }: { plan: NonNullable<QuestionCardData["plan"]> }) {
 	const currentTitle = plan.current ? plan.tree.nodes.find((n) => n.id === plan.current)?.title : undefined;
 	const layout = blockLayout(plan.tree.nodes, plan.tree.edges);
 	const scale = Math.min(CARD_MAP_WIDTH / (Math.max(layout.width, 1) + 2 * MAP_PAD), TEXT_CAP_SCALE);
-	const legible = scale * NODE_TEXT_UNITS >= MIN_NODE_TEXT_PX;
+	const legible = scale * NODE_TEXT_UNITS >= MIN_LABEL_PX;
 	return (
 		<div data-testid="card-plan">
 			{legible && (
@@ -88,10 +88,10 @@ const FIT_STEPS = 10;
 const FIT_UNDERSHOOT = 0.97;
 // Mermaid draws labels at 16 svg units unless its styles say otherwise.
 const CHART_TEXT_UNITS = 16;
-const TOO_WIDE = "data-card-too-wide";
+const UNREADABLE = "data-card-unreadable";
 // The note an unreadable chart shows instead (the attribute is set by the fit).
-const TOO_WIDE_CSS = `[${TOO_WIDE}] > * { display: none !important; }
-[${TOO_WIDE}]::after { content: "This diagram does not fit a phone screenshot. Open the lesson page to see it."; display: block; padding: 12px; border: 1px dashed var(--border); border-radius: 8px; color: var(--muted-foreground); font-size: 14px; }`;
+const UNREADABLE_CSS = `[${UNREADABLE}] > * { display: none !important; }
+[${UNREADABLE}]::after { content: "This diagram does not fit a phone screenshot. Open the lesson page to see it."; display: block; padding: 12px; border: 1px dashed var(--border); border-radius: 8px; color: var(--muted-foreground); font-size: 14px; }`;
 
 /** A screenshot cannot scroll sideways. The page's renderers put wide
  *  display math, tables and code blocks in horizontal scrollers; shrink
@@ -127,7 +127,7 @@ function useFitWideContent(ref: React.RefObject<HTMLDivElement | null>) {
 			}
 			for (const math of maths) math.style.zoom = "";
 			const charts = [...root.querySelectorAll<HTMLElement>('[data-streamdown="mermaid"]')];
-			for (const chart of charts) chart.removeAttribute(TOO_WIDE);
+			for (const chart of charts) chart.removeAttribute(UNREADABLE);
 			for (const el of scrollers) {
 				if (el.scrollWidth <= el.clientWidth + 1) continue;
 				const factor = el.clientWidth / el.scrollWidth;
@@ -152,7 +152,7 @@ function useFitWideContent(ref: React.RefObject<HTMLDivElement | null>) {
 			}
 			// A chart is an svg scaled to the column: it cannot wrap or zoom
 			// back up. Like the plan map, hide one whose labels would read
-			// under MIN_NODE_TEXT_PX; the sheet's style shows a note instead.
+			// under MIN_LABEL_PX; the sheet's style shows a note instead.
 			// Known limit (accepted): the rule checks label size, not overlap,
 			// so a gantt's day ticks can overprint at 390 px and still show.
 			for (const chart of charts) {
@@ -162,12 +162,16 @@ function useFitWideContent(ref: React.RefObject<HTMLDivElement | null>) {
 				// Judge by the smallest label: a title or quadrant name is drawn
 				// larger than the tick and point labels next to it.
 				let units = Infinity;
-				for (const label of svg.querySelectorAll(".nodeLabel, text")) {
+				// Edge labels (relationship names, cardinalities) are drawn
+				// smaller than node labels; labels with no box are not shown.
+				for (const label of svg.querySelectorAll(".nodeLabel, .edgeLabel, text")) {
 					if (!label.textContent?.trim()) continue;
+					const box = label.getBoundingClientRect();
+					if (box.width === 0 || box.height === 0) continue;
 					units = Math.min(units, parseFloat(getComputedStyle(label).fontSize) || CHART_TEXT_UNITS);
 				}
 				if (units === Infinity) units = CHART_TEXT_UNITS;
-				if ((svg.getBoundingClientRect().width / viewWidth) * units < MIN_NODE_TEXT_PX) chart.setAttribute(TOO_WIDE, "");
+				if ((svg.getBoundingClientRect().width / viewWidth) * units < MIN_LABEL_PX) chart.setAttribute(UNREADABLE, "");
 			}
 			// Inline math is no scroller: KaTeX keeps a formula on one line
 			// (white-space: nowrap), so one with no break point can run past
@@ -243,7 +247,7 @@ function CardSheet({ title, tag, children }: { title: string; tag: string; child
 			data-testid="question-card"
 			className="min-h-dvh w-full bg-background text-foreground [overflow-wrap:anywhere] [&_button]:hidden"
 		>
-			<style>{TOO_WIDE_CSS}</style>
+			<style>{UNREADABLE_CSS}</style>
 			<main className="mx-auto w-full max-w-[430px] px-4 pb-10 pt-5">
 				<header className="mb-5 border-b border-border pb-3">
 					<div className="flex items-baseline justify-between gap-3 text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
