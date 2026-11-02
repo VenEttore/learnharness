@@ -176,14 +176,23 @@ describe("question card page", () => {
 	});
 
 	it("numbers six probe options in the dock's shuffled order, not the authored order", async () => {
-		const { id, cursor } = await lesson();
-		const six = ["$n/2^k$", "$n-k$", "$n/k$", "$2^k$", "$k/n$", "$n^k$"].map((label, i) => ({ label, value: `o${i}` }));
-		await turn(id, { kind: "probe", after: cursor, question: MATH_QUESTION, options: six, explanation: "Halve $k$ times.", correctAnswer: "o0" });
-		const doc = await card(id);
+		// A fixed call id makes the seeded shuffle deterministic (random ids keep
+		// the authored order about 1 run in 720, which would hide a card that
+		// skips the shuffle).
 		const authored = ["n/2^k", "n-k", "n/k", "2^k", "k/n", "n^k"];
+		const options = authored.map((tex, i) => ({ label: `$${tex}$`, value: `o${i}` }));
+		const chat = chatStore.createChat("six options");
+		chatStore.saveMessages(chat.id, [
+			{ id: "msg_six_user", role: "user", content: [{ type: "text", text: "Teach me logs" }], timestamp: Date.now() },
+			{
+				id: "msg_six_probe", role: "assistant", api: "x", provider: "x", model: "x", stopReason: "toolUse", timestamp: Date.now(),
+				usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+				content: [{ type: "toolCall", id: "call_card_fixed_order", name: "probe", arguments: { question: MATH_QUESTION, options, explanation: "Halve $k$ times.", correctAnswer: "o0" } }],
+			},
+		] as never);
+		const doc = await card(chat.id);
 		assert.deepEqual(optionNumbers(doc), ["1", "2", "3", "4", "5", "6"]);
-		assert.deepEqual(optionTex(doc), dockOrder(id));
-		// 1 in 720 seeds keeps the authored order; a fixed seed would hide a card that skips the shuffle.
+		assert.deepEqual(optionTex(doc), dockOrder(chat.id));
 		assert.notDeepEqual(optionTex(doc), authored);
 	});
 
