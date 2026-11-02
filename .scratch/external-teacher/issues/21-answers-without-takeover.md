@@ -48,7 +48,7 @@ Completed (every checklist box has code, guide text or a test; none is deferred)
 Open (round 3, interrogate seat A, reproduced with Node 12.22.12): on Node 12, `lh` fails to parse (`??`, top-level await) and prints a SyntaxError, not the `node_version` line guide :11 promises. Node 16 and 18 get the refusal. Fix one of two ways: a small entry file in old syntax that checks the version and then imports lh.mjs, or narrow guide :11 to "Node 16 to 21". Commit 5639103 (round 3 code-review's two fixes: the double-quoted rule now covers `lh` input; tests for `refused` and the race) has not been reviewed.
 
 Verified:
-- Full check at f022a43: typecheck and lint clean; 3163/3164, the one failure the baseline Pi main-loader test. Full check at 5639103: see the handoff.
+- Full check at f022a43: typecheck and lint clean; 3163/3164, the one failure the baseline Pi main-loader test. Full check at 2e88d27 (5639103 plus this comment): typecheck and lint clean; 3166/3167, the one failure the same baseline test.
 - `NODE_ENV=test npx tsx --test tests/lh-submit.test.ts`: 15/15 at 5639103.
 - `bash .scratch/external-teacher/phase-c-smoke.sh 3731` at f022a43: PASS. Reviewers reran it: PASS (102 ok) at 334faaf and 5b76a9e.
 - Review: 3 rounds of code-review (Opus 5.5 xhigh) and interrogate seats A (Opus 5.5 xhigh) and C (Haiku 5.5 xhigh). Seats B (GLM 5.3 Flash) and D (Composer 2.5) were skipped: Cursor usage limit until 2026-11-19 on their round-1 try. Round 3: code-review 2 findings (fixed in 5639103), seat C 0, seat A 1 (open above).
