@@ -44,7 +44,11 @@ export function withAuthoredText(
 	const source = quiz ?? explain ?? ask;
 	if (!source) return answer;
 
-	const out: QuestionAnswerData = { ...answer, questionText: source.question };
+	// The page's answer takes the question from the parsed call (the dock
+	// mounts with it); its skip copies the raw call's question.
+	const rawQuestion = isObject(question.input) ? question.input.question : undefined;
+	const questionText = !answer.dismissed ? source.question : typeof rawQuestion === "string" ? rawQuestion : answer.questionText;
+	const out: QuestionAnswerData = { ...answer, questionText };
 	// The page's answers always carry these (buildAnswer); its skips are the
 	// minimal record (dismissedAnswer) and stay minimal.
 	if (!answer.dismissed && quiz) out.explanation = quiz.explanation;
@@ -78,8 +82,12 @@ export function withAuthoredText(
 	const rowOption = bindRows(rows, picks, pickOption, optionsFor, labelFits);
 	out.options = rows.map((row, i) => (rowOption[i] ? { ...row, label: rowOption[i]!.label } : row));
 	// A hand-built pick may lack its value; it stays without one.
+	// A pick falls back to its row's option only when its own value, if it
+	// has one, could be that option.
+	const valueFits = (value: string | undefined, o: QuizOption) => value === undefined || (byValue.get(value) ?? []).includes(o);
 	out.answers = picks.map((a, i) => {
-		const option = pickOption[i] ?? rowOption[a.index - 1];
+		const row = rowOption[a.index - 1];
+		const option = pickOption[i] ?? (row && valueFits(a.value, row) ? row : undefined);
 		return option ? { ...a, label: option.label } : a;
 	}) as QuestionAnswerData["answers"];
 	return out;
@@ -170,9 +178,10 @@ function textIndex(texts: string[], options: QuizOption[]): Map<string, QuizOpti
 
 const JSON_ESCAPES: Record<string, string> = { "\"": "\"", "\\": "\\", "/": "/", b: "\b", f: "\f", n: "\n", r: "\r", t: "\t" };
 
-/** `$` forms bash expands that throughShell does not model, and backticks
- *  (command substitution). Any other `$` is either modeled or literal. */
-const UNMODELED = /\$[{(*@#?$!0-]|`/;
+/** `$` forms bash expands that throughShell does not model (`$[..]` is
+ *  bash's old arithmetic form), and backticks (command substitution). Any
+ *  other `$` is either modeled or literal. */
+const UNMODELED = /\$[{([*@#?$!0-]|`/;
 
 function throughShell(authored: string): string {
 	return authored

@@ -33,7 +33,7 @@ const dismissRoute = await import("../app/api/chats/[id]/dismiss/route.ts");
 const { handleChatRequest } = await import("../src/server/chat-handler.ts");
 const { chatStore } = await import("../src/store/chats.ts");
 const { pendingQuestionOf } = await import("../src/core/native-messages.ts");
-const { inputAppends } = await import("../src/core/input-events.ts");
+const { inputAppends, dismissAppends } = await import("../src/core/input-events.ts");
 const { parseExplainInput } = await import("../src/core/tool-parts.ts");
 const { buildAnswer, dismissedAnswer, normalizeOptions, seededRandom, shuffleOptions } = await import("../src/core/question-core.ts");
 type QuestionAnswerData = import("../src/core/question-core.ts").QuestionAnswerData;
@@ -369,6 +369,14 @@ describe("ordinary lessons, and which order a hand-built answer used", () => {
 		}
 	});
 
+	it("the page's skip of a call whose question is not a string is stored as sent", () => {
+		// Interrogate round 5, seat A: the page's skip copies the raw call's question (chat.tsx).
+		const record = ordinaryRecord("call_skip_n", "quiz", { ...PROBE, question: 1729 });
+		const skip = dismissedAnswer("quiz", 1729 as unknown as string);
+		const [result] = dismissAppends(record, { type: "dismiss", toolCallId: "call_skip_n", answer: skip });
+		assert.deepEqual((result as { details: QuestionAnswerData }).details, skip);
+	});
+
 	it("a hand-built answer without the explanation or commitment gets the call's", () => {
 		const sent = quizAnswer("quiz", PROBE, PAGE, "halved", shell) as unknown as Json;
 		delete sent.explanation;
@@ -591,6 +599,35 @@ describe("backslash TeX through a real double-quoted bash string", () => {
 		const kept = stored(CALL, "quiz", { question: "Which?", options: MIXED, explanation: "e", correctAnswer: "\\neq" }, mixed);
 		assert.deepEqual(kept.answers, mixed.answers, "not the `$` option's label");
 		assert.deepEqual(kept.options, mixed.options);
+	});
+
+	it("bash's `$[..]` arithmetic form counts as unmodeled: rows and picks stay as sent", () => {
+		// Interrogate round 5, seat A: `$[2]$` and `$12$` both reach the server as `2$`.
+		const OPTS = [{ label: "$[2]$" }, { label: "$12$" }, { label: "$[7]$" }];
+		const sent = viaBash({
+			kind: "quiz", tool: "probe", questionText: "Working mod 10, what is [3]x[4]?", dontKnow: false,
+			options: OPTS.map((o, i) => ({ index: i + 1, label: o.label })),
+			answers: [{ index: 1, label: "$[2]$", value: "$[2]$" }],
+			correct: true, correctIndices: [1], answeredAt: new Date().toISOString(),
+		}) as QuestionAnswerData;
+		assert.equal(sent.answers[0]!.value, "2$", "what bash made of `$[2]$`");
+		const details = stored(CALL, "probe", { question: "Working mod 10, what is [3]x[4]?", options: OPTS, explanation: "e", correctAnswer: "$[2]$" }, sent);
+		assert.deepEqual(details.answers, sent.answers, "not `$12$`");
+		assert.deepEqual(details.options, sent.options);
+	});
+
+	it("a pick keeps its sent label when its own value rules out its row's option", () => {
+		// Interrogate round 5, seat A: rows in the authored order, the pick's index from another order.
+		const OPTS = [{ label: "$k$" }, { label: "$n$" }, { label: "the step count" }];
+		const sent = viaBash({
+			kind: "quiz", tool: "quiz", questionText: "Which?", dontKnow: false,
+			options: OPTS.map((o, i) => ({ index: i + 1, label: o.label })),
+			answers: [{ index: 3, label: "$n$", value: "$n$" }],
+			correct: false, correctIndices: [3], answeredAt: new Date().toISOString(),
+		}) as QuestionAnswerData;
+		const details = stored(CALL, "quiz", { question: "Which?", options: OPTS, explanation: "e", correctAnswer: "the step count" }, sent);
+		assert.deepEqual(details.options![2], { index: 3, label: "the step count" });
+		assert.deepEqual(details.answers, sent.answers, "its value `$` can only be `$k$` or `$n$`");
 	});
 
 	it("an answer sent that way gets every row and the pick back", () => {
