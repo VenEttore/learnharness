@@ -324,14 +324,16 @@ describe("ordinary lessons, and which order a hand-built answer used", () => {
 		assert.deepEqual(details.options, PAGE.map((o, i) => ({ index: i + 1, label: o.label })));
 	});
 
-	it("a hand-added row, an index past the options and null entries are kept, not thrown on", () => {
+	// A null pick entry already throws in compactAnswerForModel, before
+	// and after this guard; only option rows are the guard's to tolerate.
+	it("a hand-added row, an index past the options and a null option row are kept, not thrown on", () => {
 		const sent = quizAnswer("quiz", PROBE, PAGE, "halved", shell) as unknown as Json;
 		sent.options = [...sent.options, { index: 4, label: "I don't know" }, null];
-		sent.answers = [...sent.answers, { index: 9, label: "ghost" }, null];
+		sent.answers = [...sent.answers, { index: 9, label: "ghost" }];
 		const details = stored(CALL, "quiz", PROBE, sent) as unknown as Json;
 		assert.deepEqual(details.options.slice(0, 3), PAGE.map((o, i) => ({ index: i + 1, label: o.label })));
 		assert.deepEqual(details.options.slice(3), [{ index: 4, label: "I don't know" }, null]);
-		assert.deepEqual(details.answers.slice(1), [{ index: 9, label: "ghost" }, null]);
+		assert.deepEqual(details.answers.slice(1), [{ index: 9, label: "ghost" }]);
 	});
 
 	it("an ask with no values (each value is its label, mangled too) gets its labels back by index", () => {
