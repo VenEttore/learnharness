@@ -99,7 +99,9 @@ lh ask "$L" --after "$C" <<'EOF'
 EOF
 ```
 
-Measure what they already know with `probe` (multiple choice; `correctAnswer` is an option's `value`, and LearnHarness adds "I don't know" itself):
+An `ask` with options always gets an "Other" choice, where the learner types their own answer. LearnHarness adds it, so never write an option like "Something else" or "I'll type my own".
+
+Write each wrong option as a near-miss: the answer a learner with one specific misconception would pick, close to the right one in length and form, so the right answer does not stand out. Measure what they already know with `probe` (multiple choice; `correctAnswer` is an option's `value`, and LearnHarness adds "I don't know" itself):
 
 ```bash
 lh probe "$L" --after "$C" <<'EOF'
@@ -216,7 +218,7 @@ A learner on a phone can still reach the lesson page through Take over, but driv
 
 1. Post the question with `lh` as usual.
 2. Open the question card, `http://127.0.0.1:3000/chat/<lesson id>/card` (your port if you changed it), in your browser. It shows the open question, its lead-in, and its options numbered in the order the lesson page shows them, with math rendered as the page renders it. Read the option order from it every time, because you number the options by it.
-3. Ask in a chat widget, with the question and its options as text in that order (math converted as in "Math in chat" below). Send a screenshot of the card only when the question holds something chat text and the widget cannot show, such as a diagram, a table or laid-out code. A plain-text question gets no screenshot. Only your main chat agent can raise a widget; workers and routine runs cannot, so ask yourself. Collect everything in one widget: the pick (or picks), and for a `probe` or `quiz` the confidence and the learner's reasoning. Turn on the widget's free-text input (`allowCustom`) so the learner can type their pick and their reasoning in one place; they may also send the reasoning as a chat message. The reasoning is optional and goes in `thinking`. Offer the page's confidence values, 0, 30, 50, 70, 90 and 100, and "I don't know" as an extra option. For `recall` and `explain`, collect the typed answer.
+3. Ask in a chat widget, with the question and its options as text in that order (math converted as in "Math in chat" below). Send a screenshot of the card only when the question holds something chat text and the widget cannot show, such as a diagram, a table or laid-out code. A plain-text question gets no screenshot. Only your main chat agent can raise a widget; workers and routine runs cannot, so ask yourself. Collect everything in one widget: the pick (or picks), and for a `probe` or `quiz` the confidence and the learner's reasoning. Turn on the widget's free-text input (`allowCustom`) so the learner can type their pick and their reasoning in one place; they may also send the reasoning as a chat message. The reasoning is optional and goes in `thinking`. List only the card's numbered options, and add no typed-answer option of your own: for an `ask`, the free-text input stands in for the card's "Other". Text typed in place of a pick on an `ask` goes in `other`; text typed beside a pick goes in `thinking`. Offer the page's confidence values, 0, 30, 50, 70, 90 and 100, and "I don't know" as an extra option. For `recall` and `explain`, collect the typed answer.
 4. Never say or hint whether a pick is right before its confidence is in. The learner wants it that way, and the confidence only counts when it comes first.
 5. Save it with `lh submit`, then grade from the answer item its reply carries.
 
@@ -256,7 +258,7 @@ EOF
 | `no_open_question`, `bad_after` | No question was open at `--after`, or `--after` is not in this lesson. Use the cursor from the reply that posted the question, or a later one. |
 | `refused` | The page route refused the save; `error` says why. |
 
-A retry is safe. Rerun the same `lh submit` with the same `--after`, or with a cursor `lh show` gave you since, before you reply to the answer: when the first one landed, the reply has `"repeat":true` and nothing is saved again.
+A retry is safe. Rerun the same `lh submit` with the same `--after`, or with a cursor `lh show` gave you since, before you reply to the answer: when the first one landed, the reply has `"repeat":true` and nothing is saved again. The rerun must send the same body, `thinking` included. A different body gets `answered`, even with the answer's own `--after`.
 
 **Math in chat.** Grok Bot chat does not treat a single `$` as math. When you copy a question, teaching text or a plan into chat, write `$...$` as `\( ... \)`. Display math (`$$...$$`) and fenced `mermaid` blocks render as they are. The card screenshot already shows math as the page renders it.
 
