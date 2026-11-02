@@ -86,6 +86,11 @@ function PlanMap({ plan }: { plan: NonNullable<QuestionCardData["plan"]> }) {
  *  their content to the column instead (CSS zoom). Runs again once fonts
  *  load (KaTeX widths change) and whenever the card's DOM changes (code
  *  highlighting replaces its nodes after mount), once per frame. */
+// Zoom does not scale text linearly, so the fit steps toward the target,
+// undershooting each step so it cannot stall a few pixels short.
+const FIT_STEPS = 10;
+const FIT_UNDERSHOOT = 0.97;
+
 function useFitWideContent(ref: React.RefObject<HTMLDivElement | null>) {
 	useEffect(() => {
 		let frame = 0;
@@ -130,10 +135,10 @@ function useFitWideContent(ref: React.RefObject<HTMLDivElement | null>) {
 				// start, undershooting each step so the steps cannot stall a
 				// few pixels short.
 				let zoom = factor;
-				for (let step = 0; step < 10; step++) {
+				for (let step = 0; step < FIT_STEPS; step++) {
 					for (const child of el.children) (child as HTMLElement).style.zoom = String(zoom);
 					if (el.scrollWidth <= el.clientWidth + 1) break;
-					zoom *= (el.clientWidth / el.scrollWidth) * 0.97;
+					zoom *= (el.clientWidth / el.scrollWidth) * FIT_UNDERSHOOT;
 				}
 			}
 			// Inline math is no scroller: KaTeX keeps a formula on one line
@@ -148,10 +153,10 @@ function useFitWideContent(ref: React.RefObject<HTMLDivElement | null>) {
 				if (room <= 0) continue;
 				// Zoom is not linear here either: step with the same undershoot.
 				let zoom = 1;
-				for (let step = 0; step < 10; step++) {
+				for (let step = 0; step < FIT_STEPS; step++) {
 					const width = math.getBoundingClientRect().width;
 					if (width <= room + 1) break;
-					zoom *= (room / width) * 0.97;
+					zoom *= (room / width) * FIT_UNDERSHOOT;
 					math.style.zoom = String(zoom);
 				}
 			}
@@ -243,100 +248,99 @@ export function QuestionCard({ title, card }: { title: string; card: QuestionCar
 	const q = card.question;
 	return (
 		<CardSheet title={title} tag={`Phase · ${PHASE_LABEL[card.phase]}`}>
+			{card.teaching && (
+				<section className="mb-5" data-testid="card-teaching">
+					<Label>{q ? "Before the question" : "Latest"}</Label>
+					<MessageResponse linkSafety={PLAIN_LINKS} className="text-[15px] leading-relaxed">{card.teaching}</MessageResponse>
+				</section>
+			)}
 
-				{card.teaching && (
-					<section className="mb-5" data-testid="card-teaching">
-						<Label>{q ? "Before the question" : "Latest"}</Label>
-						<MessageResponse linkSafety={PLAIN_LINKS} className="text-[15px] leading-relaxed">{card.teaching}</MessageResponse>
-					</section>
-				)}
+			{!q && (
+				<section
+					data-testid="card-no-question"
+					className="rounded-xl border border-dashed border-border px-4 py-5 text-center text-sm text-muted-foreground"
+				>
+					{card.malformed ? "The open question arrived malformed." : "No open question"}
+				</section>
+			)}
 
-				{!q && (
-					<section
-						data-testid="card-no-question"
-						className="rounded-xl border border-dashed border-border px-4 py-5 text-center text-sm text-muted-foreground"
-					>
-						{card.malformed ? "The open question arrived malformed." : "No open question"}
-					</section>
-				)}
-
-				{q && (
-					<section data-testid="card-question" className="rounded-xl border border-border bg-card px-4 pb-4 pt-3.5">
-						<div data-testid="card-kind" className="mb-2 text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
-							{kindLine(q)}
+			{q && (
+				<section data-testid="card-question" className="rounded-xl border border-border bg-card px-4 pb-4 pt-3.5">
+					<div data-testid="card-kind" className="mb-2 text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+						{kindLine(q)}
+					</div>
+					{q.leadIn && (
+						<div data-testid="card-lead-in" className="mb-3 text-[15px] leading-relaxed">
+							<MessageResponse linkSafety={PLAIN_LINKS}>{q.leadIn}</MessageResponse>
 						</div>
-						{q.leadIn && (
-							<div data-testid="card-lead-in" className="mb-3 text-[15px] leading-relaxed">
-								<MessageResponse linkSafety={PLAIN_LINKS}>{q.leadIn}</MessageResponse>
-							</div>
-						)}
-						<div data-testid="card-question-text" className="mb-3 text-base font-medium leading-snug">
-							<ToolContentResponse linkSafety={PLAIN_LINKS}>{q.question}</ToolContentResponse>
+					)}
+					<div data-testid="card-question-text" className="mb-3 text-base font-medium leading-snug">
+						<ToolContentResponse linkSafety={PLAIN_LINKS}>{q.question}</ToolContentResponse>
+					</div>
+					{q.details && (
+						<div className="mb-3 text-sm text-muted-foreground">
+							<ToolContentResponse linkSafety={PLAIN_LINKS}>{q.details}</ToolContentResponse>
 						</div>
-						{q.details && (
-							<div className="mb-3 text-sm text-muted-foreground">
-								<ToolContentResponse linkSafety={PLAIN_LINKS}>{q.details}</ToolContentResponse>
-							</div>
-						)}
+					)}
 
-						{q.options.length > 0 && (
-							<ol className="flex flex-col gap-2" data-testid="card-options">
-								{q.options.map((opt) => (
-									<li
-										key={opt.number}
-										data-testid="card-option"
-										data-number={opt.number}
-										className="flex items-start gap-3 rounded-lg border border-border px-3 py-2.5"
-									>
-										<span className="mt-px w-6 shrink-0 text-center text-lg font-semibold leading-6 tabular-nums">
-											{opt.number}
-										</span>
-										<span className="min-w-0 flex-1 text-[15px] leading-6">
-											<ToolContentResponse linkSafety={PLAIN_LINKS}>{opt.label}</ToolContentResponse>
-											{opt.description && (
-												<ToolContentResponse linkSafety={PLAIN_LINKS} className="lh-prose block text-xs text-muted-foreground">
-													{opt.description}
-												</ToolContentResponse>
-											)}
-										</span>
-									</li>
-								))}
-								{q.quiz && (
-									<li className="flex items-start gap-3 rounded-lg border border-dashed border-border px-3 py-2.5 text-muted-foreground">
-										<span className="w-6 shrink-0 text-center leading-6">·</span>
-										<span className="text-[15px] leading-6">I don&apos;t know</span>
-									</li>
-								)}
-								{q.other && (
-									<li className="flex items-start gap-3 rounded-lg border border-dashed border-border px-3 py-2.5 text-muted-foreground">
-										<span className="w-6 shrink-0 text-center leading-6">·</span>
-										<span className="text-[15px] leading-6">Other: your own answer</span>
-									</li>
-								)}
-							</ol>
-						)}
+					{q.options.length > 0 && (
+						<ol className="flex flex-col gap-2" data-testid="card-options">
+							{q.options.map((opt) => (
+								<li
+									key={opt.number}
+									data-testid="card-option"
+									data-number={opt.number}
+									className="flex items-start gap-3 rounded-lg border border-border px-3 py-2.5"
+								>
+									<span className="mt-px w-6 shrink-0 text-center text-lg font-semibold leading-6 tabular-nums">
+										{opt.number}
+									</span>
+									<span className="min-w-0 flex-1 text-[15px] leading-6">
+										<ToolContentResponse linkSafety={PLAIN_LINKS}>{opt.label}</ToolContentResponse>
+										{opt.description && (
+											<ToolContentResponse linkSafety={PLAIN_LINKS} className="lh-prose block text-xs text-muted-foreground">
+												{opt.description}
+											</ToolContentResponse>
+										)}
+									</span>
+								</li>
+							))}
+							{q.quiz && (
+								<li className="flex items-start gap-3 rounded-lg border border-dashed border-border px-3 py-2.5 text-muted-foreground">
+									<span className="w-6 shrink-0 text-center leading-6">·</span>
+									<span className="text-[15px] leading-6">I don&apos;t know</span>
+								</li>
+							)}
+							{q.other && (
+								<li className="flex items-start gap-3 rounded-lg border border-dashed border-border px-3 py-2.5 text-muted-foreground">
+									<span className="w-6 shrink-0 text-center leading-6">·</span>
+									<span className="text-[15px] leading-6">Other: your own answer</span>
+								</li>
+							)}
+						</ol>
+					)}
 
-						{q.mode === "text" && (
-							<div
-								data-testid="card-typed-answer"
-								className="rounded-lg border border-dashed border-border px-3 py-4 text-sm text-muted-foreground"
-							>
-								Typed answer expected
-							</div>
-						)}
+					{q.mode === "text" && (
+						<div
+							data-testid="card-typed-answer"
+							className="rounded-lg border border-dashed border-border px-3 py-4 text-sm text-muted-foreground"
+						>
+							Typed answer expected
+						</div>
+					)}
 
-						<p data-testid="card-reply-hint" className="mt-3 text-xs leading-relaxed text-muted-foreground">
-							{replyHint(q)}
-							{q.quiz && <> Confidence: {CONFIDENCE_STOPS.join(" · ")}.</>}
-						</p>
-					</section>
-				)}
-				{card.plan && card.phase !== "probe" && (
-					<section className="mt-6">
-						<Label>Plan</Label>
-						<PlanMap plan={card.plan} />
-					</section>
-				)}
+					<p data-testid="card-reply-hint" className="mt-3 text-xs leading-relaxed text-muted-foreground">
+						{replyHint(q)}
+						{q.quiz && <> Confidence: {CONFIDENCE_STOPS.join(" · ")}.</>}
+					</p>
+				</section>
+			)}
+			{card.plan && card.phase !== "probe" && (
+				<section className="mt-6">
+					<Label>Plan</Label>
+					<PlanMap plan={card.plan} />
+				</section>
+			)}
 		</CardSheet>
 	);
 }
