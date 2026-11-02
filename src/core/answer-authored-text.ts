@@ -73,18 +73,18 @@ export function withAuthoredText(
 	const byValue = textIndex(authored.map((o) => o.value), authored);
 	const byLabel = textIndex(authored.map((o) => o.label), authored);
 	const pickOption = picks.map((a) => {
-		const named = a.value === undefined ? [] : byValue.get(a.value) ?? [];
+		const named = a.value === undefined ? [] : byValue.get(a.value.trim()) ?? [];
 		return named.length === 1 ? named[0] : undefined;
 	});
-	const shellLabel = new Map(authored.map((o) => [o, throughShell(o.label)]));
-	const optionsFor = (label: string) => byLabel.get(label) ?? [];
-	const labelFits = (label: string, o: QuizOption) => label === o.label || label === shellLabel.get(o);
+	const shellLabel = new Map(authored.map((o) => [o, throughShell(o.label).trim()]));
+	const optionsFor = (label: string) => byLabel.get(label.trim()) ?? [];
+	const labelFits = (label: string, o: QuizOption) => label.trim() === o.label || label.trim() === shellLabel.get(o);
 	const rowOption = bindRows(rows, picks, pickOption, optionsFor, labelFits);
 	out.options = rows.map((row, i) => (rowOption[i] ? { ...row, label: rowOption[i]!.label } : row));
 	// A hand-built pick may lack its value; it stays without one.
 	// A pick falls back to its row's option only when its own value, if it
 	// has one, could be that option.
-	const valueFits = (value: string | undefined, o: QuizOption) => value === undefined || (byValue.get(value) ?? []).includes(o);
+	const valueFits = (value: string | undefined, o: QuizOption) => value === undefined || (byValue.get(value.trim()) ?? []).includes(o);
 	out.answers = picks.map((a, i) => {
 		const row = rowOption[a.index - 1];
 		const option = pickOption[i] ?? (row && valueFits(a.value, row) ? row : undefined);
@@ -167,7 +167,9 @@ function bindRows(
 function textIndex(texts: string[], options: QuizOption[]): Map<string, QuizOption[]> {
 	const index = new Map<string, QuizOption[]>();
 	texts.forEach((text, i) => {
-		for (const form of new Set([text, throughShell(text)])) {
+		// Compared trimmed: the page trims (normalizeOptions), a bot copying
+		// the call may keep its edge spaces.
+		for (const form of new Set([text.trim(), throughShell(text).trim()])) {
 			const named = index.get(form);
 			if (named) named.push(options[i]!);
 			else index.set(form, [options[i]!]);

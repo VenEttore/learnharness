@@ -630,6 +630,21 @@ describe("backslash TeX through a real double-quoted bash string", () => {
 		assert.deepEqual(details.answers, sent.answers, "its value `$` can only be `$k$` or `$n$`");
 	});
 
+	it("a bot copying the call's edge spaces still gets the rows back", () => {
+		// Interrogate round 5, seat C: the page trims labels; the call kept " $n/2^k$".
+		const OPTS = [{ label: " $n/2^k$", value: "halved " }, { label: "$n-k$", value: "minus" }, { label: "$n/k$ ", value: "divided" }];
+		const sent = viaBash({
+			kind: "quiz", tool: "quiz", questionText: "Which?", dontKnow: false,
+			options: OPTS.map((o, i) => ({ index: i + 1, label: o.label })),
+			answers: [{ index: 1, label: OPTS[0]!.label, value: "halved " }],
+			correct: true, correctIndices: [1], answeredAt: new Date().toISOString(),
+		}) as QuestionAnswerData;
+		assert.equal(sent.options![0]!.label, " /2^k$", "what bash sent");
+		const details = stored(CALL, "quiz", { question: "Which?", options: OPTS, explanation: "e", correctAnswer: "halved" }, sent);
+		assert.deepEqual(details.options!.map((o) => o.label), ["$n/2^k$", "$n-k$", "$n/k$"]);
+		assert.deepEqual(details.answers.map((a) => [a.label, a.value]), [["$n/2^k$", "halved "]]);
+	});
+
 	it("an answer sent that way gets every row and the pick back", () => {
 		const order = pageOrder(CALL, TEX.options);
 		const answer = viaBash(quizAnswer("quiz", TEX, order, "times", (x) => x)) as QuestionAnswerData;
