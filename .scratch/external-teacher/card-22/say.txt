@@ -1,0 +1,1 @@
+Halving a pile of $n$ items once leaves $n/2$. Do it again and you get $n/4$. Each step **divides** by two, and that pattern is what a logarithm counts.
