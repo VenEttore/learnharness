@@ -1,6 +1,6 @@
 # 20: LaTeX survives question presentation
 
-Status: claimed
+Status: resolved
 Blocked by: none
 Risk: pre-release
 Gate: none
@@ -38,4 +38,24 @@ Open Act On (round 8, each confirmed by rerunning the seat's repro at bb28bcb):
 1. A backslash before a newline in an option's text (code-review round 8). With options `x\` + newline + `y` and `x\\ny`, the learner's pick of the first, sent through bash, arrives as `x\ny`. That is the second option's decoded form, so the pick is stored with the second option's label. Fix in the settled direction: add a backslash before a control character to `UNMODELED`, so rows and picks stay as sent.
 2. A variable set in the bot's shell (interrogate round 8, seats A and C). The guard treats every `$name` as unset. With `m=2` set, a pick of `$m$` arrives as `2$` and takes `2$n$`'s label. With `USER=matt`, a pick of option `Alice` (value `$USER`) arrives with value `matt` and takes option `Bob`'s label (value `matt`). A row case reproduces the same way. The guard cannot see the bot's environment, so the fix is a stricter ambiguity check (for example, a pick's value never overrides a row label that names a different option, or text containing `$name` is matched only when no other option's verbatim text equals its form). Ticket 21's `lh submit` removes the shell from the path entirely.
 Not findings by Matt's settled decisions: other quoting or escaping forms left unrestored, ambiguous rows left as sent, and "mixed" requests whose pick indexes come from another order.
+
+### Shipped 2026-11-02 (bench 2 follow-up, Ven via the Watcher)
+Completed:
+- B2 from bench 2 (Ven's test bot on external-teacher-bench-2): with USER=matt in the bot's shell, option Alice's value `$USER` arrived as option Bob's value `matt`, and the server stored the learner's pick of Alice as Bob, under both shell forms. Now a pick's sent label outranks its value when the label names options in any modeled form and the value's option is not among them: the pick stays as sent, and its value does not bind its row. When the label also names the value's option, the value still restores as before. The same check guards a pick's fallback to its row's option.
+- Review of the B2 fix (one round: code-review, interrogate seats A and C) found that the first, exact-label version blocked restorations the earlier guard made (a modeled form that equals another option's authored label: `2$n$` -> `2$`, `cost: $5` -> `cost: `, `$x$` -> `$`) and went quadratic on multi-select answers. The final rule above fixes both: lookups use the prebuilt index, so cost is linear again.
+- Integration tip 8b50b11 merged in (7598b14), clean.
+- Everything from the earlier entry: the guard in `src/core/answer-authored-text.ts`, wired into `inputAppends` and `dismissAppends` (`src/core/input-events.ts`); ordinary (LearnHarness model) lessons are covered by the same path and tested.
+
+Known limits (not fixed; ticket 21 puts the "never double-quoted" rule and these limits in the guide):
+- A (backslash before a newline): an option whose text has a backslash right before a newline can arrive, through bash, in another option's decoded form, and a pick can then take that option's label.
+- B1 (a set shell variable that makes one option's text another option's form): e.g. with m=2, a pick of `$m$` arrives as `2$` and can take `2$n$`'s label. The guard cannot see the bot's environment.
+- Bench 2 found `--file`, a single-quoted heredoc and `curl --data-binary @file` clean in every bench-2 case. `$?`, `$$` and `$(...)` leftovers stay as sent by design (never worse), and odd requests O1-O19 were restored or stored as sent.
+
+Deferred: to ticket 21 (`lh submit`, which sends picks by index with no shell in the path, and the guide's "never double-quoted" rule with limits A and B1).
+
+Verified:
+- `NODE_ENV=test npx tsx --test tests/answer-authored-text.test.ts`: 39/39. The B2 bench test fails on bb28bcb (stored Bob); the review-cases test fails on 19faf0f; both pass now.
+- `npm run typecheck`, `npm run lint`: clean. Full check (`NODE_ENV=test npx tsx --test --test-concurrency=2 tests/*.test.ts tests/*.test.tsx`, load under 12) at 3958658: 3151/3152; the one failure is the baseline Pi main-loader test. The ship commit adds only this ticket file.
+- Review: code-review on claude-opus-5-5 xhigh (Standards PASS, Spec FAIL on the two points above, both fixed); interrogate seat A (Opus 5.5) and seat C (Haiku 5.5), each confirmed by its repros at 19faf0f. GLM 5.3 Flash and Composer 2.5 skipped (Cursor limit until 2026-11-19).
+- Blast-radius skipped: Risk pre-release.
 
