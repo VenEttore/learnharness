@@ -12,6 +12,27 @@ S=.scratch/external-teacher/card-22
 L=scripts/lh.mjs
 export LH_URL=http://127.0.0.1:3722
 
+# Safe to run twice: refuse to start over a server already on the port,
+# and stop this script's server on any exit, failures included.
+if ss -ltn | grep -q ":3722 "; then
+	echo "port 3722 is in use; stop that server first" >&2
+	exit 1
+fi
+# next dev rewrites AGENTS.md; restore exactly what was there before.
+cp AGENTS.md /tmp/lh22-AGENTS.md
+stop_server() {
+	local child
+	child=$(ss -ltnp | grep ":3722 " | grep -o "pid=[0-9]*" | cut -d= -f2 || true)
+	if [ -f /tmp/lh22-server.pid ]; then kill "$(cat /tmp/lh22-server.pid)" 2> /dev/null || true; fi
+	if [ -n "$child" ]; then kill "$child" 2> /dev/null || true; fi
+	sleep 3
+	if ss -ltn | grep -q ":3722 "; then echo "port 3722 still in use"; else echo "server stopped"; fi
+	cp /tmp/lh22-AGENTS.md AGENTS.md
+	rm -f ./.lh22-shot.mjs
+	rm -rf /tmp/lh22-data
+}
+trap stop_server EXIT
+
 rm -rf /tmp/lh22-data
 mkdir -p /tmp/lh22-data
 
@@ -21,10 +42,12 @@ mkdir -p /tmp/lh22-data
 	echo $! > /tmp/lh22-server.pid
 )
 
+UP=0
 for _ in $(seq 1 60); do
-	if curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:3722/ | grep -q 200; then break; fi
+	if curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:3722/ | grep -q 200; then UP=1; break; fi
 	sleep 3
 done
+if [ "$UP" != 1 ]; then echo "next dev did not come up; see /tmp/lh22-server.log" >&2; exit 1; fi
 
 field() { node -pe "JSON.parse(require('fs').readFileSync(0)).$1"; }
 
@@ -66,13 +89,3 @@ turn say "$NONE" "$C" $S/say.txt > /dev/null
 # shot.mjs imports puppeteer-core, so it runs from the repo root.
 cp $S/shot.mjs ./.lh22-shot.mjs
 node ./.lh22-shot.mjs http://127.0.0.1:3722 $S probe="$PROBE" quiz="$QUIZ" plan9="$PLAN9" wide="$WIDE" longword="$LONG" links="$LINKS" charts="$CHARTS" none="$NONE" | tee /tmp/lh22-shot.txt
-rm -f ./.lh22-shot.mjs
-
-# Stop the server this script started: the npx wrapper and the next-server
-# child listening on the port.
-CHILD=$(ss -ltnp | grep ":3722 " | grep -o "pid=[0-9]*" | cut -d= -f2 || true)
-kill "$(cat /tmp/lh22-server.pid)" ${CHILD:+"$CHILD"} 2> /dev/null || true
-sleep 3
-if ss -ltn | grep -q ":3722 "; then echo "port 3722 still in use"; else echo "server stopped"; fi
-rm -rf /tmp/lh22-data
-git checkout AGENTS.md 2> /dev/null || true
