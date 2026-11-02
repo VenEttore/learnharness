@@ -14,3 +14,4 @@ Matt (2026-11-02): people should start the fork by handing a Grok Bot one prompt
 - [ ] Cold-start test: Ven's test bot gets the README prompt in a fresh folder, on this branch, and reports what it tripped on.
 - [ ] Fix what the test finds, then ship to main on "ship it".
 - [ ] After ship: GitHub description and website link (Matt approved 2026-11-02).
+- [x] From Ven during the cold-start (2026-11-02): phone-ready asks in chat text and a widget; a card screenshot only when the question has something chat can't show (diagram, table, laid-out code). The bot still opens the card to read the option order. The widget's free-text input (`allowCustom`) takes pick and reasoning in one place; reasoning may also come as a chat message. Not yet run by a bot: the cold-start tested 29b02a8, before this change.

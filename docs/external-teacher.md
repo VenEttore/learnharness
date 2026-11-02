@@ -5,7 +5,7 @@ This guide is for the Bot Teacher, the Grok Bot on the shared cloud computer tha
 You run the whole lesson: probe, then plan, then teach. The learner is the owner of this computer. They answer on the lesson page in your browser, through the "Take over" button in the Cursor app, or, from a phone, in your own chat, and you save their answer with `lh submit` (section 4, "Answers outside the page").
 
 **Ask the learner first.** Once LearnHarness is running (section 1), and before you create the lesson, ask the learner which way they want to answer. Say what each one means:
-- **Phone-ready:** you send each question as a screenshot of the question card, they answer in your chat, and you save the answer with `lh submit`. Best when they're on a phone.
+- **Phone-ready:** you ask each question in your chat, they answer there, and you save the answer with `lh submit`. Best when they're on a phone.
 - **VM control:** they open your desktop with "Take over" and answer on the full lesson page. Best at a computer; slow on a phone.
 
 Use their choice for the whole lesson, and switch if they ask.
@@ -215,12 +215,12 @@ lh answer "$L" --wait --timeout 300
 A learner on a phone can still reach the lesson page through Take over, but driving your desktop from a phone is slow. The convenient path is your own chat:
 
 1. Post the question with `lh` as usual.
-2. Take a screenshot of the question card, `http://127.0.0.1:3000/chat/<lesson id>/card` (your port if you changed it), and send it. The card shows the open question, its lead-in, and its options numbered in the order the lesson page shows them, with math rendered as the page renders it.
-3. Ask in a chat widget. Only your main chat agent can raise a widget; workers and routine runs cannot, so ask yourself. Collect everything in one widget: the pick (or picks), and for a `probe` or `quiz` the confidence and an optional "why". Offer the page's confidence values, 0, 30, 50, 70, 90 and 100, and "I don't know" as an extra option. For `recall` and `explain`, collect the typed answer.
+2. Open the question card, `http://127.0.0.1:3000/chat/<lesson id>/card` (your port if you changed it), in your browser. It shows the open question, its lead-in, and its options numbered in the order the lesson page shows them, with math rendered as the page renders it. Read the option order from it every time, because you number the options by it.
+3. Ask in a chat widget, with the question and its options as text in that order (math converted as in "Math in chat" below). Send a screenshot of the card only when the question holds something chat text and the widget cannot show, such as a diagram, a table or laid-out code. A plain-text question gets no screenshot. Only your main chat agent can raise a widget; workers and routine runs cannot, so ask yourself. Collect everything in one widget: the pick (or picks), and for a `probe` or `quiz` the confidence and the learner's reasoning. Turn on the widget's free-text input (`allowCustom`) so the learner can type their pick and their reasoning in one place; they may also send the reasoning as a chat message. The reasoning is optional and goes in `thinking`. Offer the page's confidence values, 0, 30, 50, 70, 90 and 100, and "I don't know" as an extra option. For `recall` and `explain`, collect the typed answer.
 4. Never say or hint whether a pick is right before its confidence is in. The learner wants it that way, and the confidence only counts when it comes first.
 5. Save it with `lh submit`, then grade from the answer item its reply carries.
 
-Picks are option numbers, read and sent by number, not by label: the number the learner saw on the card. `probe` and `quiz` options are shuffled, and `lh show` returns your authored order, so never number options from `lh show`. `ask` options keep your order.
+Picks are option numbers, read and sent by number, not by label: the number the learner saw, in the card's order. `probe` and `quiz` options are shuffled, and `lh show` returns your authored order, so never number options from `lh show`. `ask` options keep your order.
 
 ```bash
 lh submit "$L" --after "$C" <<'EOF'

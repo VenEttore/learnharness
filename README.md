@@ -18,7 +18,7 @@ Give a Grok Bot this prompt, with your topic filled in:
 
 > I want to learn [your topic] with LearnHarness. Use the fork at https://github.com/VenEttore/learnharness: clone it to /workspace/learnharness, then follow docs/external-teacher.md to set it up and start it. Then teach me the lesson yourself as the Bot Teacher.
 
-The bot sets up LearnHarness on its computer, then asks how you want to answer: phone-ready (it sends each question as a screenshot and you answer in its chat) or VM control (you open its desktop with Take over and use the full lesson page). The details the bot follows are in [docs/external-teacher.md](docs/external-teacher.md).
+The bot sets up LearnHarness on its computer, then asks how you want to answer: phone-ready (it asks each question in its chat and you answer there) or VM control (you open its desktop with Take over and use the full lesson page). The details the bot follows are in [docs/external-teacher.md](docs/external-teacher.md).
 
 ---
 
