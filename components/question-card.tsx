@@ -89,9 +89,9 @@ const FIT_UNDERSHOOT = 0.97;
 // Mermaid draws labels at 16 svg units unless its styles say otherwise.
 const CHART_TEXT_UNITS = 16;
 const TOO_WIDE = "data-card-too-wide";
-// The note a too-wide chart shows instead (the attribute is set by the fit).
+// The note an unreadable chart shows instead (the attribute is set by the fit).
 const TOO_WIDE_CSS = `[${TOO_WIDE}] > * { display: none !important; }
-[${TOO_WIDE}]::after { content: "Diagram too wide for a phone screenshot. Open the lesson page to see it."; display: block; padding: 12px; border: 1px dashed var(--border); border-radius: 8px; color: var(--muted-foreground); font-size: 14px; }`;
+[${TOO_WIDE}]::after { content: "This diagram does not fit a phone screenshot. Open the lesson page to see it."; display: block; padding: 12px; border: 1px dashed var(--border); border-radius: 8px; color: var(--muted-foreground); font-size: 14px; }`;
 
 /** A screenshot cannot scroll sideways. The page's renderers put wide
  *  display math, tables and code blocks in horizontal scrollers; shrink
@@ -157,8 +157,14 @@ function useFitWideContent(ref: React.RefObject<HTMLDivElement | null>) {
 				const svg = chart.querySelector("svg");
 				const viewWidth = svg?.viewBox.baseVal?.width;
 				if (!svg || !viewWidth) continue;
-				const label = svg.querySelector(".nodeLabel, text");
-				const units = parseFloat(getComputedStyle(label ?? svg).fontSize) || CHART_TEXT_UNITS;
+				// Judge by the smallest label: a title or quadrant name is drawn
+				// larger than the tick and point labels next to it.
+				let units = Infinity;
+				for (const label of svg.querySelectorAll(".nodeLabel, text")) {
+					if (!label.textContent?.trim()) continue;
+					units = Math.min(units, parseFloat(getComputedStyle(label).fontSize) || CHART_TEXT_UNITS);
+				}
+				if (units === Infinity) units = CHART_TEXT_UNITS;
 				if ((svg.getBoundingClientRect().width / viewWidth) * units < MIN_NODE_TEXT_PX) chart.setAttribute(TOO_WIDE, "");
 			}
 			// Inline math is no scroller: KaTeX keeps a formula on one line

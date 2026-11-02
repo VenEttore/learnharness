@@ -83,9 +83,12 @@ C=$(turn say "$LINKS" "$C" $S/links-say.txt); turn probe "$LINKS" "$C" $S/links-
 read -r CHARTS C < <(lesson "Charts" card22-charts)
 C=$(turn say "$CHARTS" "$C" $S/charts-say.txt); turn ask "$CHARTS" "$C" $S/charts-ask.json > /dev/null
 
+read -r CHARTS2 C < <(lesson "Charts with small labels" card22-charts2)
+C=$(turn say "$CHARTS2" "$C" $S/charts2-say.txt); turn ask "$CHARTS2" "$C" $S/charts-ask.json > /dev/null
+
 read -r NONE C < <(lesson "Halving and logs (no question)" card22-none)
 turn say "$NONE" "$C" $S/say.txt > /dev/null
 
 # shot.mjs imports puppeteer-core, so it runs from the repo root.
 cp $S/shot.mjs ./.lh22-shot.mjs
-node ./.lh22-shot.mjs http://127.0.0.1:3722 $S probe="$PROBE" quiz="$QUIZ" plan9="$PLAN9" wide="$WIDE" longword="$LONG" links="$LINKS" charts="$CHARTS" none="$NONE" | tee /tmp/lh22-shot.txt
+node ./.lh22-shot.mjs http://127.0.0.1:3722 $S probe="$PROBE" quiz="$QUIZ" plan9="$PLAN9" wide="$WIDE" longword="$LONG" links="$LINKS" charts="$CHARTS" charts2="$CHARTS2" none="$NONE" | tee /tmp/lh22-shot.txt
