@@ -88,13 +88,16 @@ function bindRows(rows: unknown[], picks: unknown[], pickOption: (QuizOption | u
 		if (named.length === 1) claim(row.index, named[0]!);
 		if (named.length > 0) possible.set(row.index, named);
 	}
+	// How many rows claim each option, in one pass: a request can carry any
+	// number of rows, and a pairwise check grew with their square.
+	const claimants = new Map<QuizOption, number>();
+	for (const set of claims.values()) for (const option of set) claimants.set(option, (claimants.get(option) ?? 0) + 1);
 	const bound = new Map<number, QuizOption>();
 	for (const [index, set] of claims) {
 		if (set.size !== 1) continue;
 		const option = [...set][0]!;
 		if (possible.has(index) && !possible.get(index)!.includes(option)) continue; // the row's label says otherwise
-		const rivals = [...claims].filter(([other, s]) => other !== index && s.has(option));
-		if (rivals.length === 0) bound.set(index, option);
+		if (claimants.get(option) === 1) bound.set(index, option);
 	}
 	return bound;
 }

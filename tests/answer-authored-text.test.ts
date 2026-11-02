@@ -386,6 +386,17 @@ describe("ordinary lessons, and which order a hand-built answer used", () => {
 		assert.deepEqual(details.options, [{ index: 1, label: "$4$ items" }, { index: 2, label: "$n$ halves" }]);
 		assert.deepEqual(details.answers, [{ index: 2, label: "$n$ halves", value: "$ halves" }], "the value is the learner's part and stays as sent");
 	});
+	it("a request with thousands of rows appends in linear time", () => {
+		// A pairwise rival check took 27 s for 16,000 rows (interrogate round 2).
+		const sent = quizAnswer("quiz", PROBE, PAGE, "halved", shell);
+		sent.options = Array.from({ length: 16_000 }, (_, i) => ({ index: i + 1, label: "/2^k$" }));
+		const started = performance.now();
+		const details = stored(CALL, "quiz", PROBE, sent);
+		const ms = performance.now() - started;
+		assert.ok(ms < 5_000, `took ${Math.round(ms)} ms`);
+		assert.equal(details.options![0]!.label, "/2^k$", "16,000 rows naming one option: none binds");
+	});
+
 	it("a pick's value binds its own row even when the row's label could be two options", () => {
 		const OPTS = [{ label: "$n$", value: "n" }, { label: "$k$", value: "k" }, { label: "$2$", value: "two" }];
 		const sent = {
