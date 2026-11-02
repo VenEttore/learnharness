@@ -250,6 +250,31 @@ describe("question card page", () => {
 			assert.match(byTestId(doc, "card-teaching")?.textContent ?? "", /First question: the base\./);
 		});
 
+		const text = (t: string) => ({ type: "text", text: t });
+		for (const [name, open, records, teaching, leadIn] of [
+			["text after an answered question is the teaching, not the text before it", true, [
+				asst([text("T1 earlier."), probe("call_s1", "Q-A?"), text("T2 newest.")]),
+				answered("call_s1", "Q-A?"),
+				asst([probe("call_s2", "Q-B?")]),
+			], "T2 newest.", null],
+			["with no open question the latest teaching is the newest segment", false, [
+				asst([text("T1 earlier."), probe("call_s3", "Q-C?"), text("T2 newest.")]),
+				answered("call_s3", "Q-C?"),
+			], "T2 newest.", null],
+			["two answered questions in the open one's message: only the segment before its lead-in", true, [
+				asst([text("T0 intro."), probe("call_s4", "Q-D?"), text("T1 middle."), probe("call_s5", "Q-E?"), text("T2 lead-in."), probe("call_s6", "Q-F?")]),
+				answered("call_s4", "Q-D?"),
+				answered("call_s5", "Q-E?"),
+			], "T1 middle.", "T2 lead-in."],
+		] as const) {
+			it(name, async () => {
+				const doc = await ordinary([user("Teach me logs"), ...records]);
+				assert.equal(!!byTestId(doc, "card-question"), open);
+				assert.equal(byTestId(doc, "card-teaching")?.querySelector(".lh-prose")?.textContent?.trim(), teaching);
+				assert.equal(byTestId(doc, "card-lead-in")?.textContent?.trim() ?? null, leadIn);
+			});
+		}
+
 		it("teaching sent beside an earlier question still counts as the latest teaching", async () => {
 			const doc = await ordinary([
 				user("Teach me logs"),

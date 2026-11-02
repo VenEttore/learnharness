@@ -105,22 +105,36 @@ function joined(texts: string[]): string | null {
 	return text ? text : null;
 }
 
-/** The newest assistant message before `end` with learner-facing text,
- *  the text the lesson page shows last before that point. Text beside an
- *  earlier question counts: in ordinary lessons the teacher sends its
- *  teaching in the same message as the question. */
-function latestTeaching(messages: readonly LhMessage[], end: number, failed: ReadonlySet<string>): string | null {
-	for (let i = end - 1; i >= 0; i--) {
-		const m = messages[i]!;
-		if (m.role !== "assistant") continue;
-		const text = joined(userFacingTextOf((m as AssistantMessage).content, failed));
+const isQuestionCall = (b: AssistantMessage["content"][number]) =>
+	b.type === "toolCall" && (QUESTION_TOOLS as readonly string[]).includes(b.name);
+
+/** The newest learner-facing text in `content`, split at question calls:
+ *  text on the far side of an answered question belongs to an older
+ *  exchange. A message without question calls is one segment. */
+function newestSegmentText(content: AssistantMessage["content"], failed: ReadonlySet<string>): string | null {
+	let stop = content.length;
+	for (let i = content.length - 1; i >= -1; i--) {
+		if (i >= 0 && !isQuestionCall(content[i]!)) continue;
+		const text = joined(userFacingTextOf(content.slice(i + 1, stop), failed));
 		if (text) return text;
+		stop = i;
 	}
 	return null;
 }
 
-const isQuestionCall = (b: AssistantMessage["content"][number]) =>
-	b.type === "toolCall" && (QUESTION_TOOLS as readonly string[]).includes(b.name);
+/** The latest teaching before message `end`: the newest text segment the
+ *  lesson page shows there. Text beside an earlier question counts: in
+ *  ordinary lessons the teacher sends its teaching in the same message as
+ *  the question. */
+function latestTeaching(messages: readonly LhMessage[], end: number, failed: ReadonlySet<string>): string | null {
+	for (let i = end - 1; i >= 0; i--) {
+		const m = messages[i]!;
+		if (m.role !== "assistant") continue;
+		const text = newestSegmentText((m as AssistantMessage).content, failed);
+		if (text) return text;
+	}
+	return null;
+}
 
 function buildQuestion(
 	tool: string,
@@ -179,7 +193,7 @@ export function questionCardOf(messages: readonly LhMessage[]): QuestionCard {
 	const previousCall = before.findLastIndex(isQuestionCall);
 	const leadIn = joined(userFacingTextOf(before.slice(previousCall + 1), failed));
 	const question = buildQuestion(pending.tool, pending.toolCallId, pending.input, leadIn);
-	const sameMessageTeaching = previousCall >= 0 ? joined(userFacingTextOf(before.slice(0, previousCall), failed)) : null;
+	const sameMessageTeaching = previousCall >= 0 ? newestSegmentText(before.slice(0, previousCall), failed) : null;
 	return {
 		phase,
 		plan,
