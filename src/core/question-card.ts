@@ -18,7 +18,7 @@ import type { PlanTree } from "./contracts.ts";
 import { failedOutputCallIds, pendingQuestionOf, userFacingTextOf, type LhMessage } from "./native-messages.ts";
 import { QUESTION_TOOLS, toolQuestionKind } from "./pending.ts";
 import { phaseAt3Lh, type Phase3 } from "./phases.ts";
-import { normalizeOptions, normalizeQuizType, seededRandom, shuffleOptions, type QuestionMode, type QuizOption } from "./question-core.ts";
+import { normalizeOptions, normalizeQuizType, seededRandom, shuffleOptions, type QuestionKind, type QuestionMode, type QuizOption } from "./question-core.ts";
 import { parseAskInput, parseExplainInput, parseQuizInput } from "./tool-parts.ts";
 
 /** The options in the order the question dock shows them. Quiz-kind
@@ -26,7 +26,7 @@ import { parseAskInput, parseExplainInput, parseQuizInput } from "./tool-parts.t
  *  correctness and server and client agree; ask options keep authored
  *  order. */
 export function displayedQuestionOptions(
-	kind: "quiz" | "ask" | "explain",
+	kind: QuestionKind,
 	toolCallId: string,
 	options: QuizOption[],
 ): QuizOption[] {
@@ -148,10 +148,11 @@ function buildQuestion(
 	const rawOptions = "options" in parsed ? (parsed.options as { label: string; value?: string; description?: string }[] | undefined) : undefined;
 	const options = displayedQuestionOptions(kind, toolCallId, normalizeOptions(rawOptions ?? []));
 	const multi = "multiSelect" in parsed && parsed.multiSelect === true;
-	// The dock's rule: a quiz always selects; an ask selects only with options.
+	// The dock's rule, on the same input it reads (the parsed, not yet
+	// normalized options): a quiz always selects; an ask selects only with options.
 	const mode: QuestionMode =
 		kind === "quiz" ? (multi ? "multi-select" : "single-select")
-			: kind === "ask" && options.length > 0 ? (multi ? "multi-select" : "single-select")
+			: kind === "ask" && rawOptions?.length ? (multi ? "multi-select" : "single-select")
 				: "text";
 	const role = kind === "quiz" ? normalizeQuizType((parsed as { type?: unknown }).type) : undefined;
 	return {
