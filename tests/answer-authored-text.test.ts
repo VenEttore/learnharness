@@ -258,6 +258,7 @@ describe("an answer's question text, labels and explanation are the call's", () 
 		assert.equal(res.status, 200);
 		assert.equal(lastDetails(id).questionText, PROBE.question);
 		assert.equal(lastDetails(id).dismissed, true);
+		assert.equal(lastDetails(id).explanation, undefined, "a skip stays the minimal record the page sends");
 	});
 });
 
@@ -355,6 +356,14 @@ describe("ordinary lessons, and which order a hand-built answer used", () => {
 
 	// A null pick entry already throws in compactAnswerForModel, before
 	// and after this guard; only option rows are the guard's to tolerate.
+	it("a hand-built answer without the explanation or commitment gets the call's (seat C, round 1)", () => {
+		const sent = quizAnswer("quiz", PROBE, PAGE, "halved", shell) as unknown as Json;
+		delete sent.explanation;
+		assert.equal(stored(CALL, "quiz", PROBE, sent).explanation, PROBE.explanation);
+		const recall = stored("call_recall", "recall", RECALL, { kind: "explain", tool: "recall", questionText: "q", dontKnow: false, answers: [], text: "t", answeredAt: "" });
+		assert.equal(recall.committed, RECALL.correctAnswer);
+	});
+
 	it("a hand-added row, an index past the options and a null option row are kept, not thrown on", () => {
 		const sent = quizAnswer("quiz", PROBE, PAGE, "halved", shell) as unknown as Json;
 		sent.options = [...sent.options, { index: 4, label: "I don't know" }, null];

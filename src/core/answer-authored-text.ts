@@ -32,8 +32,10 @@ export function withAuthoredText(
 	if (!source) return answer;
 
 	const out: QuestionAnswerData = { ...answer, questionText: source.question };
-	if (quiz && answer.explanation !== undefined) out.explanation = quiz.explanation;
-	if (explain && answer.committed !== undefined) out.committed = explain.correctAnswer;
+	// The page's answers always carry these (buildAnswer); its skips are the
+	// minimal record (dismissedAnswer) and stay minimal.
+	if (!answer.dismissed && quiz) out.explanation = quiz.explanation;
+	if (!answer.dismissed && explain) out.committed = explain.correctAnswer;
 
 	const options = quiz?.options ?? ask?.options;
 	if (!options?.length) return out;
