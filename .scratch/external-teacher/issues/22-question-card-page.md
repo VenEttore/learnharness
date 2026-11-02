@@ -1,7 +1,7 @@
 # 22: Question card page for phone screenshots
 
-Status: open
-Blocked by: 20
+Status: claimed
+Blocked by: none
 Risk: pre-release
 Gate: none
 Host: linuxdev

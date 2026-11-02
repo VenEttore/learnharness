@@ -1,7 +1,7 @@
 # 21: Answers without a desktop takeover
 
 Status: open
-Blocked by: 19, 20, 22
+Blocked by: 20, 22
 Risk: pre-release
 Gate: none
 Host: linuxdev
@@ -20,3 +20,5 @@ From ticket 15's bench (P1, P2, P3). On the bench, Ven was on a phone. The lesso
 - [ ] If cheap: `lh` prints a clear error when Node is older than 22.
 - [ ] Tests for lh submit: one-shot pick + confidence + thinking stores the same record as the page; missing confidence refused; "I don't know" without confidence accepted; skip; retry is a repeat.
 - [ ] Update phase-c-smoke.sh to cover lh submit and rerun it.
+- [ ] Ticket 19's deferred wording (from its ship comment): guide :32 step 5 passes on a desktop-mode exit 1; guide :47 has no case for your server on another port while LH_URL points elsewhere; guide :143 does not mention open_question; spec.md:81 bot_run_lesson over HTTP; lh.mjs:17 and spec:136 "without ok:true" misses ok:true on non-2xx. Fix them while editing the guide.
+- [ ] `lh submit` refuses a null or out-of-range pick before sending (ticket 20 found upstream compactAnswerForModel crashes on a null pick entry).
