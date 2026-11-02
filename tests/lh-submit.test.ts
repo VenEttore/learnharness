@@ -39,6 +39,10 @@ type Json = Record<string, any>;
 
 /** Every request the app served, as `METHOD path`. */
 const served: string[] = [];
+/** Runs before the app serves a POST /api/chat; a Response replaces the
+ *  route's own reply. Lets a test make the save fail, or let the page
+ *  answer first. */
+let beforeChatPost: (() => Promise<Response | void>) | null = null;
 
 const app = http.createServer((req, res) => {
 	const chunks: Buffer[] = [];
@@ -59,7 +63,7 @@ const app = http.createServer((req, res) => {
 		else if (ext && ext[1] && !ext[2] && req.method === "GET") reply = await showRoute.GET(request, ctx(ext[1]));
 		else if (ext && ext[2] === "/turn" && req.method === "POST") reply = await turnRoute.POST(request, ctx(ext[1]!));
 		else if (ext && ext[2] === "/answer" && req.method === "GET") reply = await answerRoute.GET(request, ctx(ext[1]!));
-		else if (pathname === "/api/chat" && req.method === "POST") reply = await chatRoute.POST(request);
+		else if (pathname === "/api/chat" && req.method === "POST") reply = (await beforeChatPost?.()) || (await chatRoute.POST(request));
 		else if (dismiss && req.method === "POST") reply = await dismissRoute.POST(request, ctx(dismiss[1]!));
 		else reply = new Response("not found", { status: 404 });
 		res.writeHead(reply.status, { "Content-Type": reply.headers.get("content-type") ?? "text/plain" });
@@ -278,6 +282,37 @@ describe("lh submit", () => {
 		assert.equal(fresh.code, 0, JSON.stringify(fresh.json));
 		assert.equal(fresh.json.repeat, false);
 		assert.equal(storedAnswers(id).length, 2);
+	});
+
+	it("a save the page route refuses twice is refused with its status and the cursor, and saves nothing", async () => {
+		const { id, cursor } = await asked("probe", PROBE);
+		const posts = chatPosts();
+		beforeChatPost = async () => Response.json({ error: "busy" }, { status: 503 });
+		try {
+			const res = await lh(["submit", id, "--after", cursor], '{"dontKnow":true}');
+			assert.equal(res.code, 1);
+			assert.deepEqual(res.json, { ok: false, code: "refused", status: 503, error: "busy", cursor });
+		} finally {
+			beforeChatPost = null;
+		}
+		assert.equal(chatPosts() - posts, 2, "one resend after the first refusal");
+		assert.equal(storedAnswers(id).length, 0);
+	});
+
+	it("when the page answers between lh's read and its save, a different answer is refused as answered", async () => {
+		const { id, cursor, toolCallId } = await asked("probe", PROBE);
+		beforeChatPost = async () => {
+			beforeChatPost = null;
+			// The learner answers on the page first: the dock's record for "I don't know".
+			const page = await lh(["submit", id, "--after", cursor], '{"dontKnow":true}');
+			assert.equal(page.code, 0, JSON.stringify(page.json));
+		};
+		const res = await lh(["submit", id, "--after", cursor], JSON.stringify({ picks: [1], confidence: 50 }));
+		assert.equal(res.code, 1, JSON.stringify(res.json));
+		assert.equal(res.json.code, "answered");
+		assert.equal(res.json.toolCallId, toolCallId);
+		assert.equal(res.json.saved.dontKnow, true);
+		assert.equal(storedAnswers(id).length, 1);
 	});
 
 	it("a retried skip and a retried \"I don't know\" are repeats", async () => {

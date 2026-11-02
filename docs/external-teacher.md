@@ -50,7 +50,7 @@ A reply with `"code":"bad_reply"` means the server on `LH_URL` answered with som
 
 **Items.** Learner input comes back as `items`. `lh answer` always has them. A create, a repeat, `lh show`, and an `unread_input` or `bad_after` refusal carry `items` when there is learner input you have not responded to. That is everything after the last saved Bot Teacher turn, whether you or an earlier Bot Teacher took it. With no saved turn, it is everything since the lesson began. In an `unread_input` refusal, the items start after your `--after` instead when that message is newer than the last saved Bot Teacher turn. A create with `--prompt` returns the prompt this way. Read the items in every reply that has them, and respond to all of them, before your next turn.
 
-**Input.** `say` and `plan` read plain text. `ask`, `probe`, `recall`, `probe-done`, `quiz`, `explain` and `submit` read one JSON object. Both come from `--file <path>` or stdin; the examples use a quoted heredoc (`<<'EOF'`), which keeps `$` and backticks literal. The JSON never carries `kind` or `after`. Those come from the command line.
+**Input.** `say` and `plan` read plain text. `ask`, `probe`, `recall`, `probe-done`, `quiz`, `explain` and `submit` read one JSON object. Both come from `--file <path>` or stdin; the examples use a quoted heredoc (`<<'EOF'`), which keeps `$` and backticks literal. Never pass text or JSON in a double-quoted string (`<<<"..."`, `echo "..."`): bash expands `$name` and runs `$(...)` before `lh` sees it, so `$n$` arrives as `$`. The JSON never carries `kind` or `after`. Those come from the command line.
 
 ## 3. Run a lesson
 
