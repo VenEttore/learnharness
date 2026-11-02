@@ -1,6 +1,6 @@
 # 21: Answers without a desktop takeover
 
-Status: open
+Status: claimed
 Blocked by: 20, 22
 Risk: pre-release
 Gate: none
