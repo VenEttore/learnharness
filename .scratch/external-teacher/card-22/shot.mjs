@@ -2,7 +2,8 @@
 // plain full-page screenshot. Usage: node shot.mjs <base url> <out dir> name=<lesson id> ...
 // Prints, per card, the document height against the card height (a
 // full-page capture must hold the whole card), any element whose content
-// is still wider than its box (cut off in a screenshot), any control
+// is still wider than its box (cut off in a screenshot), any element
+// reaching past the card's right edge, any control
 // still displayed, and every
 // non-GET request the page sent.
 import puppeteer from "puppeteer-core";
@@ -31,6 +32,13 @@ for (const pair of pairs) {
 			if (["auto", "scroll", "hidden", "clip"].includes(o) && el.scrollWidth > el.clientWidth + 1)
 				clipped.push(`${el.tagName}.${String(el.className?.baseVal ?? el.className).slice(0, 40)} ${el.clientWidth}/${el.scrollWidth}`);
 		}
+		const cardRight = card.getBoundingClientRect().right;
+		const outside = [];
+		for (const el of card.querySelectorAll("*")) {
+			if (el.closest(".katex-mathml")) continue;
+			const r = el.getBoundingClientRect();
+			if (r.width > 0 && r.right > cardRight + 1) outside.push(`${el.tagName}.${String(el.className?.baseVal ?? el.className).slice(0, 30)} right=${Math.round(r.right)}`);
+		}
 		const shownButtons = [...card.querySelectorAll("button, input, textarea, select")].filter((el) => getComputedStyle(el).display !== "none").length;
 		return {
 			shownButtons,
@@ -38,6 +46,7 @@ for (const pair of pairs) {
 			cardHeight: Math.ceil(card.getBoundingClientRect().height),
 			documentWidth: document.documentElement.scrollWidth,
 			clipped,
+			outside: outside.slice(0, 5),
 		};
 	});
 	await page.screenshot({ path: `${outDir}/card-${name}-390.png`, fullPage: true });

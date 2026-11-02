@@ -105,6 +105,19 @@ function useFitWideContent(ref: React.RefObject<HTMLDivElement | null>) {
 					c.style.zoom = String((Number(c.style.zoom) || 1) * factor);
 				}
 			}
+			// Inline math is no scroller: KaTeX keeps a formula on one line
+			// (white-space: nowrap), so one with no break point can run past
+			// its box. Shrink it to its nearest block's content width.
+			for (const math of root.querySelectorAll<HTMLElement>(".katex")) {
+				if (math.closest(".katex-display")) continue; // fitted above
+				let block = math.parentElement;
+				while (block && block !== root && getComputedStyle(block).display.startsWith("inline")) block = block.parentElement;
+				if (!block) continue;
+				const style = getComputedStyle(block);
+				const room = block.clientWidth - (parseFloat(style.paddingLeft) || 0) - (parseFloat(style.paddingRight) || 0);
+				const width = math.getBoundingClientRect().width;
+				if (room > 0 && width > room + 1) math.style.zoom = String((Number(math.style.zoom) || 1) * (room / width));
+			}
 		};
 		fit();
 		void document.fonts?.ready.then(schedule);
