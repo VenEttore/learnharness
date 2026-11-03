@@ -192,7 +192,8 @@ async function graphRequest(rest, flags) {
 			if (args.length > 0) throw new UsageError("graph sessions takes no arguments");
 			return { method: "GET", path: "/api/external/graph/sessions" };
 		case "propositions":
-			if (args.length !== 1 || args[0] === "") throw new UsageError("usage: lh graph propositions <session>");
+			// "." and ".." would resolve as URL path segments and reach another route.
+			if (args.length !== 1 || ["", ".", ".."].includes(args[0])) throw new UsageError("usage: lh graph propositions <session>");
 			return { method: "GET", path: `/api/external/graph/sessions/${encodeURIComponent(args[0])}/propositions` };
 		case "find": {
 			if (args.length > 1) throw new UsageError("graph find takes one query; quote it");

@@ -241,6 +241,8 @@ describe("lh maps command lines to requests", () => {
 			["graph", "find", "a", "--offset", "0x10"],
 			["graph", "find", "--offset", "1"],
 			["graph", "propositions", ""],
+			["graph", "propositions", "."],
+			["graph", "propositions", ".."],
 			["graph", "find", "a", "--file", "x.json"],
 			["extract-view"],
 			["extract-view", "a", "b"],
