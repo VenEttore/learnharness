@@ -290,7 +290,7 @@ The server also stores any `confidence` as sent (`null`, `150`, `"high"`), and t
 
 ## 5. Refusals and recovery
 
-LearnHarness runs its checks before it saves anything, so a refused turn adds nothing to the lesson's transcript. Fix it and resend. Refusals about a lesson carry the `cursor`; `not_found`, `not_bot_run`, `key_required`, `usage`, the `forbidden_*` codes, and a create's `save_failed` do not.
+LearnHarness runs its checks before it saves anything, so a refused turn adds nothing to the lesson's transcript. Fix it and resend. Refusals about a lesson carry the `cursor`; `not_found`, `not_bot_run`, `key_required`, `bad_find`, `usage`, the `forbidden_*` codes, and a create's `save_failed` do not.
 
 | code | what to do |
 |---|---|
@@ -302,6 +302,7 @@ LearnHarness runs its checks before it saves anything, so a refused turn adds no
 | `not_found` | No lesson with that id. |
 | `not_bot_run` | The lesson belongs to LearnHarness's own model. Create your own with `lh lesson new`. |
 | `key_required` | `lh lesson new` needs `--key`, which makes a rerun return the same lesson. |
+| `bad_find` | The `lh graph find` input is not `{"propositions":[...]}` as section 7 describes. `problems` says what to fix. |
 | `usage` | `lh` refused the command line before sending it: a missing flag, a misspelled flag, JSON that does not parse. |
 | `save_failed` | The disk write failed. Rerun the same command. |
 | `internal_error` | LearnHarness failed on its own bug and saved nothing. Read `/workspace/lh-server.log`. Resending the same turn fails the same way. |
@@ -350,14 +351,14 @@ Workers can research and draft, but they cannot raise widgets or talk to the lea
 
 ## 7. Read the knowledge graph
 
-LearnHarness keeps one knowledge graph across all lessons: the facts each lesson taught, grouped by the lesson (or imported notes file) they were first learned in. These commands only read it. None of them calls a model.
+LearnHarness keeps one knowledge graph across all lessons: the facts (`propositions`) each lesson taught, grouped by the session, the lesson or imported notes file, they were first learned in. These commands only read it. None of them calls a model.
 
 | command | reply |
 |---|---|
 | `lh graph sessions` | `sessions`: every lesson or notes file that added facts, newest first, with its `id`, `name`, `kind` (`chat` or `file`), `propositions` (how many facts it added) and dates. `proberText` and `auditorText` are LearnHarness's own `list_sessions` output for its prober and its auditor. |
 | `lh graph propositions <session>` | `propositions`: the facts first learned in that session, each with `nodeId`, `name`, `statement` and `aliases`. `proberText` and `auditorText` as above. An unknown id gives `[]`. |
-| `lh graph find "<query>" [--offset <n>]` | Facts already in the graph that look like the query, five per page, best first: `matches[0].candidateIds` points into `candidates` (each with `statement`, matched `aliases` and the `sessions` it came from). `nextOffset` is the `--offset` for the next page, or `null`. Word overlap only, so a miss does not prove the fact is new. |
+| `lh graph find "<query>" [--offset <n>]` | Facts already in the graph that look like the query, five per page, best first: `matches[0].candidateIds` points into `candidates` (each with `statement`, the `matchedAliases` that matched, and the `sessions` it came from). `nextOffset` is the `--offset` for the next page, or `null`. Word overlap only, so a miss does not prove the fact is new. |
 | `lh graph find --file <path>` | The same for several draft facts at once. The file (or stdin) is `{"propositions":[{"id":"p1","name":"Chain rule","statement":"...","aliases":[],"hints":["composition"],"offset":0}]}`; only `id` and `name` are required, and each `id` once. This is LearnHarness's auditor's `find_candidates`. |
 | `lh extract-view <lesson>` | Your lesson's teacher text that is not in the graph yet, as LearnHarness's extractor reads it. `batches` holds it oldest first, each with a `view` (`TEACHER [message id] text` passages) and its `messageIds`. `digest` lists what this lesson already added to the graph, and `prompt` is the extractor's input for the first batch: the digest, then that batch's view. Bot-run lessons only. |
 
-Before you probe, `lh graph sessions` and `lh graph propositions` show what the learner covered in earlier lessons. A bad `find` body is refused with `bad_find` and `problems`.
+A bad `find` body is refused with `bad_find` and `problems` (section 5).

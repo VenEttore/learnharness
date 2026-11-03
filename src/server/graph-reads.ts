@@ -13,7 +13,7 @@ import {
 import { FACTORY_SETTINGS } from "../core/settings.ts";
 import type { ChatRecord } from "../core/contracts.ts";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
-import { isBotRun } from "./bot-run.ts";
+import { botLesson, externalFailure } from "./bot-run.ts";
 import { stores } from "./stores.ts";
 
 /**
@@ -75,16 +75,11 @@ export function extractViewOf(record: ChatRecord, chunkTokens: number = CHUNK_TO
 	};
 }
 
-function fail(status: number, code: string, extra: Record<string, unknown> = {}): Response {
-	return Response.json({ ok: false, code, ...extra }, { status });
-}
-
 /** GET /api/external/chats/:id/extract-view. Bot-run lessons only: an
  *  ordinary lesson is LearnHarness's own extractor's to read. */
 export function showExtractView(id: string): Response {
-	const record = stores.chatStore.getChat(id);
-	if (!record) return fail(404, "not_found");
-	if (!isBotRun(record)) return fail(409, "not_bot_run");
+	const record = botLesson(id);
+	if (record instanceof Response) return record;
 	return Response.json({ ok: true, lesson: id, ...extractViewOf(record) });
 }
 
@@ -116,8 +111,9 @@ export async function listGraphPropositions(session: string): Promise<Response> 
 	const deps = graphDeps();
 	const nodes = new Map(getGraph(deps.graphStore).nodes.map((n) => [n.id, n]));
 	const propositions = graphSessionPropositions(deps, session).map((p) => {
-		const node = nodes.get(p.nodeId);
-		return { nodeId: p.nodeId, name: p.name, statement: node?.statement ?? null, aliases: node?.aliases ?? [] };
+		// graphSessionPropositions lists these same nodes, so the lookup hits.
+		const node = nodes.get(p.nodeId)!;
+		return { nodeId: p.nodeId, name: p.name, statement: node.statement, aliases: node.aliases };
 	});
 	return Response.json({
 		ok: true,
@@ -136,7 +132,9 @@ interface FindQuery extends CandidateProposition {
 const isStringArray = (v: unknown): v is string[] => Array.isArray(v) && v.every((s) => typeof s === "string");
 
 /** The find body's problems, or the queries. The boundary guard: the
- *  candidate search trusts its input. */
+ *  candidate search throws on a repeated id or a bad offset, and would
+ *  read a missing name or statement as text; this turns all of it into
+ *  a 400 that lists every problem. */
 function findQueries(body: unknown): { queries: FindQuery[] } | { problems: string[] } {
 	const raw = (typeof body === "object" && body !== null ? body : {}) as { propositions?: unknown };
 	if (!Array.isArray(raw.propositions) || raw.propositions.length === 0) {
@@ -183,7 +181,7 @@ function findQueries(body: unknown): { queries: FindQuery[] } | { problems: stri
  *  caller gets nextOffset where the in-process tool hands out a cursor. */
 export function findGraphCandidates(body: unknown): Response {
 	const parsed = findQueries(body);
-	if ("problems" in parsed) return fail(400, "bad_find", { problems: parsed.problems });
+	if ("problems" in parsed) return externalFailure(400, "bad_find", { problems: parsed.problems });
 	const search = createPropositionCandidateSearch(getGraph(stores.graphStore).nodes);
 	const requests: CandidateRequest[] = parsed.queries.map((q) => ({ id: q.id, hints: q.hints, offset: q.offset }));
 	const batch = propositionCandidateBatch(search, parsed.queries, requests);

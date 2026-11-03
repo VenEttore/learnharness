@@ -71,3 +71,29 @@ _Avoid_: Subagent, child bot
 **Takeover**:
 The learner taking control of the Bot Teacher's browser to use the lesson page, until they give control back. The Bot Teacher is paused while the learner has control.
 _Avoid_: Handoff (the code's name for the marker the end of the probe leaves), taking over (for a Bot Teacher resuming a lesson)
+
+## Knowledge graph
+
+**Knowledge graph**:
+The one store of what the learner has been taught, shared by every lesson. LearnHarness's extractor and auditor decide what goes in, and plain code writes it.
+_Avoid_: Graph data, memory
+
+**Proposition**:
+One self-contained idea in the knowledge graph, with a short name and a full statement. The guide calls it a fact.
+_Avoid_: Node (the code's name for its stored record), concept
+
+**Session**:
+A lesson or imported notes file that added propositions to the knowledge graph. A proposition belongs to the session it was first learned in.
+_Avoid_: Cluster (the drawn group of a session's propositions), source
+
+**Extraction view**:
+A lesson's teacher text that is not in the knowledge graph yet, in batches, each passage labelled with its message id: what the extractor reads.
+_Avoid_: Transcript (the whole lesson), prose view
+
+**Digest**:
+The propositions and chains a lesson has already added to the knowledge graph, listed for the extractor before its next batch.
+_Avoid_: Summary
+
+**Candidate**:
+A proposition already in the knowledge graph that looks like a new one, found by word overlap. Deciding whether the two are the same idea is the auditor's job.
+_Avoid_: Match, duplicate

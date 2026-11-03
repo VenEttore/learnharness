@@ -200,9 +200,15 @@ describe("extract-view is the extractor's view", () => {
 		assert.deepEqual(await extractView("nope"), { status: 404, body: { ok: false, code: "not_found" } });
 	});
 
-	it("refuses a browser origin", async () => {
-		const res = await extractViewRoute.GET(new Request("http://test/x", { headers: { origin: "http://evil.example" } }), ctx("x"));
-		assert.equal(res.status, 403);
+	it("every read refuses a browser origin", async () => {
+		const origin = { origin: "http://evil.example" };
+		const replies = [
+			await extractViewRoute.GET(new Request("http://test/x", { headers: origin }), ctx("x")),
+			await sessionsRoute.GET(new Request("http://test/x", { headers: origin })),
+			await propositionsRoute.GET(new Request("http://test/x", { headers: origin }), ctx("x")),
+			await findRoute.POST(post("http://test/x", { propositions: [{ id: "q", name: "x" }] }, origin)),
+		];
+		for (const res of replies) assert.deepEqual(await json(res), { status: 403, body: { ok: false, code: "forbidden_origin" } });
 	});
 });
 
@@ -275,7 +281,14 @@ describe("lh graph reads match the in-process tools", () => {
 		assert.ok(hintedHttp.body.candidates.some((c: Json) => c.id === "n_mat"));
 	});
 
-	it("graph find: a name alone is a query, and a bad body is refused at the door", async () => {
+	it("graph find: a name alone (what `lh graph find <query>` sends) matches the tool, and a bad body is refused at the door", async () => {
+		for (const name of ["Normal mode vim", "vector"]) {
+			const { body } = await find({ propositions: [{ id: "query", name }] });
+			const tool = prepareAuditorReview(graphDeps(), [{ id: "query", name, statement: "", aliases: [] }]).initialCandidates;
+			assert.deepEqual(body.candidates, tool.candidates, name);
+			assert.deepEqual(body.matches[0].candidateIds, tool.matches[0]!.candidateIds, name);
+			assert.equal(body.matches[0].nextOffset === null, tool.matches[0]!.nextCursor === null, name);
+		}
 		const { body } = await find({ propositions: [{ id: "query", name: "Normal mode vim" }] });
 		assert.equal(body.matches[0].candidateIds[0], "n_vim");
 		for (const bad of [null, {}, { propositions: [] }, { propositions: [{ id: "a" }] }, { propositions: [{ id: "a", name: "x" }, { id: "a", name: "y" }] },

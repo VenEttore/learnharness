@@ -154,6 +154,9 @@ function fail(status: number, code: string, extra: Record<string, unknown> = {})
 	return Response.json({ ok: false, code, ...extra }, { status });
 }
 
+/** The external routes' refusal reply, for the other fork routes (graph-reads.ts). */
+export { fail as externalFailure };
+
 function textOf(content: UserMessage["content"] | AssistantMessage["content"]): string {
 	if (typeof content === "string") return content;
 	return content.flatMap((b) => (b.type === "text" ? [b.text] : [])).join("\n");
@@ -225,7 +228,7 @@ function unreadByBot(record: ChatRecord, afterIndex = -1): LearnerItem[] {
 }
 
 /** The record, or the refusal for check 1 (exists and is bot-run). */
-function botLesson(id: string): ChatRecord | Response {
+export function botLesson(id: string): ChatRecord | Response {
 	const record = stores.chatStore.getChat(id);
 	if (!record) return fail(404, "not_found");
 	if (!isBotRun(record)) return fail(409, "not_bot_run");
