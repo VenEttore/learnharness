@@ -167,6 +167,50 @@ function exchangeTeaching(messages: readonly LhMessage[], end: number, failed: R
 	return null;
 }
 
+/** A displayed option with the number the learner replies with. */
+export type NumberedQuestionOption = QuizOption & { number: number };
+
+/** The dock's mode and the options as the card numbers them, for a parsed
+ *  input. The dock's rule, on the same input it reads (the parsed, not yet
+ *  normalized options): a quiz always selects; an ask selects only with
+ *  options. A text question has no options. */
+function numberedOptionsOf(
+	kind: QuestionKind,
+	toolCallId: string,
+	parsed: NonNullable<ReturnType<typeof parseQuizInput | typeof parseExplainInput | typeof parseAskInput>>,
+): { mode: QuestionMode; options: NumberedQuestionOption[] } {
+	const rawOptions = "options" in parsed ? (parsed.options as { label: string; value?: string; description?: string }[] | undefined) : undefined;
+	const multi = "multiSelect" in parsed && parsed.multiSelect === true;
+	const mode: QuestionMode =
+		kind === "quiz" ? (multi ? "multi-select" : "single-select")
+			: kind === "ask" && rawOptions?.length ? (multi ? "multi-select" : "single-select")
+				: "text";
+	if (mode === "text") return { mode, options: [] };
+	const options = displayedQuestionOptions(kind, toolCallId, normalizeOptions(rawOptions ?? []));
+	return { mode, options: options.map((o, i) => ({ ...o, number: i + 1 })) };
+}
+
+/** The open question's options as the card numbers them (fork,
+ *  external-teacher ticket 26), for `lh show` and `lh answer`: `number`,
+ *  `label` and `value`, plus an ask option's `description`. Empty for a
+ *  question without options (explain, recall, an ask without options) and
+ *  for an input that does not parse, which the card shows as malformed. */
+export function questionOptionNumbers(
+	tool: string,
+	toolCallId: string,
+	input: unknown,
+): NumberedQuestionOption[] {
+	const kind = toolQuestionKind(tool);
+	const parsed = kind === "quiz" ? parseQuizInput(input) : kind === "explain" ? parseExplainInput(input) : parseAskInput(input);
+	if (!parsed) return [];
+	return numberedOptionsOf(kind, toolCallId, parsed).options.map((o) => ({
+		number: o.number,
+		label: o.label,
+		value: o.value,
+		...(kind === "ask" && o.description ? { description: o.description } : {}),
+	}));
+}
+
 function buildQuestion(
 	tool: string,
 	toolCallId: string,
@@ -176,15 +220,7 @@ function buildQuestion(
 	const kind = toolQuestionKind(tool);
 	const parsed = kind === "quiz" ? parseQuizInput(input) : kind === "explain" ? parseExplainInput(input) : parseAskInput(input);
 	if (!parsed) return null;
-	const rawOptions = "options" in parsed ? (parsed.options as { label: string; value?: string; description?: string }[] | undefined) : undefined;
-	const options = displayedQuestionOptions(kind, toolCallId, normalizeOptions(rawOptions ?? []));
-	const multi = "multiSelect" in parsed && parsed.multiSelect === true;
-	// The dock's rule, on the same input it reads (the parsed, not yet
-	// normalized options): a quiz always selects; an ask selects only with options.
-	const mode: QuestionMode =
-		kind === "quiz" ? (multi ? "multi-select" : "single-select")
-			: kind === "ask" && rawOptions?.length ? (multi ? "multi-select" : "single-select")
-				: "text";
+	const { mode, options } = numberedOptionsOf(kind, toolCallId, parsed);
 	const role = kind === "quiz" ? normalizeQuizType((parsed as { type?: unknown }).type) : undefined;
 	return {
 		toolCallId,
@@ -195,8 +231,8 @@ function buildQuestion(
 		question: parsed.question,
 		...(parsed.details ? { details: parsed.details } : {}),
 		mode,
-		options: mode === "text" ? [] : options.map((o, i) => ({
-			number: i + 1,
+		options: options.map((o) => ({
+			number: o.number,
 			label: o.label,
 			...(kind === "ask" && o.description ? { description: o.description } : {}),
 		})),
