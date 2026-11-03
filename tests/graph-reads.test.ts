@@ -184,7 +184,7 @@ describe("extract-view is the extractor's view", () => {
 		assert.equal(body.batches[0].view, `# Bayes\n\nTEACHER [${saidId}] Bayes' rule turns P(B|A) into P(A|B) using the priors.`);
 		assert.equal(body.prompt, body.batches[0].view);
 		assert.ok(!body.prompt.includes("Teach me Bayes"), "learner text is not teacher text");
-		assert.deepEqual(body, { ok: true, lesson: id, ...extractViewOf(stores.chatStore.getChat(id)!) });
+		assert.deepEqual(body, { ok: true, lesson: id, cursor: saidId, ...extractViewOf(stores.chatStore.getChat(id)!) });
 
 		// A covered message drops out, as it does for the extractor.
 		const slot = coverageSlots(stores.chatStore.getChat(id)!.messages).find((s) => s.message.id === saidId)!;
@@ -292,7 +292,9 @@ describe("lh graph reads match the in-process tools", () => {
 		const { body } = await find({ propositions: [{ id: "query", name: "Normal mode vim" }] });
 		assert.equal(body.matches[0].candidateIds[0], "n_vim");
 		for (const bad of [null, {}, { propositions: [] }, { propositions: [{ id: "a" }] }, { propositions: [{ id: "a", name: "x" }, { id: "a", name: "y" }] },
-			{ propositions: [{ id: "a", name: "x", offset: -1 }] }, { propositions: [{ id: "a", name: "x", extra: 1 }] }, { propositions: [{ id: "a", name: "x", hints: [""] }] }]) {
+			{ propositions: [{ id: "a", name: "x", offset: -1 }] }, { propositions: [{ id: "a", name: "x", extra: 1 }] }, { propositions: [{ id: "a", name: "x", hints: [""] }] },
+			// offset and hints belong on each proposition; at the top they would be dropped
+			{ propositions: [{ id: "a", name: "x" }], offset: 5 }, { propositions: [{ id: "a", name: "x" }], hints: ["y"] }]) {
 			const res = await find(bad);
 			assert.equal(res.status, 400, JSON.stringify(bad));
 			assert.equal(res.body.code, "bad_find");

@@ -146,7 +146,7 @@ export function externalRequestRefusal(req: Request): Response | null {
  *  reply whose cursor passes learner input the bot has not read (a
  *  create, a repeat, bad_after, show) also carries those items, so
  *  adopting the cursor never skips them. */
-function cursorOf(record: ChatRecord): string {
+export function cursorOf(record: ChatRecord): string {
 	return record.messages.at(-1)?.id ?? record.id;
 }
 

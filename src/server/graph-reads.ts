@@ -13,7 +13,7 @@ import {
 import { FACTORY_SETTINGS } from "../core/settings.ts";
 import type { ChatRecord } from "../core/contracts.ts";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
-import { botLesson, externalFailure } from "./bot-run.ts";
+import { botLesson, cursorOf, externalFailure } from "./bot-run.ts";
 import { stores } from "./stores.ts";
 
 /**
@@ -80,7 +80,7 @@ export function extractViewOf(record: ChatRecord, chunkTokens: number = CHUNK_TO
 export function showExtractView(id: string): Response {
 	const record = botLesson(id);
 	if (record instanceof Response) return record;
-	return Response.json({ ok: true, lesson: id, ...extractViewOf(record) });
+	return Response.json({ ok: true, lesson: id, cursor: cursorOf(record), ...extractViewOf(record) });
 }
 
 const graphDeps = () => ({ chatStore: stores.chatStore, graphStore: stores.graphStore });
@@ -141,6 +141,7 @@ function findQueries(body: unknown): { queries: FindQuery[] } | { problems: stri
 		return { problems: ["propositions must be a non-empty array of { id, name, statement?, aliases?, hints?, offset? }"] };
 	}
 	const problems: string[] = [];
+	for (const key of Object.keys(raw)) if (key !== "propositions") problems.push(`${key} is not a field; set offset and hints on each proposition`);
 	const queries: FindQuery[] = [];
 	const seen = new Set<string>();
 	raw.propositions.forEach((item: unknown, i) => {
