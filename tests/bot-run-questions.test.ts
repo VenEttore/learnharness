@@ -234,6 +234,16 @@ describe("refusals save nothing", () => {
 		assert.equal(res.status, 422);
 		assert.deepEqual(res.body.problems, ["options needs at least 2 items, not 1"]);
 		assert.ok(!JSON.stringify(res.body).includes("Received arguments"));
+		// An optional null gets the route's own wording, alone or beside
+		// another schema failure.
+		for (const [body, problems] of [
+			[{ ...PROBE, details: null }, ["details must not be null; leave it out"]],
+			[{ ...PROBE, details: null, options: [{ label: "Only one", value: "pa" }] }, ["options needs at least 2 items, not 1", "details must not be null; leave it out"]],
+		] as const) {
+			const nulled = await turn(probing.id, { kind: "probe", after: probing.cursor, ...body });
+			assert.equal(nulled.status, 422);
+			assert.deepEqual([...nulled.body.problems].sort(), [...problems].sort());
+		}
 	});
 
 	it("refuses a type field on probe or recall, which the dock could not read", async () => {

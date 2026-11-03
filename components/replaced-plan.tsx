@@ -28,11 +28,12 @@ export function latestPlanBlockId(messages: readonly ViewMessage[]): string | nu
 
 /** A plan block, marked when a later plan replaced it. */
 export function ReplacedPlan({ replaced, children }: { replaced: boolean; children: ReactNode }) {
-	if (!replaced) return <>{children}</>;
+	// One element shape either way, so a block that becomes replaced keeps
+	// its state (React would remount it under a new wrapper type).
 	return (
-		<div data-testid="plan-block-replaced">
-			<div className="mb-1 text-xs text-muted-foreground">Replaced by a later plan</div>
-			<div className="opacity-50">{children}</div>
+		<div data-testid={replaced ? "plan-block-replaced" : undefined}>
+			{replaced && <div className="mb-1 text-xs text-muted-foreground">Replaced by a later plan</div>}
+			<div className={replaced ? "opacity-50" : undefined}>{children}</div>
 		</div>
 	);
 }

@@ -138,16 +138,28 @@ function latestTeaching(messages: readonly LhMessage[], end: number, failed: Rea
 	return null;
 }
 
+/** Question calls the learner answered or skipped: a result that is not
+ *  an error. A call the tool refused (an error result) or one from an
+ *  aborted generation (no result) never reached the learner. */
+function answeredQuestionCalls(messages: readonly LhMessage[]): Set<string> {
+	const out = new Set<string>();
+	for (const m of messages) {
+		if (m.role === "toolResult" && !m.isError && (QUESTION_TOOLS as readonly string[]).includes(m.toolName)) out.add(m.toolCallId);
+	}
+	return out;
+}
+
 /** The latest teaching before message `end` that no answered question
  *  separates from it: this exchange's teaching, or null. */
 function exchangeTeaching(messages: readonly LhMessage[], end: number, failed: ReadonlySet<string>): string | null {
+	const answered = answeredQuestionCalls(messages);
 	for (let i = end - 1; i >= 0; i--) {
 		const m = messages[i]!;
 		if (m.role !== "assistant") continue;
 		const content = (m as AssistantMessage).content;
-		const lastCall = content.findLastIndex(isQuestionCall);
-		const text = joined(userFacingTextOf(content.slice(lastCall + 1), failed));
-		if (text || lastCall >= 0) return text;
+		const lastAnswered = content.findLastIndex((b) => isQuestionCall(b) && answered.has((b as { id: string }).id));
+		const text = joined(userFacingTextOf(content.slice(lastAnswered + 1), failed));
+		if (text || lastAnswered >= 0) return text;
 	}
 	return null;
 }
@@ -196,18 +208,20 @@ function buildQuestion(
 function leadInAt(message: AssistantMessage, contentIndex: number, failed: ReadonlySet<string>) {
 	const before = message.content.slice(0, contentIndex);
 	const previousCall = before.findLastIndex(isQuestionCall);
-	return { before, previousCall, leadIn: joined(userFacingTextOf(before.slice(previousCall + 1), failed)) };
+	const texts = userFacingTextOf(before.slice(previousCall + 1), failed);
+	return { before, previousCall, texts, leadIn: joined(texts) };
 }
 
-/** The open question's lead-in as the card shows it, or null for none.
- *  `toolCallId` names the question the caller means; a different open
- *  question gives null. */
+/** The open question's lead-in as stored (not trimmed, so an indented
+ *  code block keeps its indent), or null for none. `toolCallId` names the
+ *  question the caller means; a different open question gives null. */
 export function openQuestionLeadIn(messages: readonly LhMessage[], toolCallId: string): string | null {
 	const pending = pendingQuestionOf(messages);
 	if (!pending || pending.toolCallId !== toolCallId) return null;
 	const message = messages.find((m) => m.id === pending.messageId);
 	if (!message || message.role !== "assistant") return null;
-	return leadInAt(message as AssistantMessage, pending.contentIndex, failedOutputCallIds(messages)).leadIn;
+	const { texts } = leadInAt(message as AssistantMessage, pending.contentIndex, failedOutputCallIds(messages));
+	return texts.length > 0 ? texts.join("\n\n") : null;
 }
 
 export function questionCardOf(messages: readonly LhMessage[]): QuestionCard {
@@ -230,8 +244,10 @@ export function questionCardOf(messages: readonly LhMessage[]): QuestionCard {
 	// belongs to an older exchange: the lead-in is the latest teaching, and
 	// the question box already shows it. Without one, the latest teaching
 	// is shown wherever it sits.
+	// An earlier question in the open one's own message already separates
+	// it from older messages, so only that message's text is this exchange.
 	const teaching = sameMessageTeaching
-		?? exchangeTeaching(messages, at, failed)
+		?? (previousCall >= 0 ? null : exchangeTeaching(messages, at, failed))
 		?? (leadIn ? null : latestTeaching(messages, at, failed));
 	return {
 		phase,

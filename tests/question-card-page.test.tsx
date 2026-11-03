@@ -263,6 +263,7 @@ describe("question card page", () => {
 		});
 
 		const text = (t: string) => ({ type: "text", text: t });
+		const refused = (cid: string) => ({ id: mid(), role: "toolResult", toolCallId: cid, toolName: "probe", content: [{ type: "text", text: "correctAnswer does not match any option value" }], details: null, isError: true, timestamp: Date.now() });
 		for (const [name, open, records, teaching, leadIn] of [
 			["text after an answered question is the teaching, not the text before it", true, [
 				asst([text("T1 earlier."), probe("call_s1", "Q-A?"), text("T2 newest.")]),
@@ -273,6 +274,22 @@ describe("question card page", () => {
 				asst([text("T1 earlier."), probe("call_s3", "Q-C?"), text("T2 newest.")]),
 				answered("call_s3", "Q-C?"),
 			], "T2 newest.", null],
+			["an answered question earlier in the open one's message separates older messages from its lead-in", true, [
+				asst([text("OLD older message.")]),
+				asst([probe("call_s7", "Q-G?"), text("NEW lead-in."), probe("call_s8", "Q-H?")]),
+				answered("call_s7", "Q-G?"),
+			], undefined, "NEW lead-in."],
+			["a question call the tool refused is not an answered question", true, [
+				asst([text("TEACH halvings.")]),
+				asst([probe("call_s9", "Q-I?")]),
+				refused("call_s9"),
+				asst([text("Fixed the answer key."), probe("call_s10", "Q-J?")]),
+			], "TEACH halvings.", "Fixed the answer key."],
+			["a question call from an aborted generation is not an answered question", true, [
+				asst([text("TEACH halvings again.")]),
+				{ ...asst([probe("call_s11", "Q-K?")]), stopReason: "aborted" },
+				asst([text("Picking up where we left off."), probe("call_s12", "Q-L?")]),
+			], "TEACH halvings again.", "Picking up where we left off."],
 			["two answered questions in the open one's message: only the segment before its lead-in", true, [
 				asst([text("T0 intro."), probe("call_s4", "Q-D?"), text("T1 middle."), probe("call_s5", "Q-E?"), text("T2 lead-in."), probe("call_s6", "Q-F?")]),
 				answered("call_s4", "Q-D?"),

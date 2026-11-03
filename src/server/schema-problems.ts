@@ -9,7 +9,8 @@
  *
  * The walk covers the keywords the turn kinds' schemas use (type,
  * properties, required, items, minItems, maxItems, minLength, const,
- * anyOf). pi still decides validity; this only words a failure it found.
+ * anyOf). An optional field sent as null gets the route's own wording,
+ * "must not be null; leave it out". pi still decides validity; this only words a failure it found.
  * When the walk finds nothing to say, pi's own error lines are kept,
  * without the payload echo.
  */
@@ -79,8 +80,13 @@ export function schemaProblems(schema: unknown, value: unknown, path = ""): stri
 	if (s.type === "object" && jsonType(value) === "object") {
 		const object = value as Record<string, unknown>;
 		const missing = (s.required ?? []).filter((k) => !Object.hasOwn(object, k)).map((k) => `${at(path, k)} is required`);
+		const required = new Set(s.required ?? []);
+		// pi drops an optional null before it checks; the route refuses it
+		// in conversionProblems' words, used here too.
 		const inner = Object.entries(s.properties ?? {}).flatMap(([k, sub]) =>
-			Object.hasOwn(object, k) ? schemaProblems(sub, object[k], at(path, k)) : [],
+			!Object.hasOwn(object, k) ? []
+				: object[k] === null && !required.has(k) ? [`${at(path, k)} must not be null; leave it out`]
+					: schemaProblems(sub, object[k], at(path, k)),
 		);
 		return [...missing, ...inner];
 	}

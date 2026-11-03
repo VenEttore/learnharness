@@ -389,4 +389,14 @@ describe("show", () => {
 		const read = await answer(id);
 		assert.deepEqual(read.body.openQuestion, body.openQuestion);
 	});
+
+	it("keeps a lead-in's leading indent in openQuestion.text, as in the message's own text", async () => {
+		const lesson = await create({ title: "Indent", key: newKey() });
+		const id = lesson.body.id;
+		const asked = await turn(id, { kind: "ask", after: lesson.body.cursor, text: "    x = 1\n    y = 2", question: "Which?", options: [{ label: "A" }, { label: "B" }] });
+		assert.equal(asked.status, 200);
+		const { body } = await show(id);
+		assert.equal(body.openQuestion.text, "    x = 1\n    y = 2");
+		assert.equal(body.openQuestion.text, body.messages.at(-1).text);
+	});
 });
