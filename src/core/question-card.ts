@@ -167,6 +167,14 @@ function exchangeTeaching(messages: readonly LhMessage[], end: number, failed: R
 	return null;
 }
 
+type ParsedQuestionInput = NonNullable<ReturnType<typeof parsedQuestionInput>>;
+
+/** The question's input, parsed for its kind as the card reads it; null
+ *  when it does not parse (the card's "arrived malformed" case). */
+function parsedQuestionInput(kind: QuestionKind, input: unknown) {
+	return kind === "quiz" ? parseQuizInput(input) : kind === "explain" ? parseExplainInput(input) : parseAskInput(input);
+}
+
 /** A displayed option with the number the learner replies with. */
 export type NumberedQuestionOption = QuizOption & { number: number };
 
@@ -178,7 +186,7 @@ export type NumberedQuestionOption = QuizOption & { number: number };
 function numberedOptionsOf(
 	kind: QuestionKind,
 	toolCallId: string,
-	parsed: NonNullable<ReturnType<typeof parseQuizInput | typeof parseExplainInput | typeof parseAskInput>>,
+	parsed: ParsedQuestionInput,
 ): { mode: QuestionMode; options: NumberedQuestionOption[] } {
 	const rawOptions = "options" in parsed ? (parsed.options as { label: string; value?: string; description?: string }[] | undefined) : undefined;
 	const multi = "multiSelect" in parsed && parsed.multiSelect === true;
@@ -211,7 +219,7 @@ export function numberedQuestionOptions(
 	input: unknown,
 ): NumberedQuestionOption[] {
 	const kind = toolQuestionKind(tool);
-	const parsed = kind === "quiz" ? parseQuizInput(input) : kind === "explain" ? parseExplainInput(input) : parseAskInput(input);
+	const parsed = parsedQuestionInput(kind, input);
 	if (!parsed) return [];
 	return numberedOptionsOf(kind, toolCallId, parsed).options;
 }
@@ -223,7 +231,7 @@ function buildQuestion(
 	leadIn: string | null,
 ): QuestionCardQuestion | null {
 	const kind = toolQuestionKind(tool);
-	const parsed = kind === "quiz" ? parseQuizInput(input) : kind === "explain" ? parseExplainInput(input) : parseAskInput(input);
+	const parsed = parsedQuestionInput(kind, input);
 	if (!parsed) return null;
 	const { mode, options } = numberedOptionsOf(kind, toolCallId, parsed);
 	const role = kind === "quiz" ? normalizeQuizType((parsed as { type?: unknown }).type) : undefined;
