@@ -391,3 +391,93 @@ describe("lh submit", () => {
 		assert.equal(noAfter.json.code, "usage");
 	});
 });
+
+/** External-teacher ticket 26: `lh show` and `lh answer` report the open
+ *  question's options as the card numbers them, so a bot never needs the
+ *  card to learn the order. */
+describe("openQuestion.options", () => {
+	const QUIZ = {
+		type: "predict",
+		nodeId: "halving",
+		question: "You compare the target with the middle of 16 sorted items and it is smaller. How many items can still hold the target?",
+		options: [
+			{ label: "7 or 8", value: "half" },
+			{ label: "15", value: "all-but-one" },
+			{ label: "16", value: "all" },
+			{ label: "1", value: "one" },
+			{ label: "0", value: "none" },
+		],
+		explanation: "Everything from the middle up is larger, so only the lower half is left.",
+		correctAnswer: "half",
+	};
+
+	/** A lesson in the plan phase with QUIZ asked as its first teaching question. */
+	async function quizAsked(): Promise<{ id: string; cursor: string }> {
+		const created = await lh(["lesson", "new", "--title", "Quiz", "--key", `submit-${++keys}`]);
+		const done = await lh(["probe-done", created.json.id, "--after", created.json.cursor], JSON.stringify({ assessment: { strands: [{ strand: "search", assessment: "Knows linear search." }], summary: "Start from halving." } }));
+		assert.equal(done.code, 0, JSON.stringify(done.json));
+		const plan = await lh(["plan", created.json.id, "--after", done.json.cursor], "graph TD\n  halving[Halving] --> logn[log n]");
+		assert.equal(plan.code, 0, JSON.stringify(plan.json));
+		const quiz = await lh(["quiz", created.json.id, "--after", plan.json.cursor], JSON.stringify(QUIZ));
+		assert.equal(quiz.code, 0, JSON.stringify(quiz.json));
+		return { id: created.json.id, cursor: quiz.json.cursor };
+	}
+
+	/** show and answer report the same options, numbered as the card numbers them. */
+	async function reported(id: string): Promise<Json[]> {
+		const shown = await lh(["show", id]);
+		const read = await lh(["answer", id]);
+		assert.equal(shown.code, 0, JSON.stringify(shown.json));
+		assert.deepEqual(read.json.openQuestion, shown.json.openQuestion);
+		return shown.json.openQuestion.options;
+	}
+
+	/** For each card number, on a fresh lesson (each call id has its own
+	 *  shuffle): the options lh reports are the card's, numbered 1..n, and
+	 *  submitting that number saves the option lh reported behind it. */
+	async function matchesCardAndSubmit(tool: string, authored: { label: string; value: string }[], ask: () => Promise<{ id: string; cursor: string }>) {
+		const orders: string[][] = [];
+		for (let number = 1; number <= authored.length; number++) {
+			const lesson = await ask();
+			const options = await reported(lesson.id);
+			const card = questionCardOf(chatStore.getChat(lesson.id)!.messages).question!;
+			assert.equal(card.tool, tool);
+			assert.deepEqual(options.map((o) => ({ number: o.number, label: o.label })), card.options.map((o) => ({ number: o.number, label: o.label })));
+			assert.deepEqual(options.map((o) => o.number), authored.map((_, i) => i + 1));
+			assert.deepEqual(new Set(options.map((o) => `${o.label}=${o.value}`)), new Set(authored.map((o) => `${o.label}=${o.value}`)));
+			orders.push(options.map((o) => o.value));
+			const picked = options[number - 1]!;
+			const res = await lh(["submit", lesson.id, "--after", lesson.cursor], JSON.stringify({ picks: [number], confidence: 50 }));
+			assert.equal(res.code, 0, JSON.stringify(res.json));
+			assert.deepEqual(storedAnswers(lesson.id).at(-1)!.answers, [{ index: number, label: picked.label, value: picked.value }]);
+		}
+		assert.ok(orders.some((order) => order.join() !== authored.map((o) => o.value).join()), "shuffled: some lesson's order is not the authored one");
+	}
+
+	it("a shuffled probe: lh's numbers are the card's, and lh submit saves the option behind each", async () => {
+		await matchesCardAndSubmit("probe", PROBE.options, () => asked("probe", PROBE));
+	});
+
+	it("a shuffled quiz: lh's numbers are the card's, and lh submit saves the option behind each", async () => {
+		await matchesCardAndSubmit("quiz", QUIZ.options, quizAsked);
+	});
+
+	it("an ask keeps its authored order and its descriptions", async () => {
+		const input = { ...ASK, options: [ASK.options[0]!, { ...ASK.options[1]!, description: "Practice under time" }, ASK.options[2]!] };
+		const { id } = await asked("ask", input);
+		const options = await reported(id);
+		assert.deepEqual(options, [
+			{ number: 1, label: "Intuition", value: "intuition" },
+			{ number: 2, label: "Exam prep", value: "exam", description: "Practice under time" },
+			{ number: 3, label: "Both", value: "both" },
+		]);
+		assert.deepEqual(options.map((o) => o.number), questionCardOf(chatStore.getChat(id)!.messages).question!.options.map((o) => o.number));
+	});
+
+	it("a question without options reports an empty list", async () => {
+		const recall = await asked("recall", RECALL);
+		assert.deepEqual(await reported(recall.id), []);
+		const typed = await asked("ask", { question: "What do you already know?" });
+		assert.deepEqual(await reported(typed.id), []);
+	});
+});

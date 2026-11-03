@@ -374,7 +374,7 @@ describe("show", () => {
 		commitBotRun(id, [asked]);
 		const { body } = await show(id);
 		assert.deepEqual(body.messages, [{ id: asked.id, role: "assistant", text: "", calls: [{ toolCallId: "call_ask_1", tool: "ask_user_question", input }] }]);
-		assert.deepEqual(body.openQuestion, { toolCallId: "call_ask_1", tool: "ask_user_question", text: "", input });
+		assert.deepEqual(body.openQuestion, { toolCallId: "call_ask_1", tool: "ask_user_question", text: "", input, options: [{ number: 1, label: "A", value: "A" }, { number: 2, label: "B", value: "B" }] });
 	});
 
 	it("reports the open question's lead-in text, in show and in answer", async () => {

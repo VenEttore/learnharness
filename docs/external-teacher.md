@@ -37,6 +37,16 @@ The examples assume the repo is at `/workspace/learnharness`. Use your own path 
 
 5. Check it is up: `lh show no-such-lesson`. A LearnHarness in browser mode prints exactly `{"ok":false,"code":"not_found"}` and exits 1. Any other reply on exit 1 is not a pass: it comes from another program on the port or from a LearnHarness in desktop mode (section 2). Exit 3 means it is not reachable yet. The first start compiles for a while, so read `/workspace/lh-server.log` and try again. While it compiles, the lesson page's sidebar can show "Loading..." or "Compiling...". That is normal; do not restart the server for it. Then run `grep -E 'Local: +http://127\.0\.0\.1:3000' /workspace/lh-server.log`. It should find a line, a first sign the server is yours. Use your port in the pattern if you changed it. The lesson file in section 3 is the proof.
 
+**Updating.** To take a newer LearnHarness, stop the server (the process you started in step 4), then:
+
+```bash
+cd /workspace/learnharness
+git fetch origin && git checkout main && git reset --hard origin/main
+npm ci
+```
+
+On a production build, run `npm run build` again before `npx next start`; without it, `next start` keeps serving the old build. Then start the server again as in step 4. `git reset --hard` drops any change you made in the repo; lessons in `LH_DATA_DIR` are outside it and stay. A clone made with `--single-branch` or `--depth` fetches only one branch, so `git checkout main` can fail or stay old. `git remote set-branches origin '*'`, then the fetch again, fixes it.
+
 `lh` talks to `LH_URL`, default `http://127.0.0.1:3000`. Use the IP, not `localhost`, which can resolve to the IPv6 address while the server listens on 127.0.0.1 only. To use another port, change `-p` and set `LH_URL` to match, for example `-p 3001` and `LH_URL=http://127.0.0.1:3001`.
 
 ## 2. How `lh` replies
@@ -219,12 +229,16 @@ lh answer "$L" --wait --timeout 300
 A learner on a phone can still reach the lesson page through Take over, but driving your desktop from a phone is slow. The convenient path is your own chat:
 
 1. Post the question with `lh` as usual.
-2. Open the question card, `http://127.0.0.1:3000/chat/<lesson id>/card` (your port if you changed it), in your browser. It shows the latest teaching before the open question, the question's lead-in, and its options numbered in the order the lesson page shows them, with math rendered as the page renders it. Read the option order from it every time, because you number the options by it.
-3. Ask in a chat widget, with the question and its options as text in that order (math converted as in "Math in chat" below). Send a screenshot of the card only when the question holds something chat text and the widget cannot show, such as a diagram, a table or laid-out code. A plain-text question gets no screenshot. Only your main chat agent can raise a widget; workers and routine runs cannot, so ask yourself. Collect everything in one widget: the pick (or picks), and for a `probe` or `quiz` the confidence and the learner's reasoning. Turn on the widget's free-text input (`allowCustom`) so the learner can type their pick and their reasoning in one place; they may also send the reasoning as a chat message. The reasoning is optional and goes in `thinking`. List only the card's numbered options, and add no typed-answer option of your own: for an `ask`, the free-text input stands in for the card's "Other". Text typed in place of a pick on an `ask` goes in `other`; text typed beside a pick goes in `thinking`. Offer the page's confidence values, 0, 30, 50, 70, 90 and 100, and "I don't know" as an extra option. For `recall` and `explain`, collect the typed answer.
+2. Run `lh show "$L"` and read `openQuestion.options`: the options as the card numbers them, in the order the lesson page shows them, each with `number`, `label` and `value` (and an `ask` option's `description`). Number the options in chat by it, and show each option's `label`, never its `value` (a `value` can give the answer away). A question with options is multi-select when `openQuestion.input.multiSelect` is `true`. `options` is `[]` for a question without options (`recall`, `explain`, an `ask` without options). You do not need the card to learn the order.
+3. Ask in a chat widget. Send the lead-in, the question, its options as text in `openQuestion.options` order (math converted as in "Math in chat" below) and the widget together, in one message, so nothing arrives after the question. Only when the question holds something chat text and the widget cannot show, such as a diagram, a table or laid-out code, open the question card, `http://127.0.0.1:3000/chat/<lesson id>/card` (your port if you changed it), and put its screenshot in that same message, before the widget. For any other question, leave the card closed and send no screenshot. Only your main chat agent can raise a widget; workers and routine runs cannot, so ask yourself.
+   - Collect the pick (or picks) and, for a `probe` or `quiz`, the confidence. List only the numbered options, and add no typed-answer option of your own: for an `ask`, the free-text input stands in for the card's "Other". For a `probe` or `quiz`, offer the page's confidence values, 0, 30, 50, 70, 90 and 100, and "I don't know" as an extra option.
+   - "I don't know" ends the question: ask no confidence after it. If your widget cannot skip its confidence step for "I don't know", ask only the pick in the first widget, and ask the confidence in a second widget sent only after a real pick.
+   - Invite reasoning on every question with options: turn on the widget's free-text input (`allowCustom`) with a short hint such as "Optional: add why". The learner can type their pick and their reasoning there, or send the reasoning as a chat message. The reasoning goes in `thinking`. On an `ask`, the learner's own answer goes in `other`: text typed in place of a pick, or, on a multi-select `ask`, an extra answer typed beside picks. A reason for their pick goes in `thinking`. A single-select `ask` takes a pick or `other`, never both: if the learner picks and also types an answer of their own, ask which one they mean.
+   - For `recall`, `explain` and an `ask` without options (`options` is `[]`), collect the typed answer; it goes in `text`, whatever `multiSelect` says.
 4. Never say or hint whether a pick is right before its confidence is in. The learner wants it that way, and the confidence only counts when it comes first.
-5. Save it with `lh submit`, then grade from the answer item its reply carries.
+5. Save it with `lh submit`, silently: don't announce the save ("Got pick 2 at 70, saving"). Then grade from the answer item its reply carries.
 
-Picks are option numbers, read and sent by number, not by label: the number the learner saw, in the card's order. `probe` and `quiz` options are shuffled, and `lh show` returns your authored order, so never number options from `lh show`. `ask` options keep your order.
+Picks are option numbers, read and sent by number, not by label: the number the learner saw, which is `number` in `openQuestion.options`. `probe` and `quiz` options are shuffled, and `openQuestion.input` and the question's call in `messages` keep your authored order, so never number options from those. `ask` options keep your order.
 
 ```bash
 lh submit "$L" --after "$C" <<'EOF'
@@ -234,7 +248,7 @@ EOF
 
 | field | for | meaning |
 |---|---|---|
-| `picks` | `probe`, `quiz`, `ask` with options | option numbers from the card, counted from 1; one pick unless the question is multi-select |
+| `picks` | `probe`, `quiz`, `ask` with options | option numbers from `openQuestion.options` (the card's numbers), counted from 1; one pick unless the question is multi-select |
 | `confidence` | `probe`, `quiz` | required with a pick: 0, 30, 50, 70, 90 or 100 |
 | `dontKnow` | `probe`, `quiz` | `true` for "I don't know"; no picks and no confidence |
 | `thinking` | any question with options | the learner's reasoning, optional |
@@ -295,7 +309,7 @@ LearnHarness runs its checks before it saves anything, so a refused turn adds no
 
 **A lost reply.** If a turn's reply never arrives (a timeout, a crash), run `lh show "$L"` before you resend. If your turn is in `messages`, take the cursor from that reply and carry on. If not, resend the same turn with the same `--after`. When the first send did land, the resend returns `{"ok":true,"repeat":true,...}` and saves nothing. Resend the exact same content, because a reworded `say` counts as a new turn.
 
-**Resuming a lesson.** `lh show "$L"` returns `phase`, `plan`, `openQuestion` (the open question's `toolCallId`, `tool`, lead-in `text`, which is `""` when there is none, and `input`; or `null`), every message (questions keep their `toolCallId`), any unread `items`, and the `cursor`. That is enough to pick up after losing your memory, or to continue a lesson that an earlier Bot Teacher started and then stopped.
+**Resuming a lesson.** The lesson's state lives in LearnHarness, not in your notes. `lh show "$L"` returns `phase`, `plan`, `openQuestion` (the open question's `toolCallId`, `tool`, lead-in `text`, which is `""` when there is none, `input`, and `options` numbered as the card numbers them, `[]` without options; or `null`), every message (questions keep their `toolCallId`), any unread `items`, and the `cursor`. That is enough to pick up after losing your memory, or to continue a lesson that an earlier Bot Teacher started and then stopped. To resume, run `lh show` with the lesson id; to start fresh, create a new lesson. Any notes you keep name the lesson id and the date, so an old notes file never looks like a lesson to resume.
 
 **Only you write.** You are the only one who creates the lesson and sends turns. If you start workers, they research or draft and report back to you, and you send the turns. A worker may run `lh show` and `lh answer`, which only read. Two writers would interleave turns.
 

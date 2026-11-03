@@ -19,7 +19,7 @@ import { ChatInputError, inputAppends, isQuestionTool, type TurnInput } from "..
 import { danglingQuestionOf, newHandoffMessage, newMessageId, newUserMessage, type LhMessage } from "../core/native-messages.ts";
 import { phaseAt3Lh, type Phase3 } from "../core/phases.ts";
 import { planBlocksFor } from "../core/plan-blocks.ts";
-import { openQuestionLeadIn } from "../core/question-card.ts";
+import { openQuestionLeadIn, numberedQuestionOptions, type NumberedQuestionOption } from "../core/question-card.ts";
 import { createTree, PlanTreeError } from "../core/plan-tree.ts";
 import {
 	askInputSchema,
@@ -305,11 +305,19 @@ function latestPlan(messages: readonly LhMessage[]): PlanTree | null {
 }
 
 /** The open question as show and answer report it: its call id, tool,
- *  lead-in `text` ("" for none, as a message's `text`) and input. */
-function openQuestionOf(messages: readonly LhMessage[]): { toolCallId: string; tool: string; text: string; input: unknown } | null {
+ *  lead-in `text` ("" for none, as a message's `text`), input, and
+ *  `options` numbered as the card and `lh submit` number them ([] for a
+ *  question without options). */
+function openQuestionOf(messages: readonly LhMessage[]): { toolCallId: string; tool: string; text: string; input: unknown; options: NumberedQuestionOption[] } | null {
 	const open = danglingQuestionOf(messages);
 	if (!open) return null;
-	return { toolCallId: open.toolCallId, tool: open.tool, text: openQuestionLeadIn(messages, open.toolCallId) ?? "", input: open.input };
+	return {
+		toolCallId: open.toolCallId,
+		tool: open.tool,
+		text: openQuestionLeadIn(messages, open.toolCallId) ?? "",
+		input: open.input,
+		options: numberedQuestionOptions(open.tool, open.toolCallId, open.input),
+	};
 }
 
 /** Show: the whole lesson, for a bot resuming a lesson, its own or one
