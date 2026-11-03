@@ -236,6 +236,15 @@ describe("question card page", () => {
 		assert.doesNotMatch(byTestId(doc, "question-card")?.textContent ?? "", /Old teaching/);
 	});
 
+	it("an indented lead-in keeps its indent, so it renders as code as on the lesson page", async () => {
+		const { id, cursor } = await lesson();
+		await turn(id, { kind: "ask", after: cursor, text: "    x = 1\n    y = 2", question: "What is x?", options: [{ label: "1" }, { label: "2" }] });
+		const doc = await card(id);
+		const leadIn = byTestId(doc, "card-lead-in");
+		assert.ok(leadIn?.querySelector("pre"), leadIn?.innerHTML);
+		assert.match(leadIn?.textContent ?? "", /x = 1\s*y = 2/);
+	});
+
 	describe("ordinary lesson record shapes", () => {
 		let n = 0;
 		const mid = () => `msg_card_shape_${++n}`;
@@ -279,6 +288,18 @@ describe("question card page", () => {
 				asst([probe("call_s7", "Q-G?"), text("NEW lead-in."), probe("call_s8", "Q-H?")]),
 				answered("call_s7", "Q-G?"),
 			], undefined, "NEW lead-in."],
+			["with no lead-in, an answered question earlier in its own message leaves the latest teaching shown", true, [
+				asst([text("OLD older message.")]),
+				user("ok"),
+				asst([probe("call_s13", "Q-M?"), probe("call_s14", "Q-N?")]),
+				answered("call_s13", "Q-M?"),
+			], "OLD older message.", null],
+			["a refused question earlier in the open one's message does not separate older teaching", true, [
+				asst([text("TEACH dividing by two.")]),
+				user("ok"),
+				asst([probe("call_s15", "Q-O?"), text("So:"), probe("call_s16", "Q-P?")]),
+				refused("call_s15"),
+			], "TEACH dividing by two.", "So:"],
 			["a question call the tool refused is not an answered question", true, [
 				asst([text("TEACH halvings.")]),
 				asst([probe("call_s9", "Q-I?")]),

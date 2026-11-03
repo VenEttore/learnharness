@@ -234,6 +234,9 @@ describe("refusals save nothing", () => {
 		assert.equal(res.status, 422);
 		assert.deepEqual(res.body.problems, ["options needs at least 2 items, not 1"]);
 		assert.ok(!JSON.stringify(res.body).includes("Received arguments"));
+		const noStrands = await turn(probing.id, { kind: "probe-done", after: probing.cursor, assessment: { strands: [], summary: "Start at the start." } });
+		assert.equal(noStrands.status, 422);
+		assert.deepEqual(noStrands.body.problems, ["assessment.strands needs at least 1 item, not 0"]);
 		// An optional null gets the route's own wording, alone or beside
 		// another schema failure.
 		for (const [body, problems] of [

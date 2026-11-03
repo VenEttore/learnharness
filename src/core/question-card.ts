@@ -102,9 +102,12 @@ function latestPlanTree(messages: readonly LhMessage[]): PlanTree | null {
 	return null;
 }
 
+/** The texts as one Markdown block, or null when blank. Only the end is
+ *  trimmed: a leading indent can be an indented code block, which the
+ *  lesson page renders as code. */
 function joined(texts: string[]): string | null {
-	const text = texts.join("\n\n").trim();
-	return text ? text : null;
+	const text = texts.join("\n\n");
+	return text.trim() ? text.trimEnd() : null;
 }
 
 const isQuestionCall = (b: AssistantMessage["content"][number]) =>
@@ -205,11 +208,12 @@ function buildQuestion(
 /** The lead-in is the text right before the open call, after any earlier
  *  question call in the same message (parallel questions each keep their
  *  own). Text before that earlier call is the latest teaching. */
-function leadInAt(message: AssistantMessage, contentIndex: number, failed: ReadonlySet<string>) {
+function leadInAt(message: AssistantMessage, contentIndex: number, failed: ReadonlySet<string>, answered: ReadonlySet<string>) {
 	const before = message.content.slice(0, contentIndex);
 	const previousCall = before.findLastIndex(isQuestionCall);
 	const texts = userFacingTextOf(before.slice(previousCall + 1), failed);
-	return { before, previousCall, texts, leadIn: joined(texts) };
+	const answeredSibling = before.some((b) => isQuestionCall(b) && answered.has((b as { id: string }).id));
+	return { before, previousCall, answeredSibling, texts, leadIn: joined(texts) };
 }
 
 /** The open question's lead-in as stored (not trimmed, so an indented
@@ -220,8 +224,9 @@ export function openQuestionLeadIn(messages: readonly LhMessage[], toolCallId: s
 	if (!pending || pending.toolCallId !== toolCallId) return null;
 	const message = messages.find((m) => m.id === pending.messageId);
 	if (!message || message.role !== "assistant") return null;
-	const { texts } = leadInAt(message as AssistantMessage, pending.contentIndex, failedOutputCallIds(messages));
-	return texts.length > 0 ? texts.join("\n\n") : null;
+	const { texts } = leadInAt(message as AssistantMessage, pending.contentIndex, failedOutputCallIds(messages), answeredQuestionCalls(messages));
+	// Joined as a message's `text` is (bot-run.ts textOf).
+	return texts.length > 0 ? texts.join("\n") : null;
 }
 
 export function questionCardOf(messages: readonly LhMessage[]): QuestionCard {
@@ -237,17 +242,18 @@ export function questionCardOf(messages: readonly LhMessage[]): QuestionCard {
 	if (!pending || at < 0) {
 		return { phase, plan, teaching: latestTeaching(messages, messages.length, failed), question: null, malformed: false };
 	}
-	const { before, previousCall, leadIn } = leadInAt(messages[at] as AssistantMessage, pending.contentIndex, failed);
+	const { before, previousCall, answeredSibling, leadIn } = leadInAt(messages[at] as AssistantMessage, pending.contentIndex, failed, answeredQuestionCalls(messages));
 	const question = buildQuestion(pending.tool, pending.toolCallId, pending.input, leadIn);
 	const sameMessageTeaching = previousCall >= 0 ? newestSegmentText(before.slice(0, previousCall), failed) : null;
-	// With a lead-in of its own, text from before an answered question
-	// belongs to an older exchange: the lead-in is the latest teaching, and
-	// the question box already shows it. Without one, the latest teaching
-	// is shown wherever it sits.
-	// An earlier question in the open one's own message already separates
-	// it from older messages, so only that message's text is this exchange.
+	// This exchange's teaching: text the open question's own message sent
+	// before an earlier call (one turn), else text no answered question
+	// separates from it. An answered question earlier in its own message
+	// separates it from older messages too; a refused call does not.
+	// With a lead-in of its own, older text belongs to an older exchange:
+	// the lead-in is the latest teaching, and the question box shows it.
+	// Without one, the latest teaching is shown wherever it sits.
 	const teaching = sameMessageTeaching
-		?? (previousCall >= 0 ? null : exchangeTeaching(messages, at, failed))
+		?? (answeredSibling ? null : exchangeTeaching(messages, at, failed))
 		?? (leadIn ? null : latestTeaching(messages, at, failed));
 	return {
 		phase,

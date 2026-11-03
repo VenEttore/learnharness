@@ -72,8 +72,8 @@ export function schemaProblems(schema: unknown, value: unknown, path = ""): stri
 	}
 	if (s.type === "array" && Array.isArray(value)) {
 		const out: string[] = [];
-		if (s.minItems !== undefined && value.length < s.minItems) out.push(`${name(path)} needs at least ${s.minItems} items, not ${value.length}`);
-		if (s.maxItems !== undefined && value.length > s.maxItems) out.push(`${name(path)} takes at most ${s.maxItems} items, not ${value.length}`);
+		if (s.minItems !== undefined && value.length < s.minItems) out.push(`${name(path)} needs at least ${s.minItems} ${s.minItems === 1 ? "item" : "items"}, not ${value.length}`);
+		if (s.maxItems !== undefined && value.length > s.maxItems) out.push(`${name(path)} takes at most ${s.maxItems} ${s.maxItems === 1 ? "item" : "items"}, not ${value.length}`);
 		if (s.items) out.push(...value.flatMap((v, i) => schemaProblems(s.items, v, `${path}[${i}]`)));
 		return out;
 	}
