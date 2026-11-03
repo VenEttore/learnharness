@@ -1,6 +1,6 @@
 # 26: Card option order from `lh`, and phone-ready guide fixes
 
-Status: claimed
+Status: resolved
 Blocked by: none
 Risk: pre-release
 Gate: none
@@ -25,7 +25,7 @@ From Ven's first real Bot Teacher lesson (Japanese, lesson chat_mw07rfk7_4f0b8b8
 
 ## Comments
 
-### Stopped at the review cap 2026-11-03
+### Shipped 2026-11-03 (stopped at the review cap; Matt accepted shipping)
 Completed:
 - `lh show` and `lh answer` report `openQuestion.options`: `[{number, label, value}]`, plus `description` on an `ask` option, numbered as the card numbers them (the shared `displayedQuestionOptions` order). It is always present on an open question, and `[]` for a question without options (`recall`, `explain`, an `ask` without options) or an input that does not parse.
 - One numbering function in src/core/question-card.ts (`numberedOptionsOf`, with `parsedQuestionInput` for the per-kind parse). The card and `lh show` both call it, so they cannot drift. `numberedQuestionOptions` is the export bot-run.ts uses.
@@ -44,8 +44,8 @@ Completed:
 - `scripts/lh.mjs` needed no change, because it passes `openQuestion` through as the server sends it.
 
 Deferred:
-- Round 3 was not clean. Interrogate A and C each proved one guide gap with the same cause: an `ask` with `multiSelect: true` and no options read as a pick question under step 2, so a bot sent `picks` or `other` and `lh submit` refused them. The fix (commit 09b4592, guide only) is unreviewed: one review round on it is still owed.
-- Not done, judgement calls: `answer-submit.ts` keeps its own copy of the select-or-text rule and the per-kind parse, from before this ticket. The turn boundary still accepts `multiSelect` on an `ask` without options (`askInputSchema` is upstream code; the guide covers it instead).
+- Round 3 was not clean. Interrogate A and C each proved one guide gap with the same cause: an `ask` with `multiSelect: true` and no options read as a pick question under step 2, so a bot sent `picks` or `other` and `lh submit` refused them. The fix (commit 09b4592, one guide sentence) shipped unreviewed: Matt accepted shipping over a fourth round (2026-11-03, "Recommendations are fine").
+- Not done, judgement calls: `answer-submit.ts` keeps its own copy of the select-or-text rule and the per-kind parse, from before this ticket. The turn boundary still accepts `multiSelect` on an `ask` without options (`askInputSchema` is upstream code; the guide covers it instead; Matt agreed 2026-11-03).
 
 Verified:
 - Review: 3 rounds of code-review (Opus 5.5 xhigh) and interrogate (A: Opus 5.5 xhigh, C: Haiku 5.5 xhigh).
