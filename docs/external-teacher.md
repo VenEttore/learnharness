@@ -45,7 +45,7 @@ git fetch origin && git checkout main && git reset --hard origin/main
 npm ci
 ```
 
-Then start the server again as in step 4. `git reset --hard` drops any change you made in the repo; lessons in `LH_DATA_DIR` are outside it and stay. A clone made with `--single-branch` or `--depth` fetches only one branch, so `git checkout main` can fail or stay old. `git remote set-branches origin '*'`, then the fetch again, fixes it.
+On a production build, run `npm run build` again before `npx next start`; without it, `next start` keeps serving the old build. Then start the server again as in step 4. `git reset --hard` drops any change you made in the repo; lessons in `LH_DATA_DIR` are outside it and stay. A clone made with `--single-branch` or `--depth` fetches only one branch, so `git checkout main` can fail or stay old. `git remote set-branches origin '*'`, then the fetch again, fixes it.
 
 `lh` talks to `LH_URL`, default `http://127.0.0.1:3000`. Use the IP, not `localhost`, which can resolve to the IPv6 address while the server listens on 127.0.0.1 only. To use another port, change `-p` and set `LH_URL` to match, for example `-p 3001` and `LH_URL=http://127.0.0.1:3001`.
 
