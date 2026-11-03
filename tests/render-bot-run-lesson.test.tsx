@@ -190,11 +190,15 @@ describe("keyless install: the chat view", () => {
 	it("a bot-run lesson's question dismissal promises no turn stop while a send settles", async () => {
 		posts.length = 0;
 		streamDelayMs = 300;
-		// The bot asked a question while the owner's send was settling.
+		// The bot asked a question while the owner's send was settling. A
+		// complete quiz: since upstream 0.4.1 an incomplete one is
+		// "malformed", not a question the learner can answer or dismiss.
 		recordAfterSend = [{
 			id: "a1",
 			role: "assistant",
-			content: [{ type: "toolCall", id: "q1", name: "quiz", arguments: { question: "Q?" } }],
+			content: [{ type: "toolCall", id: "q1", name: "quiz", arguments: {
+				question: "Q?", options: [{ label: "Yes", value: "yes" }, { label: "No", value: "no" }], correctAnswer: "yes", explanation: "Yes is correct.",
+			} }],
 			stopReason: "toolUse",
 			usage: { input: 0, output: 0, total: 0, cacheReads: 0, cacheWrites: 0 },
 			timestamp: 0,
