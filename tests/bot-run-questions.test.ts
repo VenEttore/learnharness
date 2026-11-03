@@ -214,6 +214,41 @@ describe("refusals save nothing", () => {
 		assert.equal(messages(id).length, 1);
 	});
 
+	it("words a schema failure as one plain problem per field, without pi's validation dump", async () => {
+		const { id } = await lesson();
+		concludeProbe(id);
+		const after = messages(id).at(-1)!.id;
+		const cases: Array<[Record<string, unknown>, string[]]> = [
+			[{ kind: "explain", type: "foo", nodeId: "n1", ...RECALL }, ['type must be "predict" or "check", not "foo"']],
+			[{ kind: "quiz", type: "guess", nodeId: "n1", ...PROBE }, ['type must be "predict" or "check", not "guess"']],
+			[{ kind: "explain", type: "check", nodeId: "n1", question: "Why?" }, ["correctAnswer is required"]],
+		];
+		for (const [body, problems] of cases) {
+			const res = await turn(id, { ...body, after });
+			assert.equal(res.status, 422, JSON.stringify(body));
+			assert.equal(res.body.code, "invalid");
+			assert.deepEqual(res.body.problems, problems);
+		}
+		const probing = await lesson();
+		const res = await turn(probing.id, { kind: "probe", after: probing.cursor, ...PROBE, options: [{ label: "Only one", value: "pa" }] });
+		assert.equal(res.status, 422);
+		assert.deepEqual(res.body.problems, ["options needs at least 2 items, not 1"]);
+		assert.ok(!JSON.stringify(res.body).includes("Received arguments"));
+		const noStrands = await turn(probing.id, { kind: "probe-done", after: probing.cursor, assessment: { strands: [], summary: "Start at the start." } });
+		assert.equal(noStrands.status, 422);
+		assert.deepEqual(noStrands.body.problems, ["assessment.strands needs at least 1 item, not 0"]);
+		// An optional null gets the route's own wording, alone or beside
+		// another schema failure.
+		for (const [body, problems] of [
+			[{ ...PROBE, details: null }, ["details must not be null; leave it out"]],
+			[{ ...PROBE, details: null, options: [{ label: "Only one", value: "pa" }] }, ["options needs at least 2 items, not 1", "details must not be null; leave it out"]],
+		] as const) {
+			const nulled = await turn(probing.id, { kind: "probe", after: probing.cursor, ...body });
+			assert.equal(nulled.status, 422);
+			assert.deepEqual([...nulled.body.problems].sort(), [...problems].sort());
+		}
+	});
+
 	it("refuses a type field on probe or recall, which the dock could not read", async () => {
 		const { id, cursor } = await lesson();
 		for (const body of [

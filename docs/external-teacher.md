@@ -150,6 +150,8 @@ EOF
 
 A plan that does not parse, or has a cycle, is refused with `invalid` and the problems. If a node id appears twice, the nodes merge and keep the first title given. A node written only as a bare id takes its id as its title. Send `plan` again whenever the map is wrong, in the plan or teach phase, while no question is open (an open question refuses it with `open_question`). The new map replaces the old one.
 
+After a replace, tell the learner in chat that the plan changed. The lesson page shows the new map below the old one within a few seconds, and marks the old one "Replaced by a later plan". An open card redraws itself when the lesson changes, but reload it (or open it fresh) before you read or screenshot it, so you know it shows the new plan. Don't use the plan's `version` to spot a change: it stays 1 on every replace, as LearnHarness's own `plan_init` does. Compare the nodes in `lh show`'s `plan` instead.
+
 Then ask, and wait for the answer:
 
 ```bash
@@ -217,7 +219,7 @@ lh answer "$L" --wait --timeout 300
 A learner on a phone can still reach the lesson page through Take over, but driving your desktop from a phone is slow. The convenient path is your own chat:
 
 1. Post the question with `lh` as usual.
-2. Open the question card, `http://127.0.0.1:3000/chat/<lesson id>/card` (your port if you changed it), in your browser. It shows the open question, its lead-in, and its options numbered in the order the lesson page shows them, with math rendered as the page renders it. Read the option order from it every time, because you number the options by it.
+2. Open the question card, `http://127.0.0.1:3000/chat/<lesson id>/card` (your port if you changed it), in your browser. It shows the latest teaching before the open question, the question's lead-in, and its options numbered in the order the lesson page shows them, with math rendered as the page renders it. Read the option order from it every time, because you number the options by it.
 3. Ask in a chat widget, with the question and its options as text in that order (math converted as in "Math in chat" below). Send a screenshot of the card only when the question holds something chat text and the widget cannot show, such as a diagram, a table or laid-out code. A plain-text question gets no screenshot. Only your main chat agent can raise a widget; workers and routine runs cannot, so ask yourself. Collect everything in one widget: the pick (or picks), and for a `probe` or `quiz` the confidence and the learner's reasoning. Turn on the widget's free-text input (`allowCustom`) so the learner can type their pick and their reasoning in one place; they may also send the reasoning as a chat message. The reasoning is optional and goes in `thinking`. List only the card's numbered options, and add no typed-answer option of your own: for an `ask`, the free-text input stands in for the card's "Other". Text typed in place of a pick on an `ask` goes in `other`; text typed beside a pick goes in `thinking`. Offer the page's confidence values, 0, 30, 50, 70, 90 and 100, and "I don't know" as an extra option. For `recall` and `explain`, collect the typed answer.
 4. Never say or hint whether a pick is right before its confidence is in. The learner wants it that way, and the confidence only counts when it comes first.
 5. Save it with `lh submit`, then grade from the answer item its reply carries.
@@ -281,7 +283,7 @@ LearnHarness runs its checks before it saves anything, so a refused turn adds no
 | `unread_input` | The learner added input after your cursor and after the last saved Bot Teacher turn. Read `items`, take the new `cursor`, and respond to that input. |
 | `open_question` | Wait for the open question's answer or skip. |
 | `wrong_phase` | Use one of the kinds in `allowed`. |
-| `invalid` | The payload failed the tool's checks. `problems` says what to fix. |
+| `invalid` | The payload failed the tool's checks. `problems` says what to fix, one line per field, such as `type must be "predict" or "check", not "foo"`. |
 | `bad_after` | `--after` is not a message in this lesson. Use the reply's `cursor`, after reading its `items`. |
 | `not_found` | No lesson with that id. |
 | `not_bot_run` | The lesson belongs to LearnHarness's own model. Create your own with `lh lesson new`. |
@@ -293,7 +295,7 @@ LearnHarness runs its checks before it saves anything, so a refused turn adds no
 
 **A lost reply.** If a turn's reply never arrives (a timeout, a crash), run `lh show "$L"` before you resend. If your turn is in `messages`, take the cursor from that reply and carry on. If not, resend the same turn with the same `--after`. When the first send did land, the resend returns `{"ok":true,"repeat":true,...}` and saves nothing. Resend the exact same content, because a reworded `say` counts as a new turn.
 
-**Resuming a lesson.** `lh show "$L"` returns `phase`, `plan`, `openQuestion`, every message (questions keep their `toolCallId`), any unread `items`, and the `cursor`. That is enough to pick up after losing your memory, or to continue a lesson that an earlier Bot Teacher started and then stopped.
+**Resuming a lesson.** `lh show "$L"` returns `phase`, `plan`, `openQuestion` (the open question's `toolCallId`, `tool`, lead-in `text`, which is `""` when there is none, and `input`; or `null`), every message (questions keep their `toolCallId`), any unread `items`, and the `cursor`. That is enough to pick up after losing your memory, or to continue a lesson that an earlier Bot Teacher started and then stopped.
 
 **Only you write.** You are the only one who creates the lesson and sends turns. If you start workers, they research or draft and report back to you, and you send the turns. A worker may run `lh show` and `lh answer`, which only read. Two writers would interleave turns.
 

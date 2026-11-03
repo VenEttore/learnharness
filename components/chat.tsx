@@ -83,6 +83,7 @@ import {
 	questionNeedsReveal,
 } from "@/src/core";
 import { ReadingThinkingField } from "@/components/reading-thinking";
+import { latestPlanBlockId, ReplacedPlan } from "@/components/replaced-plan";
 import { currentUserThinkingOpen, setAllUserThinkingOpen } from "@/components/thinking-block";
 
 /** One width for everything: transcript, cards, and the bottom blob share this column. */
@@ -265,6 +266,7 @@ export function Chat({
 	const sessionFindScopeRef = useRef<HTMLDivElement | null>(null);
 	const scrollContextRef = useRef<StickToBottomContext | null>(null);
 	const sourceTextParts = useMemo(() => firstSourceTextParts(messages), [messages]);
+	const latestPlanBlock = useMemo(() => latestPlanBlockId(messages), [messages]); // fork: replaced plan maps
 
 	// The reattach settled terminal → the sync-and-continue seam (below).
 	setReattachSettled(() => reattachSettledRef.current());
@@ -1578,11 +1580,9 @@ export function Chat({
 														// The plan in the chat (wave 4): a frozen snapshot
 														// block — rendered as carried, never re-derived.
 														return (
-															<PlanBlock
-																key={pi}
-																data={part.data as PlanBlockData}
-																onOpen={() => setPlanOpen(true)}
-															/>
+															<ReplacedPlan key={pi} replaced={!!part.id && part.id !== latestPlanBlock}>
+																<PlanBlock data={part.data as PlanBlockData} onOpen={() => setPlanOpen(true)} />
+															</ReplacedPlan>
 														);
 													case "tool-quiz":
 													case "tool-probe":

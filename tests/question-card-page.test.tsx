@@ -224,6 +224,27 @@ describe("question card page", () => {
 		assert.equal(byTestId(doc, "card-lead-in")?.textContent?.trim(), "Try again.");
 	});
 
+	it("a lead-in carrying new teaching is not preceded by a say from before an answered question", async () => {
+		const { id, cursor } = await lesson();
+		const said = await turn(id, { kind: "say", after: cursor, text: "Old teaching: halving once." });
+		await turn(id, { kind: "probe", after: said, ...PROBE });
+		const answered = await learnerAnswers(id, MATH_QUESTION);
+		await turn(id, { kind: "probe", after: answered, text: "New teaching: halving $k$ times divides by $2^k$.", ...PROBE, question: "Second?" });
+		const doc = await card(id);
+		assert.equal(byTestId(doc, "card-teaching"), null);
+		assert.match(byTestId(doc, "card-lead-in")?.textContent ?? "", /New teaching/);
+		assert.doesNotMatch(byTestId(doc, "question-card")?.textContent ?? "", /Old teaching/);
+	});
+
+	it("an indented lead-in keeps its indent, so it renders as code as on the lesson page", async () => {
+		const { id, cursor } = await lesson();
+		await turn(id, { kind: "ask", after: cursor, text: "    x = 1\n    y = 2", question: "What is x?", options: [{ label: "1" }, { label: "2" }] });
+		const doc = await card(id);
+		const leadIn = byTestId(doc, "card-lead-in");
+		assert.ok(leadIn?.querySelector("pre"), leadIn?.innerHTML);
+		assert.match(leadIn?.textContent ?? "", /x = 1\s*y = 2/);
+	});
+
 	describe("ordinary lesson record shapes", () => {
 		let n = 0;
 		const mid = () => `msg_card_shape_${++n}`;
@@ -251,6 +272,7 @@ describe("question card page", () => {
 		});
 
 		const text = (t: string) => ({ type: "text", text: t });
+		const refused = (cid: string) => ({ id: mid(), role: "toolResult", toolCallId: cid, toolName: "probe", content: [{ type: "text", text: "correctAnswer does not match any option value" }], details: null, isError: true, timestamp: Date.now() });
 		for (const [name, open, records, teaching, leadIn] of [
 			["text after an answered question is the teaching, not the text before it", true, [
 				asst([text("T1 earlier."), probe("call_s1", "Q-A?"), text("T2 newest.")]),
@@ -261,6 +283,34 @@ describe("question card page", () => {
 				asst([text("T1 earlier."), probe("call_s3", "Q-C?"), text("T2 newest.")]),
 				answered("call_s3", "Q-C?"),
 			], "T2 newest.", null],
+			["an answered question earlier in the open one's message separates older messages from its lead-in", true, [
+				asst([text("OLD older message.")]),
+				asst([probe("call_s7", "Q-G?"), text("NEW lead-in."), probe("call_s8", "Q-H?")]),
+				answered("call_s7", "Q-G?"),
+			], undefined, "NEW lead-in."],
+			["with no lead-in, an answered question earlier in its own message leaves the latest teaching shown", true, [
+				asst([text("OLD older message.")]),
+				user("ok"),
+				asst([probe("call_s13", "Q-M?"), probe("call_s14", "Q-N?")]),
+				answered("call_s13", "Q-M?"),
+			], "OLD older message.", null],
+			["a refused question earlier in the open one's message does not separate older teaching", true, [
+				asst([text("TEACH dividing by two.")]),
+				user("ok"),
+				asst([probe("call_s15", "Q-O?"), text("So:"), probe("call_s16", "Q-P?")]),
+				refused("call_s15"),
+			], "TEACH dividing by two.", "So:"],
+			["a question call the tool refused is not an answered question", true, [
+				asst([text("TEACH halvings.")]),
+				asst([probe("call_s9", "Q-I?")]),
+				refused("call_s9"),
+				asst([text("Fixed the answer key."), probe("call_s10", "Q-J?")]),
+			], "TEACH halvings.", "Fixed the answer key."],
+			["a question call from an aborted generation is not an answered question", true, [
+				asst([text("TEACH halvings again.")]),
+				{ ...asst([probe("call_s11", "Q-K?")]), stopReason: "aborted" },
+				asst([text("Picking up where we left off."), probe("call_s12", "Q-L?")]),
+			], "TEACH halvings again.", "Picking up where we left off."],
 			["two answered questions in the open one's message: only the segment before its lead-in", true, [
 				asst([text("T0 intro."), probe("call_s4", "Q-D?"), text("T1 middle."), probe("call_s5", "Q-E?"), text("T2 lead-in."), probe("call_s6", "Q-F?")]),
 				answered("call_s4", "Q-D?"),
@@ -275,17 +325,25 @@ describe("question card page", () => {
 			});
 		}
 
+		const besideEarlier = (q2: unknown[]) => [
+			user("Teach me logs"),
+			asst([sendToUser("call_s0", "Welcome! We will start with a warm-up.")]),
+			sendResult("call_s0"),
+			asst([sendToUser("call_s1", "A logarithm counts halvings."), probe("call_q1", "What is $\\log_2 4$?")]),
+			sendResult("call_s1"),
+			answered("call_q1", "What is log 4?"),
+			asst(q2),
+		];
+
 		it("teaching sent beside an earlier question still counts as the latest teaching", async () => {
-			const doc = await ordinary([
-				user("Teach me logs"),
-				asst([sendToUser("call_s0", "Welcome! We will start with a warm-up.")]),
-				sendResult("call_s0"),
-				asst([sendToUser("call_s1", "A logarithm counts halvings."), probe("call_q1", "What is $\\log_2 4$?")]),
-				sendResult("call_s1"),
-				answered("call_q1", "What is log 4?"),
-				asst([sendToUser("call_s2", "Correct! One more."), probe("call_q2", "What is $\\log_2 8$?")]),
-			]);
+			const doc = await ordinary(besideEarlier([probe("call_q2", "What is $\\log_2 8$?")]));
 			assert.match(byTestId(doc, "card-teaching")?.textContent ?? "", /A logarithm counts halvings\./);
+			assert.equal(byTestId(doc, "card-lead-in"), null);
+		});
+
+		it("an open question's own lead-in is newer than teaching before an answered question, so that teaching is not shown", async () => {
+			const doc = await ordinary(besideEarlier([sendToUser("call_s2", "Correct! One more."), probe("call_q2", "What is $\\log_2 8$?")]));
+			assert.equal(byTestId(doc, "card-teaching"), null);
 			assert.equal(byTestId(doc, "card-lead-in")?.textContent?.trim(), "Correct! One more.");
 		});
 	});
