@@ -2,7 +2,7 @@ import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { serverExecute } from "../tool-execute.ts";
 import { probeDoneInputSchema } from "../../core/contracts.ts";
 import { probeDoneSuccessResult } from "../../core/teaching-tool-results.ts";
-import { danglingQuestionOf, hasProbeDone, type LhMessage } from "../../core/native-messages.ts";
+import { hasUnresolvedQuestion, hasProbeDone, type LhMessage } from "../../core/native-messages.ts";
 import type { ChatStore } from "../../core/ports.ts";
 import { buildProbeHandoffSteer, type SteerMessage } from "../../core/contracts.ts";
 
@@ -67,7 +67,7 @@ export function probeDoneTool(ctx: ProbeDoneContext): Record<string, AgentTool<a
 				const record = ctx.chatStore.getChat(ctx.chatId);
 				if (!record) return { ok: false, error: `Chat not found: ${ctx.chatId}` };
 
-				if (danglingQuestionOf(record.messages) !== null) {
+				if (hasUnresolvedQuestion(record.messages)) {
 					return {
 						ok: false,
 						error:
