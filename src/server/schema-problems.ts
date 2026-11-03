@@ -8,9 +8,10 @@
  * ("question must be a string, not number").
  *
  * The walk covers the keywords the turn kinds' schemas use (type,
- * properties, required, items, minItems, maxItems, minLength, const,
- * anyOf). An optional field sent as null gets the route's own wording,
- * "must not be null; leave it out". pi still decides validity; this only words a failure it found.
+ * properties, required, items, minItems, minLength, const, anyOf), plus
+ * maxItems and integer, which they do not use today. An optional field
+ * sent as null gets the route's own wording, "must not be null; leave it
+ * out". pi still decides validity; this only words a failure it found.
  * When the walk finds nothing to say, pi's own error lines are kept,
  * without the payload echo.
  */
