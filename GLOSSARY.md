@@ -5,7 +5,7 @@ A tutor that probes what a learner knows, plans a path, and teaches along it. Le
 ## Lessons
 
 **Lesson**:
-One teaching session with one learner: probe, then plan, then teach, in a single transcript.
+One course of teaching with one learner: probe, then plan, then teach, in a single transcript.
 _Avoid_: Chat (the code's name for the stored record), conversation
 
 **Bot-run lesson**:
@@ -78,6 +78,18 @@ _Avoid_: Handoff (the code's name for the marker the end of the probe leaves), t
 The one store of what the learner has been taught, shared by every lesson. LearnHarness's extractor and auditor decide what goes in, and plain code writes it.
 _Avoid_: Graph data, memory
 
+**Extractor**:
+LearnHarness's model step that reads a lesson's new teacher text and proposes the propositions and chains it teaches. In a bot-run lesson the Bot Teacher does this thinking instead.
+_Avoid_: Parser
+
+**Auditor**:
+LearnHarness's model step that compares the extractor's propositions with the ones already in the knowledge graph and decides which are the same idea. In a bot-run lesson the Bot Teacher does this thinking instead.
+_Avoid_: Reviewer, deduplicator
+
+**Chain**:
+Propositions that together imply another proposition: the premises and the conclusion.
+_Avoid_: Edge (the graph view's drawn line), derivation
+
 **Proposition**:
 One self-contained idea in the knowledge graph, with a short name and a full statement. The guide calls it a fact.
 _Avoid_: Node (the code's name for its stored record), concept
@@ -96,4 +108,4 @@ _Avoid_: Summary
 
 **Candidate**:
 A proposition already in the knowledge graph that looks like a new one, found by word overlap. Deciding whether the two are the same idea is the auditor's job.
-_Avoid_: Match, duplicate
+_Avoid_: Duplicate. `find` replies list each query's candidates under `matches` (the code's name).

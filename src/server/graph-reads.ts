@@ -179,7 +179,7 @@ function findQueries(body: unknown): { queries: FindQuery[] } | { problems: stri
 
 /** POST /api/external/graph/find: the auditor's find_candidates over the
  *  bot's proposed propositions. Same ranking and pages; a stateless HTTP
- *  caller gets nextOffset where the in-process tool hands out a cursor. */
+ *  caller gets nextOffset where the in-process tool hands out a page token. */
 export function findGraphCandidates(body: unknown): Response {
 	const parsed = findQueries(body);
 	if ("problems" in parsed) return externalFailure(400, "bad_find", { problems: parsed.problems });
