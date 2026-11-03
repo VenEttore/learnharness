@@ -170,7 +170,8 @@ function exchangeTeaching(messages: readonly LhMessage[], end: number, failed: R
 /** A displayed option with the number the learner replies with. */
 export type NumberedQuestionOption = QuizOption & { number: number };
 
-/** The dock's mode and the options as the card numbers them, for a parsed
+/** The dock's mode and the options as the card numbers them (an ask
+ *  option keeps its description), for a parsed
  *  input. The dock's rule, on the same input it reads (the parsed, not yet
  *  normalized options): a quiz always selects; an ask selects only with
  *  options. A text question has no options. */
@@ -187,7 +188,16 @@ function numberedOptionsOf(
 				: "text";
 	if (mode === "text") return { mode, options: [] };
 	const options = displayedQuestionOptions(kind, toolCallId, normalizeOptions(rawOptions ?? []));
-	return { mode, options: options.map((o, i) => ({ ...o, number: i + 1 })) };
+	// Quiz options never show a description.
+	return {
+		mode,
+		options: options.map((o, i) => ({
+			number: i + 1,
+			label: o.label,
+			value: o.value,
+			...(kind === "ask" && o.description ? { description: o.description } : {}),
+		})),
+	};
 }
 
 /** The open question's options as the card numbers them (fork,
@@ -195,7 +205,7 @@ function numberedOptionsOf(
  *  `label` and `value`, plus an ask option's `description`. Empty for a
  *  question without options (explain, recall, an ask without options) and
  *  for an input that does not parse, which the card shows as malformed. */
-export function questionOptionNumbers(
+export function numberedQuestionOptions(
 	tool: string,
 	toolCallId: string,
 	input: unknown,
@@ -203,12 +213,7 @@ export function questionOptionNumbers(
 	const kind = toolQuestionKind(tool);
 	const parsed = kind === "quiz" ? parseQuizInput(input) : kind === "explain" ? parseExplainInput(input) : parseAskInput(input);
 	if (!parsed) return [];
-	return numberedOptionsOf(kind, toolCallId, parsed).options.map((o) => ({
-		number: o.number,
-		label: o.label,
-		value: o.value,
-		...(kind === "ask" && o.description ? { description: o.description } : {}),
-	}));
+	return numberedOptionsOf(kind, toolCallId, parsed).options;
 }
 
 function buildQuestion(
@@ -231,11 +236,7 @@ function buildQuestion(
 		question: parsed.question,
 		...(parsed.details ? { details: parsed.details } : {}),
 		mode,
-		options: options.map((o) => ({
-			number: o.number,
-			label: o.label,
-			...(kind === "ask" && o.description ? { description: o.description } : {}),
-		})),
+		options: options.map(({ value: _value, ...o }) => o),
 		quiz: kind === "quiz",
 		other: kind === "ask" && mode !== "text",
 	};

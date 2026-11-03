@@ -19,7 +19,7 @@ import { ChatInputError, inputAppends, isQuestionTool, type TurnInput } from "..
 import { danglingQuestionOf, newHandoffMessage, newMessageId, newUserMessage, type LhMessage } from "../core/native-messages.ts";
 import { phaseAt3Lh, type Phase3 } from "../core/phases.ts";
 import { planBlocksFor } from "../core/plan-blocks.ts";
-import { openQuestionLeadIn, questionOptionNumbers, type NumberedQuestionOption } from "../core/question-card.ts";
+import { openQuestionLeadIn, numberedQuestionOptions, type NumberedQuestionOption } from "../core/question-card.ts";
 import { createTree, PlanTreeError } from "../core/plan-tree.ts";
 import {
 	askInputSchema,
@@ -316,7 +316,7 @@ function openQuestionOf(messages: readonly LhMessage[]): { toolCallId: string; t
 		tool: open.tool,
 		text: openQuestionLeadIn(messages, open.toolCallId) ?? "",
 		input: open.input,
-		options: questionOptionNumbers(open.tool, open.toolCallId, open.input),
+		options: numberedQuestionOptions(open.tool, open.toolCallId, open.input),
 	};
 }
 
