@@ -13,7 +13,7 @@ import {
 import { FACTORY_SETTINGS } from "../core/settings.ts";
 import type { ChatRecord } from "../core/contracts.ts";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
-import { botLesson, cursorOf, externalFailure } from "./bot-run.ts";
+import { botLesson, cursorAndItems, externalFailure } from "./bot-run.ts";
 import { stores } from "./stores.ts";
 
 /**
@@ -80,7 +80,7 @@ export function extractViewOf(record: ChatRecord, chunkTokens: number = CHUNK_TO
 export function showExtractView(id: string): Response {
 	const record = botLesson(id);
 	if (record instanceof Response) return record;
-	return Response.json({ ok: true, lesson: id, cursor: cursorOf(record), ...extractViewOf(record) });
+	return Response.json({ ok: true, lesson: id, ...cursorAndItems(record), ...extractViewOf(record) });
 }
 
 const graphDeps = () => ({ chatStore: stores.chatStore, graphStore: stores.graphStore });

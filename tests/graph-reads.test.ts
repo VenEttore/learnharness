@@ -28,6 +28,7 @@ const { graphSessionIndex } = await import("../src/core/graph.ts");
 const { coverageSlots } = await import("../src/core/coverage.ts");
 const { stores } = await import("../src/server/stores.ts");
 const { extractViewOf } = await import("../src/server/graph-reads.ts");
+const { handleChatRequest } = await import("../src/server/chat-handler.ts");
 const createRoute = await import("../app/api/external/chats/route.ts");
 const turnRoute = await import("../app/api/external/chats/[id]/turn/route.ts");
 const extractViewRoute = await import("../app/api/external/chats/[id]/extract-view/route.ts");
@@ -184,7 +185,7 @@ describe("extract-view is the extractor's view", () => {
 		assert.equal(body.batches[0].view, `# Bayes\n\nTEACHER [${saidId}] Bayes' rule turns P(B|A) into P(A|B) using the priors.`);
 		assert.equal(body.prompt, body.batches[0].view);
 		assert.ok(!body.prompt.includes("Teach me Bayes"), "learner text is not teacher text");
-		assert.deepEqual(body, { ok: true, lesson: id, cursor: saidId, ...extractViewOf(stores.chatStore.getChat(id)!) });
+		assert.deepEqual(body, { ok: true, lesson: id, cursor: saidId, items: [], ...extractViewOf(stores.chatStore.getChat(id)!) });
 
 		// A covered message drops out, as it does for the extractor.
 		const slot = coverageSlots(stores.chatStore.getChat(id)!.messages).find((s) => s.message.id === saidId)!;
@@ -192,6 +193,24 @@ describe("extract-view is the extractor's view", () => {
 		const after = await extractView(id);
 		assert.deepEqual(after.body.batches, []);
 		assert.equal(after.body.uncoveredCount, 0);
+	});
+
+	it("carries the learner's unread input with its cursor, so taking the cursor skips nothing", async () => {
+		const created = await json(await createRoute.POST(post("http://test/api/external/chats", { title: "Limits", key: "graph-reads-2" })));
+		const id = created.body.id as string;
+		const said = await json(await turnRoute.POST(post(`http://test/api/external/chats/${id}/turn`, { kind: "say", after: created.body.cursor, text: "A limit is the value a function approaches." }), ctx(id)));
+		assert.equal(said.status, 200, JSON.stringify(said.body));
+		// The learner types on the page: the ordinary chat route.
+		const typed = await handleChatRequest(post("http://test/api/chat", { chatId: id, input: { type: "text", text: "slow down please" } }), () => {
+			throw new Error("a bot-run lesson asked for a model agent");
+		});
+		assert.equal(typed.status, 200);
+		await typed.text();
+		const typedId = stores.chatStore.getChat(id)!.messages.at(-1)!.id;
+
+		const { body } = await extractView(id);
+		assert.equal(body.cursor, typedId);
+		assert.deepEqual(body.items, [{ type: "message", id: typedId, text: "slow down please" }]);
 	});
 
 	it("refuses an ordinary lesson and an unknown one", async () => {

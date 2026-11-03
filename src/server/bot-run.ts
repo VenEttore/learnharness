@@ -144,9 +144,9 @@ export function externalRequestRefusal(req: Request): Response | null {
 /** The newest message's id. An empty lesson has none, so its cursor is the
  *  lesson id, which `after` accepts as "before the first message". A
  *  reply whose cursor passes learner input the bot has not read (a
- *  create, a repeat, bad_after, show) also carries those items, so
- *  adopting the cursor never skips them. */
-export function cursorOf(record: ChatRecord): string {
+ *  create, a repeat, bad_after, show, extract-view) also carries those
+ *  items, so adopting the cursor never skips them. */
+function cursorOf(record: ChatRecord): string {
 	return record.messages.at(-1)?.id ?? record.id;
 }
 
@@ -223,6 +223,12 @@ function learnerItems(messages: readonly LhMessage[]): LearnerItem[] {
  *  `afterIndex` it is what answer returns. */
 function unreadByBot(record: ChatRecord, afterIndex = -1): LearnerItem[] {
 	return learnerItems(record.messages.slice(Math.max(record.messages.findLastIndex(isBotMessage), afterIndex) + 1));
+}
+
+/** The cursor and the unread learner input that come with it, for a read
+ *  reply outside this file (graph-reads.ts): see cursorOf. */
+export function cursorAndItems(record: ChatRecord): { cursor: string; items: LearnerItem[] } {
+	return { cursor: cursorOf(record), items: unreadByBot(record) };
 }
 
 /** The record, or the refusal for check 1 (exists and is bot-run). */
