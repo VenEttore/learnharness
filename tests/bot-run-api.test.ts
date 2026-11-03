@@ -374,6 +374,19 @@ describe("show", () => {
 		commitBotRun(id, [asked]);
 		const { body } = await show(id);
 		assert.deepEqual(body.messages, [{ id: asked.id, role: "assistant", text: "", calls: [{ toolCallId: "call_ask_1", tool: "ask_user_question", input }] }]);
-		assert.deepEqual(body.openQuestion, { toolCallId: "call_ask_1", tool: "ask_user_question", input });
+		assert.deepEqual(body.openQuestion, { toolCallId: "call_ask_1", tool: "ask_user_question", text: "", input });
+	});
+
+	it("reports the open question's lead-in text, in show and in answer", async () => {
+		const lesson = await create({ title: "Lead-in", key: newKey() });
+		const id = lesson.body.id;
+		const input = { question: "Which?", options: [{ label: "A" }, { label: "B" }] };
+		const asked = await turn(id, { kind: "ask", after: lesson.body.cursor, text: "Before you pick: A is the classic answer.\n", ...input });
+		assert.equal(asked.status, 200);
+		const { body } = await show(id);
+		assert.equal(body.openQuestion.text, "Before you pick: A is the classic answer.");
+		assert.deepEqual(body.openQuestion.input, input);
+		const read = await answer(id);
+		assert.deepEqual(read.body.openQuestion, body.openQuestion);
 	});
 });

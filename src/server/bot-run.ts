@@ -19,6 +19,7 @@ import { ChatInputError, inputAppends, isQuestionTool, type TurnInput } from "..
 import { danglingQuestionOf, newHandoffMessage, newMessageId, newUserMessage, type LhMessage } from "../core/native-messages.ts";
 import { phaseAt3Lh, type Phase3 } from "../core/phases.ts";
 import { planBlocksFor } from "../core/plan-blocks.ts";
+import { openQuestionLeadIn } from "../core/question-card.ts";
 import { createTree, PlanTreeError } from "../core/plan-tree.ts";
 import {
 	askInputSchema,
@@ -39,6 +40,7 @@ import {
 	probeDoneSuccessResult,
 	type TeachingToolSuccess,
 } from "../core/teaching-tool-results.ts";
+import { piErrorLines, schemaProblems } from "./schema-problems.ts";
 import { stores } from "./stores.ts";
 import { settledTurnResponse } from "./turn-runs.ts";
 
@@ -302,6 +304,14 @@ function latestPlan(messages: readonly LhMessage[]): PlanTree | null {
 	return null;
 }
 
+/** The open question as show and answer report it: its call id, tool,
+ *  lead-in `text` ("" for none, as a message's `text`) and input. */
+function openQuestionOf(messages: readonly LhMessage[]): { toolCallId: string; tool: string; text: string; input: unknown } | null {
+	const open = danglingQuestionOf(messages);
+	if (!open) return null;
+	return { toolCallId: open.toolCallId, tool: open.tool, text: openQuestionLeadIn(messages, open.toolCallId) ?? "", input: open.input };
+}
+
 /** Show: the whole lesson, for a bot resuming a lesson, its own or one
  *  an earlier bot started. `plan` is the latest successful plan's tree.
  *  Its cursor passes any unread input, so the reply carries those items,
@@ -315,7 +325,7 @@ export function showBotLesson(id: string): Response {
 		title: record.title,
 		phase: phaseAt3Lh(record.messages),
 		plan: latestPlan(record.messages),
-		openQuestion: danglingQuestionOf(record.messages),
+		openQuestion: openQuestionOf(record.messages),
 		messages: record.messages.map(compactMessage),
 		items: unreadByBot(record),
 		cursor: cursorOf(record),
@@ -333,7 +343,7 @@ export function botAnswer(id: string): Response {
 	return Response.json({
 		ok: true,
 		items: unreadByBot(record),
-		openQuestion: danglingQuestionOf(record.messages),
+		openQuestion: openQuestionOf(record.messages),
 		cursor: cursorOf(record),
 	});
 }
@@ -445,7 +455,12 @@ function turnKind<S extends TSchema>(name: string, row: TurnKindRow<S>): TurnKin
 				{ type: "toolCall", id: "bot_turn", name: row.tool ?? name, arguments: args as ToolCall["arguments"] },
 			) as Static<S>;
 		} catch (err) {
-			return { ok: false, problems: [err instanceof Error ? err.message : String(err)] };
+			// pi's message is an AJV dump with the payload echoed back; the
+			// bot gets one plain problem per field instead.
+			const message = err instanceof Error ? err.message : String(err);
+			const worded = schemaProblems(row.schema, args);
+			const problems = worded.length > 0 ? worded : piErrorLines(message);
+			return { ok: false, problems: problems.length > 0 ? problems : [message] };
 		}
 		const converted = conversionProblems(args, checked, "");
 		if (converted.length > 0) return { ok: false, problems: converted };

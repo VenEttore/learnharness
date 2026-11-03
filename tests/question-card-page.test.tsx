@@ -224,6 +224,18 @@ describe("question card page", () => {
 		assert.equal(byTestId(doc, "card-lead-in")?.textContent?.trim(), "Try again.");
 	});
 
+	it("a lead-in carrying new teaching is not preceded by a say from before an answered question", async () => {
+		const { id, cursor } = await lesson();
+		const said = await turn(id, { kind: "say", after: cursor, text: "Old teaching: halving once." });
+		await turn(id, { kind: "probe", after: said, ...PROBE });
+		const answered = await learnerAnswers(id, MATH_QUESTION);
+		await turn(id, { kind: "probe", after: answered, text: "New teaching: halving $k$ times divides by $2^k$.", ...PROBE, question: "Second?" });
+		const doc = await card(id);
+		assert.equal(byTestId(doc, "card-teaching"), null);
+		assert.match(byTestId(doc, "card-lead-in")?.textContent ?? "", /New teaching/);
+		assert.doesNotMatch(byTestId(doc, "question-card")?.textContent ?? "", /Old teaching/);
+	});
+
 	describe("ordinary lesson record shapes", () => {
 		let n = 0;
 		const mid = () => `msg_card_shape_${++n}`;
@@ -275,17 +287,25 @@ describe("question card page", () => {
 			});
 		}
 
+		const besideEarlier = (q2: unknown[]) => [
+			user("Teach me logs"),
+			asst([sendToUser("call_s0", "Welcome! We will start with a warm-up.")]),
+			sendResult("call_s0"),
+			asst([sendToUser("call_s1", "A logarithm counts halvings."), probe("call_q1", "What is $\\log_2 4$?")]),
+			sendResult("call_s1"),
+			answered("call_q1", "What is log 4?"),
+			asst(q2),
+		];
+
 		it("teaching sent beside an earlier question still counts as the latest teaching", async () => {
-			const doc = await ordinary([
-				user("Teach me logs"),
-				asst([sendToUser("call_s0", "Welcome! We will start with a warm-up.")]),
-				sendResult("call_s0"),
-				asst([sendToUser("call_s1", "A logarithm counts halvings."), probe("call_q1", "What is $\\log_2 4$?")]),
-				sendResult("call_s1"),
-				answered("call_q1", "What is log 4?"),
-				asst([sendToUser("call_s2", "Correct! One more."), probe("call_q2", "What is $\\log_2 8$?")]),
-			]);
+			const doc = await ordinary(besideEarlier([probe("call_q2", "What is $\\log_2 8$?")]));
 			assert.match(byTestId(doc, "card-teaching")?.textContent ?? "", /A logarithm counts halvings\./);
+			assert.equal(byTestId(doc, "card-lead-in"), null);
+		});
+
+		it("an open question's own lead-in is newer than teaching before an answered question, so that teaching is not shown", async () => {
+			const doc = await ordinary(besideEarlier([sendToUser("call_s2", "Correct! One more."), probe("call_q2", "What is $\\log_2 8$?")]));
+			assert.equal(byTestId(doc, "card-teaching"), null);
 			assert.equal(byTestId(doc, "card-lead-in")?.textContent?.trim(), "Correct! One more.");
 		});
 	});

@@ -72,7 +72,9 @@ export interface QuestionCard {
 	phase: Phase3;
 	plan: QuestionCardPlan | null;
 	/** The latest teaching text before the open question (or, with none
-	 *  open, the latest teaching text in the lesson). */
+	 *  open, the latest teaching text in the lesson). When the open
+	 *  question has a lead-in, only text no answered question separates
+	 *  from it: older text would sit above newer teaching. */
 	teaching: string | null;
 	/** null: no open question. */
 	question: QuestionCardQuestion | null;
@@ -136,6 +138,20 @@ function latestTeaching(messages: readonly LhMessage[], end: number, failed: Rea
 	return null;
 }
 
+/** The latest teaching before message `end` that no answered question
+ *  separates from it: this exchange's teaching, or null. */
+function exchangeTeaching(messages: readonly LhMessage[], end: number, failed: ReadonlySet<string>): string | null {
+	for (let i = end - 1; i >= 0; i--) {
+		const m = messages[i]!;
+		if (m.role !== "assistant") continue;
+		const content = (m as AssistantMessage).content;
+		const lastCall = content.findLastIndex(isQuestionCall);
+		const text = joined(userFacingTextOf(content.slice(lastCall + 1), failed));
+		if (text || lastCall >= 0) return text;
+	}
+	return null;
+}
+
 function buildQuestion(
 	tool: string,
 	toolCallId: string,
@@ -174,6 +190,26 @@ function buildQuestion(
 	};
 }
 
+/** The lead-in is the text right before the open call, after any earlier
+ *  question call in the same message (parallel questions each keep their
+ *  own). Text before that earlier call is the latest teaching. */
+function leadInAt(message: AssistantMessage, contentIndex: number, failed: ReadonlySet<string>) {
+	const before = message.content.slice(0, contentIndex);
+	const previousCall = before.findLastIndex(isQuestionCall);
+	return { before, previousCall, leadIn: joined(userFacingTextOf(before.slice(previousCall + 1), failed)) };
+}
+
+/** The open question's lead-in as the card shows it, or null for none.
+ *  `toolCallId` names the question the caller means; a different open
+ *  question gives null. */
+export function openQuestionLeadIn(messages: readonly LhMessage[], toolCallId: string): string | null {
+	const pending = pendingQuestionOf(messages);
+	if (!pending || pending.toolCallId !== toolCallId) return null;
+	const message = messages.find((m) => m.id === pending.messageId);
+	if (!message || message.role !== "assistant") return null;
+	return leadInAt(message as AssistantMessage, pending.contentIndex, failedOutputCallIds(messages)).leadIn;
+}
+
 export function questionCardOf(messages: readonly LhMessage[]): QuestionCard {
 	const tree = latestPlanTree(messages);
 	const statuses = tree ? derivePlanStatusesLh(tree, messages) : null;
@@ -187,18 +223,20 @@ export function questionCardOf(messages: readonly LhMessage[]): QuestionCard {
 	if (!pending || at < 0) {
 		return { phase, plan, teaching: latestTeaching(messages, messages.length, failed), question: null, malformed: false };
 	}
-	// The lead-in is the text right before the open call, after any earlier
-	// question call in the same message (parallel questions each keep their
-	// own). Text before that earlier call is the latest teaching.
-	const before = (messages[at] as AssistantMessage).content.slice(0, pending.contentIndex);
-	const previousCall = before.findLastIndex(isQuestionCall);
-	const leadIn = joined(userFacingTextOf(before.slice(previousCall + 1), failed));
+	const { before, previousCall, leadIn } = leadInAt(messages[at] as AssistantMessage, pending.contentIndex, failed);
 	const question = buildQuestion(pending.tool, pending.toolCallId, pending.input, leadIn);
 	const sameMessageTeaching = previousCall >= 0 ? newestSegmentText(before.slice(0, previousCall), failed) : null;
+	// With a lead-in of its own, text from before an answered question
+	// belongs to an older exchange: the lead-in is the latest teaching, and
+	// the question box already shows it. Without one, the latest teaching
+	// is shown wherever it sits.
+	const teaching = sameMessageTeaching
+		?? exchangeTeaching(messages, at, failed)
+		?? (leadIn ? null : latestTeaching(messages, at, failed));
 	return {
 		phase,
 		plan,
-		teaching: sameMessageTeaching ?? latestTeaching(messages, at, failed),
+		teaching,
 		question,
 		malformed: question === null,
 	};
