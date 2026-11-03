@@ -15,7 +15,7 @@
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { derivePlanStatusesLh } from "./contracts.ts";
 import type { PlanTree } from "./contracts.ts";
-import { failedOutputCallIds, pendingQuestionOf, userFacingTextOf, type LhMessage } from "./native-messages.ts";
+import { failedOutputCallIds, malformedQuestionsOf, pendingQuestionOf, userFacingTextOf, type LhMessage } from "./native-messages.ts";
 import { QUESTION_TOOLS, toolQuestionKind } from "./pending.ts";
 import { phaseAt3Lh, type Phase3 } from "./phases.ts";
 import { normalizeOptions, normalizeQuizType, seededRandom, shuffleOptions, type QuestionKind, type QuestionMode, type QuizOption } from "./question-core.ts";
@@ -282,13 +282,17 @@ export function questionCardOf(messages: readonly LhMessage[]): QuestionCard {
 		: null;
 	const failed = failedOutputCallIds(messages);
 	const phase = phaseAt3Lh(messages);
-	const pending = pendingQuestionOf(messages);
+	// pendingQuestionOf returns only an answerable question (upstream
+	// 0.4.1). A malformed one is still the open question: the page shows
+	// its malformed box, so the card shows its malformed state.
+	const answerable = pendingQuestionOf(messages);
+	const pending = answerable ?? malformedQuestionsOf(messages)[0] ?? null;
 	const at = pending ? messages.findIndex((m) => m.id === pending.messageId) : -1;
 	if (!pending || at < 0) {
 		return { phase, plan, teaching: latestTeaching(messages, messages.length, failed), question: null, malformed: false };
 	}
 	const { before, previousCall, answeredSibling, leadIn } = leadInAt(messages[at] as AssistantMessage, pending.contentIndex, failed, answeredQuestionCalls(messages));
-	const question = buildQuestion(pending.tool, pending.toolCallId, pending.input, leadIn);
+	const question = answerable ? buildQuestion(pending.tool, pending.toolCallId, pending.input, leadIn) : null;
 	const sameMessageTeaching = previousCall >= 0 ? newestSegmentText(before.slice(0, previousCall), failed) : null;
 	// This exchange's teaching: text the open question's own message sent
 	// before an earlier call (one turn), else text no answered question
