@@ -99,7 +99,7 @@ A lesson or imported notes file that added propositions to the knowledge graph. 
 _Avoid_: Cluster (the drawn group of a session's propositions), source
 
 **Extraction view**:
-A lesson's teacher text that is not in the knowledge graph yet, in batches, each passage labelled with its message id: what the extractor reads.
+A lesson's teacher text that has not been read for the knowledge graph yet (a passage counts as read once its batch is merged, even if it added nothing), in batches, each passage labelled with its message id: what the extractor reads.
 _Avoid_: Transcript (the whole lesson), prose view
 
 **Digest**:
