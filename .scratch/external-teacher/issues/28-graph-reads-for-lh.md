@@ -1,6 +1,6 @@
 # 28: Graph reads for `lh`
 
-Status: open
+Status: claimed
 Blocked by: 27
 Risk: pre-release
 Gate: none
