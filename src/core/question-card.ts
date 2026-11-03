@@ -7,7 +7,9 @@
  *
  * Pure and read-only. The open question is the same stored question call
  * the lesson page docks and `lh show` reports (pendingQuestionOf /
- * danglingQuestionOf). Option numbers follow the order the page shows:
+ * danglingQuestionOf), or, when none is answerable, the malformed call the
+ * page shows in its malformed box (malformedQuestionsOf), which the card
+ * marks `malformed`. Option numbers follow the order the page shows:
  * quiz-kind options (quiz and probe) are shuffled by call id, ask options
  * keep their authored order. `displayedQuestionOptions` is that order,
  * shared with the question dock so the two can never disagree.
