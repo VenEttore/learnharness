@@ -1,6 +1,6 @@
 # 27: Merge upstream 0.4.1
 
-Status: open
+Status: claimed
 Blocked by: 26
 Risk: pre-release
 Gate: none
