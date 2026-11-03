@@ -193,6 +193,63 @@ describe("lh maps command lines to requests", () => {
 		assert.deepEqual(await lastRequest(["show", "chat_a"]), { method: "GET", url: "/api/external/chats/chat_a", body: undefined });
 	});
 
+	it("extract-view and graph sessions|propositions read the graph", async () => {
+		assert.deepEqual(await lastRequest(["extract-view", "chat_a"]), { method: "GET", url: "/api/external/chats/chat_a/extract-view", body: undefined });
+		assert.deepEqual(await lastRequest(["graph", "sessions"]), { method: "GET", url: "/api/external/graph/sessions", body: undefined });
+		assert.deepEqual(await lastRequest(["graph", "propositions", "src_a b"]), {
+			method: "GET",
+			url: "/api/external/graph/sessions/src_a%20b/propositions",
+			body: undefined,
+		});
+	});
+
+	it("graph find posts one query, or the JSON from stdin or --file", async () => {
+		assert.deepEqual(await lastRequest(["graph", "find", "chain rule"]), {
+			method: "POST",
+			url: "/api/external/graph/find",
+			body: { propositions: [{ id: "query", name: "chain rule" }] },
+		});
+		assert.deepEqual((await lastRequest(["graph", "find", "chain rule", "--offset", "5"])).body, {
+			propositions: [{ id: "query", name: "chain rule", offset: 5 }],
+		});
+		const batch = { propositions: [{ id: "p1", name: "Chain rule", statement: "(f∘g)' = f'(g)·g'", hints: ["composition"] }] };
+		assert.deepEqual((await lastRequest(["graph", "find"], { stdin: JSON.stringify(batch) })).body, batch);
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "lh-cli-"));
+		const file = path.join(dir, "find.json");
+		fs.writeFileSync(file, JSON.stringify(batch));
+		try {
+			assert.deepEqual((await lastRequest(["graph", "find", "--file", file])).body, batch);
+		} finally {
+			fs.rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("graph refuses bad command lines before any request", async () => {
+		seen.length = 0;
+		for (const args of [
+			["graph"],
+			["graph", "nodes"],
+			["graph", "sessions", "extra"],
+			["graph", "sessions", "--offset", "1"],
+			["graph", "propositions"],
+			["graph", "propositions", "a", "b"],
+			["graph", "find", "a", "b"],
+			["graph", "find", "a", "--offset", "-1"],
+			["graph", "find", "a", "--offset", "1.5"],
+			["graph", "find", "a", "--file", "x.json"],
+			["extract-view"],
+			["extract-view", "a", "b"],
+		]) {
+			const { code, json } = await lh(args, { stdin: "{}" });
+			assert.equal(code, 1, args.join(" "));
+			assert.equal(json.code, "usage", args.join(" "));
+		}
+		const { code, json } = await lh(["graph", "find"], { stdin: "not json" });
+		assert.equal(code, 1);
+		assert.equal(json.code, "usage");
+		assert.equal(seen.length, 0);
+	});
+
 	it("prints the reply as one JSON line", async () => {
 		reply = { status: 200, body: { ok: true, id: "chat_a", cursor: "msg_2" } };
 		const { code, lines, json } = await lh(["show", "chat_a"]);

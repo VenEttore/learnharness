@@ -14,6 +14,17 @@
  *                                 --wait checks every 2 s until there is
  *                                 at least one item, 600 s by default
  *   lh show <lesson>
+ *   lh extract-view <lesson>     the lesson's unread teacher text in the
+ *                                 extractor's view, and what the lesson
+ *                                 already added to the graph
+ *   lh graph sessions            the knowledge graph's sessions
+ *   lh graph propositions <session>
+ *                                 the propositions born in one session
+ *   lh graph find <query> [--offset <n>]
+ *   lh graph find [--file <path>] candidates for proposed propositions,
+ *                                 one query, or a JSON object from --file,
+ *                                 else stdin: {"propositions":[{"id":"p1",
+ *                                 "name":"...","statement":"..."}]}
  *   lh submit <lesson> --after <cursor> [--file <path>]
  *                                 the learner's answer to the open question,
  *                                 a JSON object from --file, else stdin:
@@ -162,8 +173,53 @@ const FLAGS = {
 	...Object.fromEntries(JSON_KINDS.map((k) => [k, ["after", "file"]])),
 	answer: ["wait", "timeout"],
 	show: [],
+	"extract-view": [],
+	graph: ["offset", "file"],
 	submit: ["after", "file"],
 };
+
+/** `lh graph <sub>`: the auditor's and prober's read-only graph tools. */
+async function graphRequest(rest, flags) {
+	const [sub, ...args] = rest;
+	const only = (allowed) => {
+		const unknown = Object.keys(flags).filter((f) => !allowed.includes(f));
+		if (unknown.length > 0) throw new UsageError(`graph ${sub} does not take --${unknown.join(", --")}`);
+	};
+	switch (sub) {
+		case "sessions":
+			only([]);
+			if (args.length > 0) throw new UsageError("graph sessions takes no arguments");
+			return { method: "GET", path: "/api/external/graph/sessions" };
+		case "propositions":
+			only([]);
+			if (args.length !== 1) throw new UsageError("usage: lh graph propositions <session>");
+			return { method: "GET", path: `/api/external/graph/sessions/${encodeURIComponent(args[0])}/propositions` };
+		case "find": {
+			if (args.length > 1) throw new UsageError("graph find takes one query; quote it");
+			if (args.length === 1) {
+				only(["offset"]);
+				const proposition = { id: "query", name: args[0] };
+				if (flags.offset !== undefined) {
+					const offset = Number(flags.offset);
+					if (!Number.isSafeInteger(offset) || offset < 0) throw new UsageError("--offset takes a whole number of 0 or more");
+					proposition.offset = offset;
+				}
+				return { method: "POST", path: "/api/external/graph/find", body: { propositions: [proposition] } };
+			}
+			only(["file"]);
+			const text = await readInput(flags);
+			let body;
+			try {
+				body = JSON.parse(text);
+			} catch (err) {
+				throw new UsageError(`the input is not JSON: ${err.message}`);
+			}
+			return { method: "POST", path: "/api/external/graph/find", body };
+		}
+		default:
+			throw new UsageError("usage: lh graph sessions | lh graph propositions <session> | lh graph find <query>");
+	}
+}
 
 /** The HTTP request a command line makes, `{ method, path, body? }`, or
  *  for `submit` the answer to save, `{ submit: { lesson, after, raw } }`. */
@@ -173,8 +229,9 @@ async function requestFor(argv) {
 	const allowed = Object.hasOwn(FLAGS, command ?? "") ? FLAGS[command] : null;
 	const unknown = allowed ? Object.keys(flags).filter((f) => !allowed.includes(f)) : [];
 	if (unknown.length > 0) throw new UsageError(`${command} does not take --${unknown.join(", --")}`);
-	// lesson takes "new"; the rest take one lesson id.
-	if (allowed && rest.length > 1) throw new UsageError(`${command} takes one ${command === "lesson" ? "subcommand" : "lesson id"}, got ${rest.length}`);
+	// lesson takes "new", graph a subcommand and its arguments; the rest
+	// take one lesson id.
+	if (allowed && command !== "graph" && rest.length > 1) throw new UsageError(`${command} takes one ${command === "lesson" ? "subcommand" : "lesson id"}, got ${rest.length}`);
 	switch (command) {
 		case "lesson": {
 			if (rest[0] !== "new") throw new UsageError("usage: lh lesson new --title <t> --key <k> [--prompt <p>]");
@@ -213,6 +270,10 @@ async function requestFor(argv) {
 		}
 		case "show":
 			return { method: "GET", path: lessonPath(rest[0]) };
+		case "extract-view":
+			return { method: "GET", path: `${lessonPath(rest[0])}/extract-view` };
+		case "graph":
+			return graphRequest(rest, flags);
 		case "submit": {
 			lessonPath(rest[0]);
 			const after = requireAfter(flags);
@@ -226,7 +287,7 @@ async function requestFor(argv) {
 			return { submit: { lesson: rest[0], after, raw } };
 		}
 		default:
-			throw new UsageError(`unknown command ${JSON.stringify(command ?? "")}; commands: lesson new, say, plan, ${JSON_KINDS.join(", ")}, answer, show, submit`);
+			throw new UsageError(`unknown command ${JSON.stringify(command ?? "")}; commands: lesson new, say, plan, ${JSON_KINDS.join(", ")}, answer, show, submit, extract-view, graph`);
 	}
 }
 

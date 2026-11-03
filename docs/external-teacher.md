@@ -332,6 +332,7 @@ The cursor rules above are mechanics. For how to probe, plan and teach, read Lea
 | `plan_init` | `lh plan`, with the `mermaid` text as input |
 | `quiz` (teacher prompts) | `lh quiz` |
 | `explain` (teacher prompts) | `lh explain` |
+| `list_sessions`, `list_propositions` (prober) | `lh graph sessions`, `lh graph propositions` (section 7) |
 
 The input fields match the tools' fields. The prompts call the `readingThinking` field `thinkingWhileReading`. Where a prompt says "end your turn" after a question, wait for the learner's input.
 
@@ -344,6 +345,19 @@ The input fields match the tools' fields. The prompts call the `readingThinking`
 | `pdf` | poppler-utils on this computer |
 | `find`, `ls`, `grep`, `read` | your shell on this computer; copy the learner's notes here first |
 | `demo` | screenshots plus a widget on a phone; interactive only through Take over |
-| `list_sessions`, `list_propositions` | none: you cannot see earlier lessons, so probe every strand |
 
 Workers can research and draft, but they cannot raise widgets or talk to the learner.
+
+## 7. Read the knowledge graph
+
+LearnHarness keeps one knowledge graph across all lessons: the facts each lesson taught, grouped by the lesson (or imported notes file) they were first learned in. These commands only read it. None of them calls a model.
+
+| command | reply |
+|---|---|
+| `lh graph sessions` | `sessions`: every lesson or notes file that added facts, newest first, with its `id`, `name`, `kind` (`chat` or `file`), `propositions` (how many facts it added) and dates. `proberText` and `auditorText` are LearnHarness's own `list_sessions` output for its prober and its auditor. |
+| `lh graph propositions <session>` | `propositions`: the facts first learned in that session, each with `nodeId`, `name`, `statement` and `aliases`. `proberText` and `auditorText` as above. An unknown id gives `[]`. |
+| `lh graph find "<query>" [--offset <n>]` | Facts already in the graph that look like the query, five per page, best first: `matches[0].candidateIds` points into `candidates` (each with `statement`, matched `aliases` and the `sessions` it came from). `nextOffset` is the `--offset` for the next page, or `null`. Word overlap only, so a miss does not prove the fact is new. |
+| `lh graph find --file <path>` | The same for several draft facts at once. The file (or stdin) is `{"propositions":[{"id":"p1","name":"Chain rule","statement":"...","aliases":[],"hints":["composition"],"offset":0}]}`; only `id` and `name` are required, and each `id` once. This is LearnHarness's auditor's `find_candidates`. |
+| `lh extract-view <lesson>` | Your lesson's teacher text that is not in the graph yet, as LearnHarness's extractor reads it. `batches` holds it oldest first, each with a `view` (`TEACHER [message id] text` passages) and its `messageIds`. `digest` lists what this lesson already added to the graph, and `prompt` is the extractor's input for the first batch: the digest, then that batch's view. Bot-run lessons only. |
+
+Before you probe, `lh graph sessions` and `lh graph propositions` show what the learner covered in earlier lessons. A bad `find` body is refused with `bad_find` and `problems`.
