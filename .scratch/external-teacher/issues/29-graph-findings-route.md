@@ -1,6 +1,6 @@
 # 29: Bot findings into the graph
 
-Status: open
+Status: claimed
 Blocked by: 28
 Risk: pre-release
 Gate: none
