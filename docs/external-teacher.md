@@ -64,7 +64,7 @@ A reply with `"code":"bad_reply"` means the server on `LH_URL` answered with som
 
 **The cursor.** Every reply from LearnHarness about a lesson you can write to carries `cursor`, the id of the newest message in the lesson, except the `forbidden_*` refusals. Replies made by `lh` itself (`usage`, `node_version`, `unreachable`, `bad_reply`, a `--wait` timeout) carry none. A new lesson created without `--prompt` is empty, and its cursor is the lesson id. Pass the lesson id only when a reply gave it to you as the cursor. As `--after`, the lesson id means "from the start". On a lesson created with a prompt, a turn sent with the lesson id as `--after` is refused as `unread_input` until a Bot Teacher turn is saved. After that, such a turn counts as a repeat if it matches any saved Bot Teacher turn, and saves nothing. Every turn command needs `--after <cursor>`. In the examples, `L` is the lesson id and `C` is the cursor; after each reply, set `C` to its `cursor`.
 
-**Items.** Learner input comes back as `items`. `lh answer` always has them. A create, a repeat, `lh show`, and an `unread_input` or `bad_after` refusal carry `items` when there is learner input you have not responded to. That is everything after the last saved Bot Teacher turn, whether you or an earlier Bot Teacher took it. With no saved turn, it is everything since the lesson began. In an `unread_input` refusal, the items start after your `--after` instead when that message is newer than the last saved Bot Teacher turn. A create with `--prompt` returns the prompt this way. Read the items in every reply that has them, and respond to all of them, before your next turn.
+**Items.** Learner input comes back as `items`. `lh answer` always has them. A create, a repeat, `lh show`, `lh extract-view`, and an `unread_input` or `bad_after` refusal carry `items` when there is learner input you have not responded to. That is everything after the last saved Bot Teacher turn, whether you or an earlier Bot Teacher took it. With no saved turn, it is everything since the lesson began. In an `unread_input` refusal, the items start after your `--after` instead when that message is newer than the last saved Bot Teacher turn. A create with `--prompt` returns the prompt this way. Read the items in every reply that has them, and respond to all of them, before your next turn.
 
 **Input.** `say` and `plan` read plain text. `ask`, `probe`, `recall`, `probe-done`, `quiz`, `explain` and `submit` read one JSON object. Both come from `--file <path>` or stdin; the examples use a quoted heredoc (`<<'EOF'`), which keeps `$` and backticks literal. Never pass text or JSON in a double-quoted string (`<<<"..."`, `echo "..."`): bash expands `$name` and runs `$(...)` before `lh` sees it, so `$n$` arrives as `$`. On the command line, put text values (`--title`, `--prompt`) in single quotes; for a `'` inside, write `'\''`. The JSON never carries `kind` or `after`. Those come from the command line.
 
@@ -290,7 +290,7 @@ The server also stores any `confidence` as sent (`null`, `150`, `"high"`), and t
 
 ## 5. Refusals and recovery
 
-LearnHarness runs its checks before it saves anything, so a refused turn adds nothing to the lesson's transcript. Fix it and resend. Refusals about a lesson carry the `cursor`; `not_found`, `not_bot_run`, `key_required`, `usage`, the `forbidden_*` codes, and a create's `save_failed` do not.
+LearnHarness runs its checks before it saves anything, so a refused turn adds nothing to the lesson's transcript. Fix it and resend. Refusals about a lesson carry the `cursor`; `not_found`, `not_bot_run`, `key_required`, `bad_find`, `usage`, the `forbidden_*` codes, and a create's `save_failed` do not.
 
 | code | what to do |
 |---|---|
@@ -302,6 +302,7 @@ LearnHarness runs its checks before it saves anything, so a refused turn adds no
 | `not_found` | No lesson with that id. |
 | `not_bot_run` | The lesson belongs to LearnHarness's own model. Create your own with `lh lesson new`. |
 | `key_required` | `lh lesson new` needs `--key`, which makes a rerun return the same lesson. |
+| `bad_find` | The `lh graph find` input is not `{"propositions":[...]}` as section 7 describes. `problems` says what to fix. |
 | `usage` | `lh` refused the command line before sending it: a missing flag, a misspelled flag, JSON that does not parse. |
 | `save_failed` | The disk write failed. Rerun the same command. |
 | `internal_error` | LearnHarness failed on its own bug and saved nothing. Read `/workspace/lh-server.log`. Resending the same turn fails the same way. |
@@ -332,6 +333,7 @@ The cursor rules above are mechanics. For how to probe, plan and teach, read Lea
 | `plan_init` | `lh plan`, with the `mermaid` text as input |
 | `quiz` (teacher prompts) | `lh quiz` |
 | `explain` (teacher prompts) | `lh explain` |
+| `list_sessions`, `list_propositions` (prober) | `lh graph sessions`, `lh graph propositions` (section 7) |
 
 The input fields match the tools' fields. The prompts call the `readingThinking` field `thinkingWhileReading`. Where a prompt says "end your turn" after a question, wait for the learner's input.
 
@@ -344,6 +346,19 @@ The input fields match the tools' fields. The prompts call the `readingThinking`
 | `pdf` | poppler-utils on this computer |
 | `find`, `ls`, `grep`, `read` | your shell on this computer; copy the learner's notes here first |
 | `demo` | screenshots plus a widget on a phone; interactive only through Take over |
-| `list_sessions`, `list_propositions` | none: you cannot see earlier lessons, so probe every strand |
 
 Workers can research and draft, but they cannot raise widgets or talk to the learner.
+
+## 7. Read the knowledge graph
+
+LearnHarness keeps one knowledge graph across all lessons: the facts (`propositions`) each lesson taught, grouped by the session, the lesson or imported notes file, they were first learned in. These commands only read it. None of them calls a model.
+
+| command | reply |
+|---|---|
+| `lh graph sessions` | `sessions`: every lesson or notes file that added facts, newest first, with its `id`, `name`, `kind` (`chat` or `file`), `propositions` (how many facts it added) and dates. `proberText` and `auditorText` are LearnHarness's own `list_sessions` output for its prober and its auditor. |
+| `lh graph propositions <session>` | `propositions`: the facts first learned in that session, each with `nodeId`, `name`, `statement` and `aliases`. `proberText` and `auditorText` as above. An unknown id gives `[]`. |
+| `lh graph find "<query>" [--offset <n>]` | Facts already in the graph that look like the query, five per page, best first: `matches[0].candidateIds` points into `candidates` (each with `statement`, the `matchedAliases` that matched, and the `sessions` it came from). `nextOffset` is the `--offset` for the next page, or `null`. Word overlap only, so a miss does not prove the fact is new. |
+| `lh graph find --file <path>` | The same for several draft facts at once. The file (or stdin) is `{"propositions":[{"id":"p1","name":"Chain rule","statement":"...","aliases":[],"hints":["composition"],"offset":0}]}`; only `id` and `name` are required, and each `id` once. This is LearnHarness's auditor's `find_candidates`. |
+| `lh extract-view <lesson>` | Your lesson's teacher text that has not been read for the graph yet, as LearnHarness's extractor reads it. A passage counts as read once its findings are merged, even if it added no facts. `batches` holds it oldest first, each with a `view` (`TEACHER [message id] text` passages) and its `messageIds`. `digest` lists what this lesson already added to the graph, and `prompt` is the extractor's input for the first batch: the digest, then that batch's view. Like `lh show`, it carries the lesson's `cursor` and any unread `items`. Bot-run lessons only. |
+
+A bad `find` body is refused with `bad_find` and `problems` (section 5).

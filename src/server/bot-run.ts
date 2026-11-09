@@ -135,22 +135,23 @@ function isBotMessage(m: LhMessage): m is LhMessage & AssistantMessage {
  *  can forge Host, so keeping it out is the 127.0.0.1 bind's job, not
  *  this check's. lh sends neither. Null when the request may proceed. */
 export function externalRequestRefusal(req: Request): Response | null {
-	if (req.headers.has("origin")) return fail(403, "forbidden_origin");
+	if (req.headers.has("origin")) return externalFailure(403, "forbidden_origin");
 	const host = req.headers.get("host");
-	if (host !== null && !/^(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/i.test(host)) return fail(403, "forbidden_host");
+	if (host !== null && !/^(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/i.test(host)) return externalFailure(403, "forbidden_host");
 	return null;
 }
 
 /** The newest message's id. An empty lesson has none, so its cursor is the
  *  lesson id, which `after` accepts as "before the first message". A
  *  reply whose cursor passes learner input the bot has not read (a
- *  create, a repeat, bad_after, show) also carries those items, so
- *  adopting the cursor never skips them. */
+ *  create, a repeat, bad_after, show, extract-view) also carries those
+ *  items, so adopting the cursor never skips them. */
 function cursorOf(record: ChatRecord): string {
 	return record.messages.at(-1)?.id ?? record.id;
 }
 
-function fail(status: number, code: string, extra: Record<string, unknown> = {}): Response {
+/** The external routes' refusal reply: `{ ok: false, code, ...extra }`. */
+export function externalFailure(status: number, code: string, extra: Record<string, unknown> = {}): Response {
 	return Response.json({ ok: false, code, ...extra }, { status });
 }
 
@@ -224,11 +225,17 @@ function unreadByBot(record: ChatRecord, afterIndex = -1): LearnerItem[] {
 	return learnerItems(record.messages.slice(Math.max(record.messages.findLastIndex(isBotMessage), afterIndex) + 1));
 }
 
+/** The cursor and the unread learner input that come with it, for a read
+ *  reply outside this file (graph-reads.ts): see cursorOf. */
+export function cursorAndItems(record: ChatRecord): { cursor: string; items: LearnerItem[] } {
+	return { cursor: cursorOf(record), items: unreadByBot(record) };
+}
+
 /** The record, or the refusal for check 1 (exists and is bot-run). */
-function botLesson(id: string): ChatRecord | Response {
+export function botLesson(id: string): ChatRecord | Response {
 	const record = stores.chatStore.getChat(id);
-	if (!record) return fail(404, "not_found");
-	if (!isBotRun(record)) return fail(409, "not_bot_run");
+	if (!record) return externalFailure(404, "not_found");
+	if (!isBotRun(record)) return externalFailure(409, "not_bot_run");
 	return record;
 }
 
@@ -237,10 +244,10 @@ function botLesson(id: string): ChatRecord | Response {
  *  synchronous block, so two racing creates cannot both miss. */
 export function createBotLesson(body: unknown): Response {
 	const b = (typeof body === "object" && body !== null ? body : {}) as { title?: unknown; key?: unknown; prompt?: unknown };
-	if (typeof b.key !== "string" || b.key.trim() === "") return fail(400, "key_required");
+	if (typeof b.key !== "string" || b.key.trim() === "") return externalFailure(400, "key_required");
 	const key = b.key;
 	const problems = (["title", "prompt"] as const).flatMap((f) => (b[f] !== undefined && typeof b[f] !== "string" ? [`${f} must be a string`] : []));
-	if (problems.length > 0) return fail(422, "invalid", { problems });
+	if (problems.length > 0) return externalFailure(422, "invalid", { problems });
 	const found = stores.chatStore.listChats().find((c) => c.driver !== undefined && c.externalKey === key);
 	const existing = found ? stores.chatStore.getChat(found.id) : null;
 	if (existing) {
@@ -255,7 +262,7 @@ export function createBotLesson(body: unknown): Response {
 		chat = stores.chatStore.createChat(titleFromPrompt(title), undefined, { driver: "external", externalKey: key, messages });
 	} catch (err) {
 		console.error("[bot-run] lesson create failed:", err);
-		return fail(500, "save_failed");
+		return externalFailure(500, "save_failed");
 	}
 	return Response.json({ ok: true, id: chat.id, title: chat.title, existing: false, items: unreadByBot(chat), cursor: cursorOf(chat) });
 }
@@ -270,7 +277,7 @@ function commitOrFail(record: ChatRecord, built: Built): Response | null {
 		return null;
 	} catch (err) {
 		console.error(`[chat ${record.id}] bot-run persist failed:`, err);
-		return fail(500, "save_failed", { cursor: cursorOf(record) });
+		return externalFailure(500, "save_failed", { cursor: cursorOf(record) });
 	}
 }
 
@@ -711,7 +718,7 @@ export function botTurn(id: string, body: unknown): Response {
 	// The refusal carries the input after the bot's last message, as answer
 	// does, so a bot that adopts the cursor has not skipped any.
 	if (typeof after !== "string" || (afterIndex === -1 && after !== record.id)) {
-		return fail(400, "bad_after", { items: unreadByBot(record), cursor });
+		return externalFailure(400, "bad_after", { items: unreadByBot(record), cursor });
 	}
 	const since = record.messages.slice(afterIndex + 1);
 
@@ -724,7 +731,7 @@ export function botTurn(id: string, body: unknown): Response {
 	} catch (err) {
 		// A row's own bug, not the bot's input: a JSON reply, nothing saved.
 		console.error(`[chat ${record.id}] bot-run ${String(kind)} build failed:`, err);
-		return fail(500, "internal_error", { cursor });
+		return externalFailure(500, "internal_error", { cursor });
 	}
 
 	// 3. repeat: the same turn already follows `after`. A turn refused only
@@ -741,17 +748,17 @@ export function botTurn(id: string, body: unknown): Response {
 	// bot's last message, so a stale `after` does not resurface input the
 	// bot already replied to.
 	const unread = unreadByBot(record, afterIndex);
-	if (unread.length > 0) return fail(409, "unread_input", { items: unread, cursor });
+	if (unread.length > 0) return externalFailure(409, "unread_input", { items: unread, cursor });
 
 	// 5. a question is still open: the learner answers or skips it first
-	if (danglingQuestionOf(record.messages) !== null) return fail(409, "open_question", { cursor });
+	if (danglingQuestionOf(record.messages) !== null) return externalFailure(409, "open_question", { cursor });
 
 	// 6. the kind fits the lesson's phase (an unknown kind is check 7's)
 	const phase = phaseAt3Lh(record.messages);
-	if (row && !row.phases.includes(phase)) return fail(409, "wrong_phase", { phase, allowed: kindsAllowedIn(phase), cursor });
+	if (row && !row.phases.includes(phase)) return externalFailure(409, "wrong_phase", { phase, allowed: kindsAllowedIn(phase), cursor });
 
 	// 7. validation
-	if (!checked.ok) return fail(422, "invalid", { problems: checked.problems, cursor });
+	if (!checked.ok) return externalFailure(422, "invalid", { problems: checked.problems, cursor });
 
 	const failed = commitOrFail(record, checked.built);
 	if (failed) return failed;

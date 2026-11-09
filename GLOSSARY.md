@@ -5,7 +5,7 @@ A tutor that probes what a learner knows, plans a path, and teaches along it. Le
 ## Lessons
 
 **Lesson**:
-One teaching session with one learner: probe, then plan, then teach, in a single transcript.
+One course of teaching with one learner: probe, then plan, then teach, in a single transcript.
 _Avoid_: Chat (the code's name for the stored record), conversation
 
 **Bot-run lesson**:
@@ -71,3 +71,41 @@ _Avoid_: Subagent, child bot
 **Takeover**:
 The learner taking control of the Bot Teacher's browser to use the lesson page, until they give control back. The Bot Teacher is paused while the learner has control.
 _Avoid_: Handoff (the code's name for the marker the end of the probe leaves), taking over (for a Bot Teacher resuming a lesson)
+
+## Knowledge graph
+
+**Knowledge graph**:
+The one store of what the learner has been taught, shared by every lesson. LearnHarness's extractor and auditor decide what goes in, and plain code writes it.
+_Avoid_: Graph data, memory
+
+**Extractor**:
+LearnHarness's model step that reads a lesson's new teacher text and proposes the propositions and chains it teaches. In a bot-run lesson the Bot Teacher does this thinking instead.
+_Avoid_: Parser
+
+**Auditor**:
+LearnHarness's model step that compares the extractor's propositions with the ones already in the knowledge graph and decides which are the same idea. In a bot-run lesson the Bot Teacher does this thinking instead.
+_Avoid_: Reviewer, deduplicator
+
+**Chain**:
+Propositions that together imply another proposition: the premises and the conclusion.
+_Avoid_: Edge (the graph view's drawn line), derivation
+
+**Proposition**:
+One self-contained idea in the knowledge graph, with a short name and a full statement. The guide calls it a fact.
+_Avoid_: Node (the code's name for its stored record), concept
+
+**Session**:
+A lesson or imported notes file that added propositions to the knowledge graph. A proposition belongs to the session it was first learned in.
+_Avoid_: Cluster (the drawn group of a session's propositions), source
+
+**Extraction view**:
+A lesson's teacher text that has not been read for the knowledge graph yet (a passage counts as read once its batch is merged, even if it added nothing), in batches, each passage labelled with its message id: what the extractor reads.
+_Avoid_: Transcript (the whole lesson), prose view
+
+**Digest**:
+The propositions and chains a lesson has already added to the knowledge graph, listed for the extractor before its next batch.
+_Avoid_: Summary
+
+**Candidate**:
+A proposition already in the knowledge graph that looks like a new one, found by word overlap. Deciding whether the two are the same idea is the auditor's job.
+_Avoid_: Duplicate. `find` replies list each query's candidates under `matches` (the code's name).

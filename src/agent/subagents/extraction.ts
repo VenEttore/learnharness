@@ -132,7 +132,7 @@ export function transcriptView(record: ChatRecord): string {
  *  every proposition to the passage it came from (the session submit's
  *  required messageId). The shared markdown engine stays reserved for the
  *  future user-facing export. */
-function proseView(
+export function proseView(
 	messages: ReadonlyArray<LhMessage>,
 	title?: string,
 	failedOutputCalls: ReadonlySet<string> = failedOutputCallIds(messages),

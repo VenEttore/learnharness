@@ -14,6 +14,17 @@
  *                                 --wait checks every 2 s until there is
  *                                 at least one item, 600 s by default
  *   lh show <lesson>
+ *   lh extract-view <lesson>     the lesson's unread teacher text in the
+ *                                 extractor's view, and what the lesson
+ *                                 already added to the graph
+ *   lh graph sessions            the knowledge graph's sessions
+ *   lh graph propositions <session>
+ *                                 the propositions born in one session
+ *   lh graph find <query> [--offset <n>]
+ *   lh graph find [--file <path>] candidates for proposed propositions,
+ *                                 one query, or a JSON object from --file,
+ *                                 else stdin: {"propositions":[{"id":"p1",
+ *                                 "name":"...","statement":"..."}]}
  *   lh submit <lesson> --after <cursor> [--file <path>]
  *                                 the learner's answer to the open question,
  *                                 a JSON object from --file, else stdin:
@@ -131,18 +142,22 @@ async function readInput(flags) {
 	return text;
 }
 
+/** Long input (--file, else stdin) parsed as JSON. */
+async function readJson(flags) {
+	const text = await readInput(flags);
+	try {
+		return JSON.parse(text);
+	} catch (err) {
+		throw new UsageError(`the input is not JSON: ${err.message}`);
+	}
+}
+
 /** A JSON kind's payload: one JSON object, e.g. `{ "text": "lead-in",
  *  "question": "...", "options": [...] }` or `{ "assessment": {...} }`.
  *  The kind and cursor come from the command line, so the object may not
  *  carry its own. */
 async function readPayload(flags) {
-	const text = await readInput(flags);
-	let payload;
-	try {
-		payload = JSON.parse(text);
-	} catch (err) {
-		throw new UsageError(`the input is not JSON: ${err.message}`);
-	}
+	const payload = await readJson(flags);
 	if (typeof payload !== "object" || payload === null || Array.isArray(payload)) throw new UsageError("the input must be a JSON object");
 	for (const key of ["kind", "after"]) {
 		if (Object.hasOwn(payload, key)) throw new UsageError(`the JSON must not set "${key}"; it comes from the command line`);
@@ -162,19 +177,57 @@ const FLAGS = {
 	...Object.fromEntries(JSON_KINDS.map((k) => [k, ["after", "file"]])),
 	answer: ["wait", "timeout"],
 	show: [],
+	"extract-view": [],
+	"graph sessions": [],
+	"graph propositions": [],
+	"graph find": ["offset", "file"],
 	submit: ["after", "file"],
 };
+
+/** `lh graph <sub>`: the auditor's and prober's read-only graph tools. */
+async function graphRequest(rest, flags) {
+	const [sub, ...args] = rest;
+	switch (sub) {
+		case "sessions":
+			if (args.length > 0) throw new UsageError("graph sessions takes no arguments");
+			return { method: "GET", path: "/api/external/graph/sessions" };
+		case "propositions":
+			// "." and ".." would resolve as URL path segments and reach another route.
+			if (args.length !== 1 || ["", ".", ".."].includes(args[0])) throw new UsageError("usage: lh graph propositions <session>");
+			return { method: "GET", path: `/api/external/graph/sessions/${encodeURIComponent(args[0])}/propositions` };
+		case "find": {
+			if (args.length > 1) throw new UsageError("graph find takes one query; quote it");
+			if (args.length === 1) {
+				if (flags.file !== undefined) throw new UsageError("graph find takes a query or --file, not both");
+				const proposition = { id: "query", name: args[0] };
+				if (flags.offset !== undefined) {
+					const offset = /^\d+$/.test(flags.offset) ? Number(flags.offset) : NaN;
+					if (!Number.isSafeInteger(offset)) throw new UsageError("--offset takes a whole number of 0 or more");
+					proposition.offset = offset;
+				}
+				return { method: "POST", path: "/api/external/graph/find", body: { propositions: [proposition] } };
+			}
+			if (flags.offset !== undefined) throw new UsageError("--offset goes with a query; in --file JSON, set offset on each proposition");
+			return { method: "POST", path: "/api/external/graph/find", body: await readJson(flags) };
+		}
+		default:
+			throw new UsageError("usage: lh graph sessions | lh graph propositions <session> | lh graph find <query>");
+	}
+}
 
 /** The HTTP request a command line makes, `{ method, path, body? }`, or
  *  for `submit` the answer to save, `{ submit: { lesson, after, raw } }`. */
 async function requestFor(argv) {
 	const { positionals, flags } = parseArgs(argv);
 	const [command, ...rest] = positionals;
-	const allowed = Object.hasOwn(FLAGS, command ?? "") ? FLAGS[command] : null;
+	// graph's flags depend on its subcommand.
+	const name = command === "graph" ? `graph ${rest[0] ?? ""}` : command ?? "";
+	const allowed = Object.hasOwn(FLAGS, name) ? FLAGS[name] : null;
 	const unknown = allowed ? Object.keys(flags).filter((f) => !allowed.includes(f)) : [];
-	if (unknown.length > 0) throw new UsageError(`${command} does not take --${unknown.join(", --")}`);
-	// lesson takes "new"; the rest take one lesson id.
-	if (allowed && rest.length > 1) throw new UsageError(`${command} takes one ${command === "lesson" ? "subcommand" : "lesson id"}, got ${rest.length}`);
+	if (unknown.length > 0) throw new UsageError(`${name} does not take --${unknown.join(", --")}`);
+	// lesson takes "new" and graph checks its own arguments; the rest take
+	// one lesson id.
+	if (allowed && command !== "graph" && rest.length > 1) throw new UsageError(`${command} takes one ${command === "lesson" ? "subcommand" : "lesson id"}, got ${rest.length}`);
 	switch (command) {
 		case "lesson": {
 			if (rest[0] !== "new") throw new UsageError("usage: lh lesson new --title <t> --key <k> [--prompt <p>]");
@@ -213,20 +266,17 @@ async function requestFor(argv) {
 		}
 		case "show":
 			return { method: "GET", path: lessonPath(rest[0]) };
+		case "extract-view":
+			return { method: "GET", path: `${lessonPath(rest[0])}/extract-view` };
+		case "graph":
+			return graphRequest(rest, flags);
 		case "submit": {
 			lessonPath(rest[0]);
 			const after = requireAfter(flags);
-			const text = await readInput(flags);
-			let raw;
-			try {
-				raw = JSON.parse(text);
-			} catch (err) {
-				throw new UsageError(`the input is not JSON: ${err.message}`);
-			}
-			return { submit: { lesson: rest[0], after, raw } };
+			return { submit: { lesson: rest[0], after, raw: await readJson(flags) } };
 		}
 		default:
-			throw new UsageError(`unknown command ${JSON.stringify(command ?? "")}; commands: lesson new, say, plan, ${JSON_KINDS.join(", ")}, answer, show, submit`);
+			throw new UsageError(`unknown command ${JSON.stringify(command ?? "")}; commands: lesson new, say, plan, ${JSON_KINDS.join(", ")}, answer, show, submit, extract-view, graph`);
 	}
 }
 
