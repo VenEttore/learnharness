@@ -1,6 +1,6 @@
 # 28: Graph reads for `lh`
 
-Status: claimed
+Status: resolved
 Blocked by: 27
 Risk: pre-release
 Gate: none
@@ -15,8 +15,8 @@ Option A of .scratch/external-teacher/graph-feasibility.md, part 1. Reads only, 
 
 ## Comments
 
-### Stopped at review cap 2026-11-03
-Status stays claimed. Three review rounds ran, the most this brief allowed. Round 3 had one finding. Commit bd23619b fixes it, but no review round was left to check that fix.
+### Shipped 2026-11-09 (stopped at review cap 2026-11-03; Matt accepted)
+Three review rounds ran, the most that launch allowed. Round 3 had one finding. Commit bd23619b fixes it (2 lines in scripts/lh.mjs plus 2 tests, within the small-diff rule) and shipped unreviewed: Matt accepted the ticket as it stood on 2026-11-09.
 
 Completed:
 - `lh extract-view <lesson>` calls GET /api/external/chats/:id/extract-view. It returns the lesson's teacher text that the extractor has not read yet, in the extractor's own batches. Each batch has its `view` ("TEACHER [id] text" passages) and its `messageIds` (the ids a finding from that batch may name). The reply also has the lesson's `digest` (what it already added to the graph), `prompt` (the extractor's input for the first batch), and `cursor` and `items` the way `lh show` returns them. It works on bot-run lessons only: an ordinary lesson gets 409 `not_bot_run`, and an unknown id gets 404 `not_found`.
