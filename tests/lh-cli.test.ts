@@ -224,6 +224,27 @@ describe("lh maps command lines to requests", () => {
 		}
 	});
 
+	it("findings posts the JSON from stdin or --file to the lesson's findings route", async () => {
+		const body = {
+			messageIds: ["msg_1"],
+			findings: { propositions: [{ id: "p1", name: "Chain rule", statement: "(f∘g)' = f'(g)·g'", messageId: "msg_1" }], chains: [] },
+			verdicts: { links: [] },
+		};
+		assert.deepEqual(await lastRequest(["findings", "chat a"], { stdin: JSON.stringify(body) }), {
+			method: "POST",
+			url: "/api/external/chats/chat%20a/findings",
+			body,
+		});
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "lh-cli-"));
+		const file = path.join(dir, "findings.json");
+		fs.writeFileSync(file, JSON.stringify(body));
+		try {
+			assert.deepEqual((await lastRequest(["findings", "chat_a", "--file", file])).body, body);
+		} finally {
+			fs.rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
 	it("graph refuses bad command lines before any request", async () => {
 		seen.length = 0;
 		for (const args of [
@@ -246,6 +267,9 @@ describe("lh maps command lines to requests", () => {
 			["graph", "find", "a", "--file", "x.json"],
 			["extract-view"],
 			["extract-view", "a", "b"],
+			["findings"],
+			["findings", "a", "b"],
+			["findings", "a", "--after", "x"],
 		]) {
 			const { code, json } = await lh(args, { stdin: "{}" });
 			assert.equal(code, 1, args.join(" "));

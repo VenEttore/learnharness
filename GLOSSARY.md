@@ -106,6 +106,14 @@ _Avoid_: Transcript (the whole lesson), prose view
 The propositions and chains a lesson has already added to the knowledge graph, listed for the extractor before its next batch.
 _Avoid_: Summary
 
+**Findings**:
+What the extractor found in one batch (propositions and chains) together with the auditor's links to existing propositions. In a bot-run lesson the Bot Teacher sends them with `lh findings`, and LearnHarness merges them.
+_Avoid_: Results, extraction output
+
+**Source tag**:
+`"source": "external"` on a stored proposition or chain line that a Bot Teacher's findings added. It lets a cleanup find and remove bot-added facts, since the graph is shared with ordinary lessons.
+_Avoid_: Bot flag, origin
+
 **Candidate**:
 A proposition already in the knowledge graph that looks like a new one, found by word overlap. Deciding whether the two are the same idea is the auditor's job.
 _Avoid_: Duplicate. `find` replies list each query's candidates under `matches` (the code's name).

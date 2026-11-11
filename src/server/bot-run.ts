@@ -411,7 +411,7 @@ function jsonType(value: unknown): string {
  *  rather than shown to the learner. pi also drops an optional field sent
  *  as null, so a raw null the checked value lacks is refused too: the
  *  record would not hold what the bot sent. */
-function conversionProblems(raw: unknown, checked: unknown, path: string): string[] {
+export function conversionProblems(raw: unknown, checked: unknown, path: string): string[] {
 	const want = jsonType(checked);
 	const got = jsonType(raw);
 	if (want !== got) return [`${path} must be ${want === "array" || want === "object" ? "an" : "a"} ${want}, not ${got}`];
@@ -435,7 +435,7 @@ function conversionProblems(raw: unknown, checked: unknown, path: string): strin
  *  and conversions refused, the dock's display parse (core/tool-parts.ts)
  *  reads every call the boundary accepts: its one extra rule heals a
  *  quoted `type`, and quiz and explain take only the bare words. */
-function unknownFields(schema: unknown, value: unknown, path: string): string[] {
+export function unknownFields(schema: unknown, value: unknown, path: string): string[] {
 	const s = schema as { type?: unknown; properties?: Record<string, unknown>; items?: unknown };
 	if (s.type === "object" && s.properties && jsonType(value) === "object") {
 		const props = s.properties;

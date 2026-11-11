@@ -17,6 +17,12 @@
  *   lh extract-view <lesson>     the lesson's unread teacher text in the
  *                                 extractor's view, and what the lesson
  *                                 already added to the graph
+ *   lh findings <lesson> [--file <path>]
+ *                                 merge your findings for the first batch
+ *                                 of extract-view into the graph, a JSON
+ *                                 object from --file, else stdin:
+ *                                 {"messageIds":[...],"findings":{...},
+ *                                 "verdicts":{"links":[...]}}
  *   lh graph sessions            the knowledge graph's sessions
  *   lh graph propositions <session>
  *                                 the propositions born in one session
@@ -178,6 +184,7 @@ const FLAGS = {
 	answer: ["wait", "timeout"],
 	show: [],
 	"extract-view": [],
+	findings: ["file"],
 	"graph sessions": [],
 	"graph propositions": [],
 	"graph find": ["offset", "file"],
@@ -268,6 +275,10 @@ async function requestFor(argv) {
 			return { method: "GET", path: lessonPath(rest[0]) };
 		case "extract-view":
 			return { method: "GET", path: `${lessonPath(rest[0])}/extract-view` };
+		case "findings": {
+			const path = `${lessonPath(rest[0])}/findings`;
+			return { method: "POST", path, body: await readJson(flags) };
+		}
 		case "graph":
 			return graphRequest(rest, flags);
 		case "submit": {
@@ -276,7 +287,7 @@ async function requestFor(argv) {
 			return { submit: { lesson: rest[0], after, raw: await readJson(flags) } };
 		}
 		default:
-			throw new UsageError(`unknown command ${JSON.stringify(command ?? "")}; commands: lesson new, say, plan, ${JSON_KINDS.join(", ")}, answer, show, submit, extract-view, graph`);
+			throw new UsageError(`unknown command ${JSON.stringify(command ?? "")}; commands: lesson new, say, plan, ${JSON_KINDS.join(", ")}, answer, show, submit, extract-view, findings, graph`);
 	}
 }
 

@@ -303,6 +303,9 @@ LearnHarness runs its checks before it saves anything, so a refused turn adds no
 | `not_bot_run` | The lesson belongs to LearnHarness's own model. Create your own with `lh lesson new`. |
 | `key_required` | `lh lesson new` needs `--key`, which makes a rerun return the same lesson. |
 | `bad_find` | The `lh graph find` input is not `{"propositions":[...]}` as section 7 describes. `problems` says what to fix. |
+| `bad_findings` | The `lh findings` input failed the extractor's or auditor's checks (section 7). `problems` says what to fix. Nothing was written. |
+| `stale_batch` | The `messageIds` you sent are not the lesson's first unread batch now, usually because new teacher text joined it. `batch` holds the current ids. Run `lh extract-view` again and redo the findings for that batch. |
+| `graph_busy` | LearnHarness's own extraction of another lesson is using the graph. Nothing was written. Wait a minute and resend the same findings. |
 | `usage` | `lh` refused the command line before sending it: a missing flag, a misspelled flag, JSON that does not parse. |
 | `save_failed` | The disk write failed. Rerun the same command. |
 | `internal_error` | LearnHarness failed on its own bug and saved nothing. Read `/workspace/lh-server.log`. Resending the same turn fails the same way. |
@@ -334,6 +337,7 @@ The cursor rules above are mechanics. For how to probe, plan and teach, read Lea
 | `quiz` (teacher prompts) | `lh quiz` |
 | `explain` (teacher prompts) | `lh explain` |
 | `list_sessions`, `list_propositions` (prober) | `lh graph sessions`, `lh graph propositions` (section 7) |
+| `submit_findings` (extractor) and `submit_review` (auditor) | `lh findings` (section 7) |
 
 The input fields match the tools' fields. The prompts call the `readingThinking` field `thinkingWhileReading`. Where a prompt says "end your turn" after a question, wait for the learner's input.
 
@@ -349,9 +353,9 @@ The input fields match the tools' fields. The prompts call the `readingThinking`
 
 Workers can research and draft, but they cannot raise widgets or talk to the learner.
 
-## 7. Read the knowledge graph
+## 7. Read and add to the knowledge graph
 
-LearnHarness keeps one knowledge graph across all lessons: the facts (`propositions`) each lesson taught, grouped by the session, the lesson or imported notes file, they were first learned in. These commands only read it. None of them calls a model.
+LearnHarness keeps one knowledge graph across all lessons: the facts (`propositions`) each lesson taught, grouped by the session, the lesson or imported notes file, they were first learned in. The commands in the table only read it; `lh findings` adds to it. None of them calls a model.
 
 | command | reply |
 |---|---|
@@ -362,3 +366,24 @@ LearnHarness keeps one knowledge graph across all lessons: the facts (`propositi
 | `lh extract-view <lesson>` | Your lesson's teacher text that has not been read for the graph yet, as LearnHarness's extractor reads it. A passage counts as read once its findings are merged, even if it added no facts. `batches` holds it oldest first, each with a `view` (`TEACHER [message id] text` passages) and its `messageIds`. `digest` lists what this lesson already added to the graph, and `prompt` is the extractor's input for the first batch: the digest, then that batch's view. Like `lh show`, it carries the lesson's `cursor` and any unread `items`. Bot-run lessons only. |
 
 A bad `find` body is refused with `bad_find` and `problems` (section 5).
+
+### Add your findings
+
+`lh findings <lesson> --file <path>` (or the JSON on stdin) merges what you found in the first batch of `lh extract-view` into the graph. LearnHarness checks it and writes it the way it writes its own extractor's and auditor's output. The input is:
+
+```json
+{
+  "messageIds": ["<the batch's messageIds, as extract-view gave them>"],
+  "findings": {
+    "propositions": [{ "id": "p1", "name": "Chain rule", "statement": "...", "aliases": [], "messageId": "<one of messageIds>" }],
+    "chains": [{ "premises": ["p1", "n_..."], "conclusion": "p2" }]
+  },
+  "verdicts": { "links": [{ "id": "p2", "linkTo": "n_..." }] }
+}
+```
+
+- `findings` is the extractor's `submit_findings` input: new facts only, each with the `messageId` of the passage that states it, and the chains among your facts and the digest's `n_` ids. Pass `"chains": []` when there are none.
+- `verdicts` is the auditor's `submit_review` input: a link says your fact is that existing fact (an id from `lh graph find`). Leave a fact out of `links` to add it as new.
+- The reply has `merged`, the `nodes` and `chains` added, `read` (the messages now read) and `remaining` (unread batches left). Run `lh extract-view` again before the next batch: the digest changed.
+- Resending findings for a batch that is already read returns `"merged": false, "alreadyRead": true` and writes nothing.
+- Facts you add are tagged `"source": "external"` in the graph files.

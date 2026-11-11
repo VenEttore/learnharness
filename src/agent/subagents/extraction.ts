@@ -221,7 +221,7 @@ const sessionPropositionProps = {
 	}),
 };
 
-const sessionFindingsSchema = Type.Object({
+export const sessionFindingsSchema = Type.Object({
 	propositions: Type.Array(Type.Object(sessionPropositionProps), {
 		description: propositionsDescription,
 	}),
@@ -246,7 +246,7 @@ type SessionFindingsSubmit = Static<typeof sessionFindingsSchema>;
 // ENTIRE deliverable (owner, 2026-09-28 evening: the edges argument is
 // GONE; the auditor never mints edges. The graph connects across sources
 // solely through identified equivalences — a link, never an inference).
-const auditSchema = Type.Object({
+export const auditSchema = Type.Object({
 	links: Type.Array(
 		Type.Object({
 			id: Type.String({ description: 'The proposition id from the findings ("p1", …).' }),
@@ -277,7 +277,7 @@ type NotesAuditResult = AuditVerdicts;
 // a pile of nodes with no structure). Only the per-item aliases stay
 // optional with a ??-fill.
 
-function fillFindings<T extends { propositions: Array<{ aliases?: string[] }>; chains: unknown }>(
+export function fillFindings<T extends { propositions: Array<{ aliases?: string[] }>; chains: unknown }>(
 	raw: T,
 ): T {
 	return {
@@ -310,7 +310,7 @@ function fillNotesFindings(raw: FindingsSubmit): FindingsSubmit {
  *  source and references digest ids verbatim). Identical (premise-set,
  *  conclusion) chains are NOT errors — they dedupe silently at the
  *  merge (chainKey): restating an argument is a no-op. */
-function validateFindingsChains(value: FindingsSubmit, existingIds: ReadonlySet<string>): string | null {
+export function validateFindingsChains(value: FindingsSubmit, existingIds: ReadonlySet<string>): string | null {
 	const ids = new Set(value.propositions.map((p) => p.id));
 	for (const chain of value.chains) {
 		if (chain.premises.length === 0) {
@@ -335,7 +335,7 @@ function validateFindingsChains(value: FindingsSubmit, existingIds: ReadonlySet<
  *  submit lands. The boundary is strict on purpose — an id from a LATER
  *  or already-covered batch, another chat, or a learner/tool message is
  *  refused even when it is a real message id of this chat. */
-function validateSessionAnchors(value: SessionFindingsSubmit, batchIds: ReadonlySet<string>): string | null {
+export function validateSessionAnchors(value: SessionFindingsSubmit, batchIds: ReadonlySet<string>): string | null {
 	for (const p of value.propositions) {
 		if (p.messageId.trim().length === 0) {
 			return `propositions: "${p.id}" is missing its messageId — copy the message id from the brackets of the passage (TEACHER [id]) that most directly states or explains it.`;
@@ -353,7 +353,7 @@ function validateSessionAnchors(value: SessionFindingsSubmit, batchIds: Readonly
  *  already ran inside runSubmitAgent; this only re-asserts the
  *  aliases-filled type (and preserves the session submit's messageId
  *  anchor, 2026-10-13 — both doors lift through here). */
-const asSessionFindings = (
+export const asSessionFindings = (
 	raw: {
 		propositions: Array<{ id: string; name: string; statement: string; aliases?: string[]; messageId?: string }>;
 		chains: Array<{ premises: string[]; conclusion: string }>;
@@ -363,7 +363,7 @@ const asSessionFindings = (
 	chains: raw.chains,
 });
 
-function fillAudit(raw: Static<typeof auditSchema>): AuditVerdicts {
+export function fillAudit(raw: Static<typeof auditSchema>): AuditVerdicts {
 	return {
 		links: raw.links,
 	};

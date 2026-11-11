@@ -7,6 +7,7 @@
 export * from "./chat-handler.ts";
 export * from "./bot-run.ts";
 export * from "./graph-reads.ts";
+export * from "./graph-findings.ts";
 export * from "./events-stream.ts";
 export * from "./chats.ts";
 export * from "./graph.ts";

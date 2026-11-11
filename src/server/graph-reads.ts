@@ -1,6 +1,6 @@
 import { proseView, sourceDigest } from "../agent/subagents/extraction.ts";
 import { prepareAuditorReview, proberGraphTools } from "../agent/tools/graph.ts";
-import { batchRuns, coverageOf, messageViewLines } from "../core/coverage.ts";
+import { batchRuns, coverageOf, messageViewLines, type CoverageSlot } from "../core/coverage.ts";
 import { getGraph, graphSessionIndex, graphSessionPropositions } from "../core/graph.ts";
 import { failedOutputCallIds } from "../core/native-messages.ts";
 import {
@@ -51,19 +51,38 @@ export interface ExtractView {
  *  getChunkTokens, so it runs on the factory value; this matches it. */
 const CHUNK_TOKENS = FACTORY_SETTINGS.graph.extractionChunkTokens;
 
-/** The same batching and view runExtraction builds for a chat
- *  (src/agent/subagents/extraction.ts), without the model call. */
-export function extractViewOf(record: ChatRecord, chunkTokens: number = CHUNK_TOKENS): ExtractView {
-	const graph = getGraph(stores.graphStore);
+/** One unread batch with the coverage slots a merge of it checkpoints. */
+export interface UnreadBatch extends ExtractViewBatch {
+	slots: CoverageSlot[];
+}
+
+/** The lesson's unread teacher text in the batches runExtraction builds
+ *  (src/agent/subagents/extraction.ts), from the coverage file as it is
+ *  now, plus the visible-message coverage it was derived from. */
+export function unreadBatches(record: ChatRecord, chunkTokens: number = CHUNK_TOKENS): {
+	batches: UnreadBatch[];
+	covered: ReturnType<typeof coverageOf>;
+} {
 	const covered = coverageOf(record.messages, stores.graphStore.readCoverage(), record.id);
 	const failedOutputCalls = failedOutputCallIds(record.messages);
-	const batches = batchRuns(covered.slots, covered.uncovered, chunkTokens).map((batch): ExtractViewBatch => {
-		const messages = batch.map((slot) => slot.message);
+	const batches = batchRuns(covered.slots, covered.uncovered, chunkTokens).map((slots): UnreadBatch => {
+		const messages = slots.map((slot) => slot.message);
 		return {
+			slots,
 			messageIds: messages.filter((m) => messageViewLines(m, m.id, failedOutputCalls).length > 0).map((m) => m.id),
 			view: proseView(messages, record.title, failedOutputCalls),
 		};
 	});
+	return { batches, covered };
+}
+
+/** The same batching and view runExtraction builds for a chat
+ *  (src/agent/subagents/extraction.ts), without the model call. */
+export function extractViewOf(record: ChatRecord, chunkTokens: number = CHUNK_TOKENS): ExtractView {
+	const graph = getGraph(stores.graphStore);
+	const unread = unreadBatches(record, chunkTokens);
+	const covered = unread.covered;
+	const batches = unread.batches.map(({ messageIds, view }): ExtractViewBatch => ({ messageIds, view }));
 	const digest = sourceDigest(graph, record.id);
 	const first = batches[0];
 	return {
