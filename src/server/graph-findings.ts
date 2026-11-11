@@ -118,7 +118,8 @@ function strictProblems(findings: SessionFindings, verdicts: AuditVerdicts, exis
 	const ids = new Set<string>();
 	for (const [i, p] of findings.propositions.entries()) {
 		const at = `findings.propositions[${i}]`;
-		if (ids.has(p.id)) problems.push(`${at}.id "${p.id}" repeats; each proposition needs its own id`);
+		if (p.id.trim() === "") problems.push(`${at}.id must not be blank`);
+		else if (ids.has(p.id)) problems.push(`${at}.id "${p.id}" repeats; each proposition needs its own id`);
 		if (existingIds.has(p.id)) problems.push(`${at}.id "${p.id}" is an existing node's id; give the proposition its own id (p1, p2, ...) and link it in verdicts if it is that node`);
 		if (p.name.trim() === "") problems.push(`${at}.name must not be blank`);
 		if (p.statement.trim() === "") problems.push(`${at}.statement must not be blank`);
@@ -234,10 +235,17 @@ function mergeUnderLock(id: string, body: FindingsBody): Response {
 			foldedAt,
 			coverage: batch.slots.filter((slot) => slot.tokens > 0).map((slot) => ({ chatId: id, fp: slot.fp, tokens: slot.tokens, foldedAt })),
 		});
-		settleGraphLayout(stores.graphStore);
 	} catch (err) {
 		console.error(`[chat ${id}] bot findings merge failed:`, err);
 		return externalFailure(500, "save_failed", lesson({}));
+	}
+	// The merge and its coverage are written: a failed layout write must not
+	// tell the bot otherwise (a resend would only get alreadyRead). The next
+	// merge settles the whole graph again.
+	try {
+		settleGraphLayout(stores.graphStore);
+	} catch (err) {
+		console.error(`[chat ${id}] layout settle after bot findings failed:`, err);
 	}
 	// The graph view and the activity dock refetch on this, as after a
 	// LearnHarness extraction job.

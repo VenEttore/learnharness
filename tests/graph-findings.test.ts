@@ -361,6 +361,7 @@ describe("bad submissions are refused and write nothing", () => {
 		["a link to an unknown node", (b) => ({ ...b, verdicts: { links: [{ id: "p1", linkTo: "n_missing" }] } }), 400, "bad_findings", /"n_missing" is not a node/],
 		["a link from an unknown proposition", (b) => ({ ...b, verdicts: { links: [{ id: "p9", linkTo: seedId("Limit") }] } }), 400, "bad_findings", /"p9" is not a proposition id/],
 		["an existing node's id as a proposition id", (b) => ({ ...b, findings: { ...b.findings, propositions: [{ ...b.findings.propositions[0], id: seedId("Limit") }, b.findings.propositions[1]] } }), 400, "bad_findings", /is an existing node's id/],
+		["a blank id", (b) => ({ ...b, findings: { ...b.findings, propositions: [{ ...b.findings.propositions[0], id: " " }, b.findings.propositions[1]] } }), 400, "bad_findings", /id must not be blank/],
 		["a blank name", (b) => ({ ...b, findings: { ...b.findings, propositions: [{ ...b.findings.propositions[0], name: "  " }, b.findings.propositions[1]] } }), 400, "bad_findings", /name must not be blank/],
 		["a blank statement", (b) => ({ ...b, findings: { ...b.findings, propositions: [{ ...b.findings.propositions[0], statement: "" }, b.findings.propositions[1]] } }), 400, "bad_findings", /statement must not be blank/],
 		["a premise that is the conclusion once linked", (b) => ({ ...b, verdicts: { links: [{ id: "p1", linkTo: seedId("Limit") }, { id: "p2", linkTo: seedId("Limit") }] } }), 400, "bad_findings", /same node once the links apply/],
@@ -516,5 +517,28 @@ describe("the route shares the pipeline's audit lock", () => {
 		const names = lines(read(LEDGER_FILES.nodes)).map((l) => l.name);
 		assert.ok(names.indexOf("Limit (first)") < names.indexOf("Limit (bot)"), names.join(", "));
 		assert.ok(!names.includes("Limit (queued)"), "the aborted job merged nothing");
+	});
+});
+
+describe("a failed layout write after the merge", () => {
+	it("still reports the merge, which a resend would only see as alreadyRead", async () => {
+		resetToSeed();
+		const bot = botLessonWith("findings-layout", SHORT);
+		const body = {
+			messageIds: ["t1"],
+			findings: { propositions: [{ id: "p1", name: "Limit (layout)", statement: "A limit is approached.", messageId: "t1" }], chains: [] },
+			verdicts: { links: [] },
+		};
+		// The positions file becomes a directory, so the settle's rename fails.
+		fs.rmSync(POSITIONS_FILE, { force: true });
+		fs.mkdirSync(path.join(POSITIONS_FILE, "blocker"), { recursive: true });
+		try {
+			const reply = await submit(bot, body);
+			assert.equal(reply.status, 200, JSON.stringify(reply.body));
+			assert.equal(reply.body.merged, true);
+			assert.equal(lines(read(LEDGER_FILES.coverage)).filter((e) => e.chatId === bot).length, 1);
+		} finally {
+			fs.rmSync(POSITIONS_FILE, { recursive: true, force: true });
+		}
 	});
 });
