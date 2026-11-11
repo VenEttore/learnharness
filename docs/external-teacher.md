@@ -305,9 +305,9 @@ LearnHarness runs its checks before it saves anything, so a refused turn adds no
 | `bad_find` | The `lh graph find` input is not `{"propositions":[...]}` as section 7 describes. `problems` says what to fix. |
 | `bad_findings` | The `lh findings` input failed the extractor's or auditor's checks (section 7). `problems` says what to fix. Nothing was written. |
 | `stale_batch` | The `messageIds` you sent are not the lesson's first unread batch now, usually because new teacher text joined it. `batch` holds the current ids. Run `lh extract-view` again and redo the findings for that batch. |
-| `graph_busy` | LearnHarness's own extraction of another lesson is using the graph. Nothing was written. Wait a minute and resend the same findings. |
+| `graph_busy` | Something else held the graph for over 20 seconds, usually LearnHarness's own extraction of another lesson. Nothing was written. Wait a minute and resend the same findings. |
 | `usage` | `lh` refused the command line before sending it: a missing flag, a misspelled flag, JSON that does not parse. |
-| `save_failed` | The disk write failed. Rerun the same command. |
+| `save_failed` | The disk write failed. Rerun the same command; for `lh findings`, read section 7 first. |
 | `internal_error` | LearnHarness failed on its own bug and saved nothing. Read `/workspace/lh-server.log`. Resending the same turn fails the same way. |
 | `forbidden_origin`, `forbidden_host` | The request came from a browser, or through a non-loopback host name. Call through `lh` on this computer. |
 
@@ -373,17 +373,23 @@ A bad `find` body is refused with `bad_find` and `problems` (section 5).
 
 ```json
 {
-  "messageIds": ["<the batch's messageIds, as extract-view gave them>"],
+  "messageIds": ["<the batch's messageIds from extract-view, in any order>"],
   "findings": {
-    "propositions": [{ "id": "p1", "name": "Chain rule", "statement": "...", "aliases": [], "messageId": "<one of messageIds>" }],
+    "propositions": [
+      { "id": "p1", "name": "Chain rule", "statement": "...", "aliases": [], "messageId": "<one of messageIds>" },
+      { "id": "p2", "name": "Derivative", "statement": "...", "messageId": "<one of messageIds>" }
+    ],
     "chains": [{ "premises": ["p1", "n_..."], "conclusion": "p2" }]
   },
   "verdicts": { "links": [{ "id": "p2", "linkTo": "n_..." }] }
 }
 ```
 
-- `findings` is the extractor's `submit_findings` input: new facts only, each with the `messageId` of the passage that states it, and the chains among your facts and the digest's `n_` ids. Pass `"chains": []` when there are none.
+- `messageIds` names the batch. It must be the first unread batch's ids, all of them; order does not matter. LearnHarness rebuilds that batch itself and refuses a mismatch with `stale_batch`.
+- `findings` is the extractor's `submit_findings` input: new facts only, each with the `messageId` of the passage that states it, and the chains among your facts and existing facts' `n_` ids (the digest lists this lesson's; any fact in the graph is accepted, as for LearnHarness's extractor). Pass `"chains": []` when there are none.
 - `verdicts` is the auditor's `submit_review` input: a link says your fact is that existing fact (an id from `lh graph find`). Leave a fact out of `links` to add it as new.
-- The reply has `merged`, the `nodes` and `chains` added, `read` (the messages now read) and `remaining` (unread batches left). Run `lh extract-view` again before the next batch: the digest changed.
+- The reply has `merged`, the `nodes` and `chains` added, `droppedChains` when the merge removed chains that a leaner chain now makes redundant (any lesson's), `read` (the messages now read) and `remaining` (unread batches left). Run `lh extract-view` again before the next batch: the digest changed.
 - Resending findings for a batch that is already read returns `"merged": false, "alreadyRead": true` and writes nothing.
+- Every field takes real JSON values: an array, not a string holding one (LearnHarness repairs that for its own model, not for `lh`). Unknown fields are refused.
 - Facts you add are tagged `"source": "external"` in the graph files.
+- A `save_failed` reply means a disk write failed partway: the batch stays unread, but some facts may already be written, so resending the same findings can add them twice. Run `lh extract-view` first: facts that landed are in its `digest`. Leave those out of the resend and use their `n_` ids in chains instead.

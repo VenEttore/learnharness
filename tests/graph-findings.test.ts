@@ -28,7 +28,7 @@ const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), "lh-graph-findings-"));
 process.env.LH_DATA_DIR = TMP_DATA;
 
 const { LEDGER_FILES, POSITIONS_FILE } = await import("../config.ts");
-const { createExtractionPipeline } = await import("../src/agent/subagents/extraction.ts");
+const { abortExtraction, createExtractionPipeline, extractionStatuses } = await import("../src/agent/subagents/extraction.ts");
 const { getGraph, mergeFindings } = await import("../src/core/graph.ts");
 const { stores } = await import("../src/server/stores.ts");
 const { extractViewOf, unreadBatches } = await import("../src/server/graph-reads.ts");
@@ -265,6 +265,23 @@ describe("the findings route writes what LearnHarness's pipeline writes", () => 
 	});
 });
 
+describe("the guide's example", () => {
+	it("merges once its placeholders are filled", async () => {
+		resetToSeed();
+		const guide = fs.readFileSync(path.join(import.meta.dirname, "..", "docs", "external-teacher.md"), "utf-8");
+		const block = /### Add your findings[\s\S]*?```json\n([\s\S]*?)```/.exec(guide)?.[1];
+		assert.ok(block, "the guide has a JSON example under Add your findings");
+		const bot = botLessonWith("findings-guide", LESSON);
+		const filled = block
+			.replace('"<the batch\'s messageIds from extract-view, in any order>"', '"t1", "t2"')
+			.replaceAll("<one of messageIds>", "t1")
+			.replaceAll("n_...", seedId("Limit"));
+		const reply = await submit(bot, JSON.parse(filled));
+		assert.equal(reply.status, 200, JSON.stringify(reply.body));
+		assert.equal(reply.body.merged, true);
+	});
+});
+
 // ─── reruns ─────────────────────────────────────────────────────────────────
 
 describe("a rerun adds nothing", () => {
@@ -429,5 +446,65 @@ describe("the route shares the pipeline's audit lock", () => {
 		}
 		const names = lines(read(LEDGER_FILES.nodes)).map((l) => l.name);
 		assert.ok(names.indexOf("Limit (pipeline)") < names.indexOf("Limit (bot)"), `the pipeline merged first: ${names.join(", ")}`);
+	});
+
+	it("keeps waiting for a running audit when a pipeline job queued between them is aborted", async () => {
+		resetToSeed();
+		const first = ordinaryLessonWith(SHORT);
+		const queued = ordinaryLessonWith(SHORT);
+		const bot = botLessonWith("findings-lock-abort", SHORT);
+		let auditing!: () => void;
+		const auditStarted = new Promise<void>((resolve) => (auditing = resolve));
+		let finishAudit!: () => void;
+		const auditMayFinish = new Promise<void>((resolve) => (finishAudit = resolve));
+		const pipelineFor = (name: string, audit: () => Promise<void>) =>
+			createExtractionPipeline({
+				...stores,
+				engineFor: (role) =>
+					role === "extractor"
+						? fauxEngine(() =>
+							submitCall("submit_findings", {
+								propositions: [{ id: "p1", name, statement: "A limit is approached.", messageId: "t1" }],
+								chains: [],
+							}),
+						)
+						: fauxEngine(async () => {
+							await audit();
+							return submitCall("submit_review", { links: [] });
+						}),
+			});
+		const run = pipelineFor("Limit (first)", async () => {
+			auditing();
+			await auditMayFinish;
+		}).runExtraction(first);
+		await auditStarted;
+		// A second pipeline job, extracted and waiting for the audit lock.
+		const queuedRun = pipelineFor("Limit (queued)", async () => {}).runExtraction(queued);
+		for (let i = 0; i < 200 && !extractionStatuses().some((r) => r.chatId === queued && r.phase === "waiting"); i++) {
+			await new Promise((resolve) => setTimeout(resolve, 10));
+		}
+		assert.ok(extractionStatuses().some((r) => r.chatId === queued && r.phase === "waiting"), "the second job waits for the lock");
+		let settled = false;
+		const pending = submit(bot, {
+			messageIds: ["t1"],
+			findings: { propositions: [{ id: "p1", name: "Limit (bot)", statement: "A limit is approached.", messageId: "t1" }], chains: [] },
+			verdicts: { links: [] },
+		}).finally(() => (settled = true));
+		try {
+			await new Promise((resolve) => setTimeout(resolve, 20));
+			assert.equal(abortExtraction(queued), true);
+			await queuedRun;
+			await new Promise((resolve) => setTimeout(resolve, 150));
+			assert.equal(settled, false, "the route still waits for the first audit");
+			assert.deepEqual(lines(read(LEDGER_FILES.nodes)).filter((l) => l.source === "external"), [], "nothing merged during the audit");
+		} finally {
+			finishAudit();
+		}
+		await run;
+		const merged = await pending;
+		assert.equal(merged.body.merged, true, JSON.stringify(merged.body));
+		const names = lines(read(LEDGER_FILES.nodes)).map((l) => l.name);
+		assert.ok(names.indexOf("Limit (first)") < names.indexOf("Limit (bot)"), names.join(", "));
+		assert.ok(!names.includes("Limit (queued)"), "the aborted job merged nothing");
 	});
 });

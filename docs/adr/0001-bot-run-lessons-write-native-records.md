@@ -18,4 +18,4 @@ The same holds for the knowledge graph. The merger (`mergeFindings` in `src/core
 
 - The bot routes must produce the exact shapes the page reads. That means real tool results joined to their calls by id, plan-block and handoff markers, and question payloads that pass the same checks the tool boundary runs. If upstream changes those shapes, bot-run lessons break until the fork follows.
 - In bot-run lessons, the page must not act on records it would normally answer with a model turn. Its automatic `continue` and its API-key checks are switched off by the flag.
-- Bot findings are only as good as the bot's extraction. Nothing measures that yet; the source tag is how to remove them if they turn out poor.
+- Bot findings are only as good as the bot's extraction. Nothing measures that yet. The source tag finds every line a bot added, but removing those lines is not a full undo: the merger's chain simplification may already have dropped another lesson's chain because a bot chain made it redundant, and removing the bot's line does not bring that chain back.

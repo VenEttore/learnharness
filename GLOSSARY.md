@@ -107,11 +107,11 @@ The propositions and chains a lesson has already added to the knowledge graph, l
 _Avoid_: Summary
 
 **Findings**:
-What the extractor found in one batch (propositions and chains) together with the auditor's links to existing propositions. In a bot-run lesson the Bot Teacher sends them with `lh findings`, and LearnHarness merges them.
+What the extractor found in one batch (propositions and chains) together with the auditor's links to existing propositions. In a bot-run lesson the Bot Teacher sends them with `lh findings`, and LearnHarness merges them. The request body calls the extractor's part `findings` and the auditor's links `verdicts` (the code's names).
 _Avoid_: Results, extraction output
 
 **Source tag**:
-`"source": "external"` on a stored proposition or chain line that a Bot Teacher's findings added. It lets a cleanup find and remove bot-added facts, since the graph is shared with ordinary lessons.
+`"source": "external"` on a stored proposition or chain line that a Bot Teacher's findings added. It lets a cleanup find bot-added lines, since the graph is shared with ordinary lessons. Removing them is not a full undo: a chain from another lesson that the chain simplification dropped because of a bot chain stays dropped.
 _Avoid_: Bot flag, origin
 
 **Candidate**:

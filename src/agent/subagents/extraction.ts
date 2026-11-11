@@ -912,13 +912,19 @@ export function createExtractionPipeline(deps: ExtractionPipelineDeps): Extracti
 			if (signal.aborted) onAbort();
 			else signal.addEventListener("abort", onAbort, { once: true });
 		});
+		let holding = false;
 		try {
 			await Promise.race([prev, aborted]);
 			signal?.throwIfAborted(); // aborted exactly at handoff
+			holding = true;
 			return await critical();
 		} finally {
 			if (onAbort && signal && !signal.aborted) signal.removeEventListener("abort", onAbort);
-			release();
+			// Fork (external-teacher 29): a waiter that aborts passes its turn
+			// on only once the holder ahead of it is done, or its successor
+			// would enter while that holder is still auditing.
+			if (holding) release();
+			else void prev.then(release);
 		}
 	}
 
