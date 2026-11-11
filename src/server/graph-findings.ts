@@ -242,6 +242,7 @@ function mergeUnderLock(id: string, body: FindingsBody): Response {
 		});
 	} catch (err) {
 		console.error(`[chat ${id}] bot findings merge failed:`, err);
+		emit("activity-changed", {}); // part of the merge may have landed
 		return externalFailure(500, "save_failed", lesson({}));
 	}
 	// The merge and its coverage are written: a failed layout write must not
