@@ -563,3 +563,27 @@ describe("an open graph view", () => {
 		assert.notEqual(after.graphRevision, before.graphRevision, "the revision the view compares moved");
 	});
 });
+
+describe("the graph master switch", () => {
+	it("refuses findings with graph_disabled while the learner has the graph off, writing nothing", async () => {
+		resetToSeed();
+		const bot = botLessonWith("findings-switch", SHORT);
+		const body = {
+			messageIds: ["t1"],
+			findings: { propositions: [{ id: "p1", name: "Limit (switch)", statement: "A limit is approached.", messageId: "t1" }], chains: [] },
+			verdicts: { links: [] },
+		};
+		const saved = stores.settingsStore.readSettings();
+		stores.settingsStore.writeSettings({ version: 1, graph: { enabled: false } });
+		try {
+			const before = files();
+			const off = await submit(bot, body);
+			assert.deepEqual([off.status, off.body.code], [409, "graph_disabled"]);
+			assert.equal(typeof off.body.cursor, "string");
+			assert.deepEqual(files(), before);
+		} finally {
+			stores.settingsStore.writeSettings(saved ?? { version: 1 });
+		}
+		assert.equal((await submit(bot, body)).body.merged, true, "merges once the graph is back on");
+	});
+});

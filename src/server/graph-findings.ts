@@ -14,11 +14,12 @@ import { coveredSet } from "../core/coverage.ts";
 import { emit } from "../core/events.ts";
 import { getGraph, mergeFindings } from "../core/graph.ts";
 import { settleGraphLayout } from "../core/layout-settle.ts";
+import { extractionEnabled } from "../core/settings-resolution.ts";
 import type { GraphStore } from "../core/ports.ts";
 import { botLesson, conversionProblems, cursorAndItems, externalFailure, unknownFields } from "./bot-run.ts";
 import { unreadBatches } from "./graph-reads.ts";
 import { piErrorLines, schemaProblems } from "./schema-problems.ts";
-import { stores } from "./stores.ts";
+import { effectiveSettings, stores } from "./stores.ts";
 
 /**
  * Bot findings into the knowledge graph (fork, ADR 0001; option A of
@@ -268,6 +269,9 @@ function mergeUnderLock(id: string, body: FindingsBody): Response {
 export async function submitFindings(id: string, body: unknown): Promise<Response> {
 	const record: ChatRecord | Response = botLesson(id);
 	if (record instanceof Response) return record;
+	// The graph master switch closes the write channel, as it does for
+	// LearnHarness's own automatic extraction (chat-handler.ts).
+	if (!extractionEnabled(effectiveSettings().graph)) return externalFailure(409, "graph_disabled", { lesson: id, ...cursorAndItems(record) });
 	const parsed = parseBody(body);
 	if ("problems" in parsed) return externalFailure(400, "bad_findings", { lesson: id, problems: parsed.problems, ...cursorAndItems(record) });
 	try {
