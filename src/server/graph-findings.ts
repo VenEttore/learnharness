@@ -1,3 +1,4 @@
+import * as fs from "node:fs";
 import { validateToolArguments, type ToolCall } from "@earendil-works/pi-ai";
 import type { Static, TSchema } from "typebox";
 import {
@@ -17,6 +18,7 @@ import { settleGraphLayout } from "../core/layout-settle.ts";
 import { extractionEnabled } from "../core/settings-resolution.ts";
 import type { GraphStore } from "../core/ports.ts";
 import { botLesson, conversionProblems, cursorAndItems, externalFailure, unknownFields } from "./bot-run.ts";
+import { LEDGER_FILES } from "../../config.ts";
 import { unreadBatches } from "./graph-reads.ts";
 import { piErrorLines, schemaProblems } from "./schema-problems.ts";
 import { effectiveSettings, stores } from "./stores.ts";
@@ -265,6 +267,12 @@ function mergeUnderLock(id: string, body: FindingsBody): Response {
 			remaining: batches.length - 1,
 		}),
 	});
+}
+
+/** /api/graph/status's stamp: graphRevision (server/graph.ts) without
+ *  positions.json, so the view's own position commits do not refetch. */
+export function graphDataRevision(): number {
+	return Math.max(0, ...Object.values(LEDGER_FILES).map((file) => (fs.existsSync(file) ? fs.statSync(file).mtimeMs : 0)));
 }
 
 /** POST /api/external/chats/:id/findings. Bot-run lessons only. */

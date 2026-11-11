@@ -1099,15 +1099,15 @@ export function GraphView({
 	const revisionRef = useRef<number | undefined>(undefined);
 	const readPipelineStatus = useCallback(() => {
 		fetch("/api/graph/status")
-			.then((res) => res.json() as Promise<{ runs: typeof pipelineRuns; graphRevision?: number }>)
-			.then(({ runs, graphRevision }) => {
+			.then((res) => res.json() as Promise<{ runs: typeof pipelineRuns; graphDataRevision?: number }>)
+			.then(({ runs, graphDataRevision }) => {
 				setPipelineRuns(runs);
 				const ids = new Set(runs.map((r) => r.id));
 				const rowLeft = [...rowIdsRef.current].some((id) => !ids.has(id));
-				const revisionMoved = revisionRef.current !== undefined && graphRevision !== revisionRef.current;
+				const revisionMoved = revisionRef.current !== undefined && graphDataRevision !== revisionRef.current;
 				if (rowLeft || revisionMoved) setRefreshTick((t) => t + 1);
 				rowIdsRef.current = ids;
-				revisionRef.current = graphRevision;
+				revisionRef.current = graphDataRevision;
 			})
 			.catch(() => {}); // status is cosmetic — never surface read errors
 	}, []);

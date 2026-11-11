@@ -546,7 +546,7 @@ describe("a failed layout write after the merge", () => {
 describe("an open graph view", () => {
 	it("sees the graph's revision move after a bot merge, with no run row to announce it", async () => {
 		const statusRoute = await import("../app/api/graph/status/route.ts");
-		const status = async () => (await (await statusRoute.GET()).json()) as { runs: unknown[]; graphRevision: number };
+		const status = async () => (await (await statusRoute.GET()).json()) as { runs: unknown[]; graphDataRevision: number };
 		resetToSeed();
 		const bot = botLessonWith("findings-revision", SHORT);
 		const before = await status();
@@ -560,7 +560,11 @@ describe("an open graph view", () => {
 		assert.equal(reply.body.merged, true);
 		const after = await status();
 		assert.deepEqual([before.runs, after.runs], [[], []], "no run row comes or goes");
-		assert.notEqual(after.graphRevision, before.graphRevision, "the revision the view compares moved");
+		assert.notEqual(after.graphDataRevision, before.graphDataRevision, "the revision the view compares moved");
+		// The view's own position commit is not a data change.
+		await new Promise((resolve) => setTimeout(resolve, 20));
+		stores.graphStore.writePositions({ n_any: { x: 1, y: 2 } });
+		assert.equal((await status()).graphDataRevision, after.graphDataRevision, "a position commit does not move it");
 	});
 });
 
