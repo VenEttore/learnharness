@@ -52,7 +52,9 @@ export interface GraphChain {
 	provenance: ProvenancePoint[];
 	createdAt: string;
 	/** Fork (ADR 0001): "external" on a line a Bot Teacher's findings
-	 *  wrote (src/server/graph-findings.ts); absent otherwise. */
+	 *  wrote (src/server/graph-findings.ts); absent otherwise. A merged
+	 *  record (getGraph) carries its first line's value only, so a cleanup
+	 *  reads the raw lines. */
 	source?: "external";
 }
 
@@ -148,7 +150,9 @@ export interface GraphNode {
 	/** Every (chat, message) point where this proposition came up. */
 	provenance: ProvenancePoint[];
 	/** Fork (ADR 0001): "external" on a line a Bot Teacher's findings
-	 *  wrote (src/server/graph-findings.ts); absent otherwise. */
+	 *  wrote (src/server/graph-findings.ts); absent otherwise. A merged
+	 *  record (getGraph) carries its first line's value only, so a cleanup
+	 *  reads the raw lines. */
 	source?: "external";
 }
 

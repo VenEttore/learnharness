@@ -1094,14 +1094,20 @@ export function GraphView({
 	// prevent — a chunk's row leaving IS its merge landing).
 	const [pipelineRuns, setPipelineRuns] = useState<{ id: string; chatId: string; title: string; phase: string; startedAt: number }[]>([]);
 	const rowIdsRef = useRef<Set<string>>(new Set());
+	// Fork (external-teacher 29): a graph write with no run row (a Bot
+	// Teacher's findings) moves only the revision stamp.
+	const revisionRef = useRef<number | undefined>(undefined);
 	const readPipelineStatus = useCallback(() => {
 		fetch("/api/graph/status")
-			.then((res) => res.json() as Promise<{ runs: typeof pipelineRuns }>)
-			.then(({ runs }) => {
+			.then((res) => res.json() as Promise<{ runs: typeof pipelineRuns; graphRevision?: number }>)
+			.then(({ runs, graphRevision }) => {
 				setPipelineRuns(runs);
 				const ids = new Set(runs.map((r) => r.id));
-				if ([...rowIdsRef.current].some((id) => !ids.has(id))) setRefreshTick((t) => t + 1);
+				const rowLeft = [...rowIdsRef.current].some((id) => !ids.has(id));
+				const revisionMoved = revisionRef.current !== undefined && graphRevision !== revisionRef.current;
+				if (rowLeft || revisionMoved) setRefreshTick((t) => t + 1);
 				rowIdsRef.current = ids;
+				revisionRef.current = graphRevision;
 			})
 			.catch(() => {}); // status is cosmetic — never surface read errors
 	}, []);

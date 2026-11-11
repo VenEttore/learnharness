@@ -247,8 +247,9 @@ function mergeUnderLock(id: string, body: FindingsBody): Response {
 	} catch (err) {
 		console.error(`[chat ${id}] layout settle after bot findings failed:`, err);
 	}
-	// The graph view and the activity dock refetch on this, as after a
-	// LearnHarness extraction job.
+	// The activity dock and the graph view re-read on this; the view
+	// refetches the graph because /api/graph/status's graphRevision moved
+	// (no run row comes and goes for a bot merge).
 	emit("activity-changed", {});
 	return Response.json({
 		ok: true,

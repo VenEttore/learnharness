@@ -75,7 +75,7 @@ _Avoid_: Handoff (the code's name for the marker the end of the probe leaves), t
 ## Knowledge graph
 
 **Knowledge graph**:
-The one store of what the learner has been taught, shared by every lesson. LearnHarness's extractor and auditor decide what goes in, and plain code writes it.
+The one store of what the learner has been taught, shared by every lesson. LearnHarness's extractor and auditor decide what goes in (in a bot-run lesson, the Bot Teacher's findings), and plain code writes it.
 _Avoid_: Graph data, memory
 
 **Extractor**:

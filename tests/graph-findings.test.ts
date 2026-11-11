@@ -542,3 +542,24 @@ describe("a failed layout write after the merge", () => {
 		}
 	});
 });
+
+describe("an open graph view", () => {
+	it("sees the graph's revision move after a bot merge, with no run row to announce it", async () => {
+		const statusRoute = await import("../app/api/graph/status/route.ts");
+		const status = async () => (await (await statusRoute.GET()).json()) as { runs: unknown[]; graphRevision: number };
+		resetToSeed();
+		const bot = botLessonWith("findings-revision", SHORT);
+		const before = await status();
+		// mtime-based: let the clock pass the seed's write.
+		await new Promise((resolve) => setTimeout(resolve, 20));
+		const reply = await submit(bot, {
+			messageIds: ["t1"],
+			findings: { propositions: [{ id: "p1", name: "Limit (revision)", statement: "A limit is approached.", messageId: "t1" }], chains: [] },
+			verdicts: { links: [] },
+		});
+		assert.equal(reply.body.merged, true);
+		const after = await status();
+		assert.deepEqual([before.runs, after.runs], [[], []], "no run row comes or goes");
+		assert.notEqual(after.graphRevision, before.graphRevision, "the revision the view compares moved");
+	});
+});
