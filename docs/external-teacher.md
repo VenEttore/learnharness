@@ -305,7 +305,7 @@ LearnHarness runs its checks before it saves anything, so a refused turn adds no
 | `bad_find` | The `lh graph find` input is not `{"propositions":[...]}` as section 7 describes. `problems` says what to fix. |
 | `bad_findings` | The `lh findings` input failed the extractor's or auditor's checks (section 7). `problems` says what to fix. Nothing was written. |
 | `stale_batch` | The `messageIds` you sent are not the lesson's first unread batch now, usually because new teacher text joined it. `batch` holds the current ids. Run `lh extract-view` again and redo the findings for that batch. |
-| `graph_disabled` | The learner turned the knowledge graph off in LearnHarness's settings, so `lh findings` writes nothing. Skip adding findings; do not retry. |
+| `graph_disabled` | The learner turned the knowledge graph off in LearnHarness's settings, so `lh findings` writes nothing. Skip findings while it is off. The batch stays unread, so once the graph is back on, send it again. |
 | `graph_busy` | Something else held the graph for over 20 seconds, usually LearnHarness's own extraction of another lesson. Nothing was written. Wait a minute and resend the same findings. |
 | `usage` | `lh` refused the command line before sending it: a missing flag, a misspelled flag, JSON that does not parse. |
 | `save_failed` | The disk write failed. Rerun the same command; for `lh findings`, read section 7 first. |

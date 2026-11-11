@@ -202,6 +202,8 @@ function mergeUnderLock(id: string, body: FindingsBody): Response {
 	// Deleted while this request waited for the lock.
 	if (!record) return externalFailure(404, "not_found");
 	const lesson = (extra: Record<string, unknown>) => ({ lesson: id, ...extra, ...cursorAndItems(record) });
+	// The switch may have been turned off while this request waited.
+	if (!extractionEnabled(effectiveSettings().graph)) return externalFailure(409, "graph_disabled", lesson({}));
 	const { batches, covered } = unreadBatches(record);
 
 	// Which of the bot's ids are teacher passages of this lesson, and which

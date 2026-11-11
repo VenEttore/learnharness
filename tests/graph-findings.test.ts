@@ -586,4 +586,35 @@ describe("the graph master switch", () => {
 		}
 		assert.equal((await submit(bot, body)).body.merged, true, "merges once the graph is back on");
 	});
+
+	it("refuses a request that waited for the lock while the graph was switched off", async () => {
+		resetToSeed();
+		const bot = botLessonWith("findings-switch-wait", SHORT);
+		const body = {
+			messageIds: ["t1"],
+			findings: { propositions: [{ id: "p1", name: "Limit (switch wait)", statement: "A limit is approached.", messageId: "t1" }], chains: [] },
+			verdicts: { links: [] },
+		};
+		const saved = stores.settingsStore.readSettings();
+		// Hold the audit lock the way a running audit does.
+		const g = globalThis as typeof globalThis & { __lhAuditLock?: { tail: Promise<void> } };
+		const lock = (g.__lhAuditLock ??= { tail: Promise.resolve() });
+		const prev = lock.tail;
+		let releaseHolder!: () => void;
+		lock.tail = new Promise<void>((resolve) => (releaseHolder = resolve));
+		await prev;
+		try {
+			const before = files();
+			const pending = submit(bot, body);
+			await new Promise((resolve) => setTimeout(resolve, 50));
+			stores.settingsStore.writeSettings({ version: 1, graph: { enabled: false } });
+			releaseHolder();
+			const off = await pending;
+			assert.deepEqual([off.status, off.body.code], [409, "graph_disabled"]);
+			assert.deepEqual(files(), before);
+		} finally {
+			releaseHolder();
+			stores.settingsStore.writeSettings(saved ?? { version: 1 });
+		}
+	});
 });
