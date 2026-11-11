@@ -144,6 +144,9 @@ async function readInput(flags) {
 	} else if (!isatty(0)) {
 		text = await readStdin();
 	}
+	// An editor's UTF-8 byte-order mark is not part of the text (JSON.parse
+	// refuses it).
+	if (text?.startsWith("\uFEFF")) text = text.slice(1);
 	if (!text) throw new UsageError("pass the text with --file <path> or on stdin");
 	return text;
 }

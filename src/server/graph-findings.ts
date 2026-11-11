@@ -108,22 +108,40 @@ function parseBody(body: unknown): { body: FindingsBody } | { problems: string[]
 
 /** Rules the model path lets through silently but a bot gets told about:
  *  mergeFindings keeps the first of two propositions with one id, ignores
- *  a link whose id names no proposition, and turns a link to an unknown
- *  node into a new node. */
+ *  a link whose id names no proposition, turns a link to an unknown node
+ *  into a new node, resolves a chain endpoint to this submission's
+ *  proposition before an existing node of the same id, writes a blank
+ *  proposition, and drops a chain premise that resolves to the chain's own
+ *  conclusion. */
 function strictProblems(findings: SessionFindings, verdicts: AuditVerdicts, existingIds: ReadonlySet<string>): string[] {
 	const problems: string[] = [];
 	const ids = new Set<string>();
 	for (const [i, p] of findings.propositions.entries()) {
-		if (ids.has(p.id)) problems.push(`findings.propositions[${i}].id "${p.id}" repeats; each proposition needs its own id`);
+		const at = `findings.propositions[${i}]`;
+		if (ids.has(p.id)) problems.push(`${at}.id "${p.id}" repeats; each proposition needs its own id`);
+		if (existingIds.has(p.id)) problems.push(`${at}.id "${p.id}" is an existing node's id; give the proposition its own id (p1, p2, ...) and link it in verdicts if it is that node`);
+		if (p.name.trim() === "") problems.push(`${at}.name must not be blank`);
+		if (p.statement.trim() === "") problems.push(`${at}.statement must not be blank`);
 		ids.add(p.id);
 	}
-	const linked = new Set<string>();
+	const linkTo = new Map<string, string>();
 	for (const [i, link] of verdicts.links.entries()) {
 		const at = `verdicts.links[${i}]`;
 		if (!ids.has(link.id)) problems.push(`${at}.id "${link.id}" is not a proposition id in findings`);
-		else if (linked.has(link.id)) problems.push(`${at}.id "${link.id}" is linked twice`);
-		linked.add(link.id);
+		else if (linkTo.has(link.id)) problems.push(`${at}.id "${link.id}" is linked twice`);
+		else linkTo.set(link.id, link.linkTo);
 		if (!existingIds.has(link.linkTo)) problems.push(`${at}.linkTo "${link.linkTo}" is not a node in the knowledge graph; leave the proposition out of links to add it as new`);
+	}
+	// What each endpoint is once the links apply: a linked proposition is
+	// the node it links to.
+	const resolved = (id: string) => linkTo.get(id) ?? id;
+	for (const [i, chain] of findings.chains.entries()) {
+		const conclusion = resolved(chain.conclusion);
+		for (const premise of chain.premises) {
+			if (premise !== chain.conclusion && resolved(premise) === conclusion) {
+				problems.push(`findings.chains[${i}]: premise "${premise}" and conclusion "${chain.conclusion}" are the same node once the links apply`);
+			}
+		}
 	}
 	return problems;
 }

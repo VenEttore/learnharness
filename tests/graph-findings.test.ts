@@ -44,9 +44,14 @@ after(() => {
 type Json = Record<string, any>;
 const ctx = (id: string) => ({ params: Promise.resolve({ id }) });
 
+/** The real fetch, restored after each call (two calls may overlap). */
+const realFetch = globalThis.fetch;
+after(() => {
+	globalThis.fetch = realFetch;
+});
+
 /** A route call must not reach a model: no fetch at all while it runs. */
 async function submit(id: string, body: unknown, headers: Record<string, string> = {}): Promise<{ status: number; body: Json }> {
-	const real = globalThis.fetch;
 	let calls = 0;
 	globalThis.fetch = (async () => {
 		calls++;
@@ -61,7 +66,7 @@ async function submit(id: string, body: unknown, headers: Record<string, string>
 		const res = await findingsRoute.POST(req, ctx(id));
 		return { status: res.status, body: (await res.json()) as Json };
 	} finally {
-		globalThis.fetch = real;
+		globalThis.fetch = realFetch;
 		assert.equal(calls, 0, "no network call");
 	}
 }
@@ -275,7 +280,8 @@ describe("the guide's example", () => {
 		const filled = block
 			.replace('"<the batch\'s messageIds from extract-view, in any order>"', '"t1", "t2"')
 			.replaceAll("<one of messageIds>", "t1")
-			.replaceAll("n_...", seedId("Limit"));
+			.replaceAll("<an n_ id from the digest>", seedId("Limit"))
+			.replaceAll("<an n_ id from lh graph find>", seedId("Derivative"));
 		const reply = await submit(bot, JSON.parse(filled));
 		assert.equal(reply.status, 200, JSON.stringify(reply.body));
 		assert.equal(reply.body.merged, true);
@@ -354,6 +360,10 @@ describe("bad submissions are refused and write nothing", () => {
 		["links of the wrong type", (b) => ({ ...b, verdicts: { links: "none" } }), 400, "bad_findings", /verdicts\.links/],
 		["a link to an unknown node", (b) => ({ ...b, verdicts: { links: [{ id: "p1", linkTo: "n_missing" }] } }), 400, "bad_findings", /"n_missing" is not a node/],
 		["a link from an unknown proposition", (b) => ({ ...b, verdicts: { links: [{ id: "p9", linkTo: seedId("Limit") }] } }), 400, "bad_findings", /"p9" is not a proposition id/],
+		["an existing node's id as a proposition id", (b) => ({ ...b, findings: { ...b.findings, propositions: [{ ...b.findings.propositions[0], id: seedId("Limit") }, b.findings.propositions[1]] } }), 400, "bad_findings", /is an existing node's id/],
+		["a blank name", (b) => ({ ...b, findings: { ...b.findings, propositions: [{ ...b.findings.propositions[0], name: "  " }, b.findings.propositions[1]] } }), 400, "bad_findings", /name must not be blank/],
+		["a blank statement", (b) => ({ ...b, findings: { ...b.findings, propositions: [{ ...b.findings.propositions[0], statement: "" }, b.findings.propositions[1]] } }), 400, "bad_findings", /statement must not be blank/],
+		["a premise that is the conclusion once linked", (b) => ({ ...b, verdicts: { links: [{ id: "p1", linkTo: seedId("Limit") }, { id: "p2", linkTo: seedId("Limit") }] } }), 400, "bad_findings", /same node once the links apply/],
 		["a proposition linked twice", (b) => ({ ...b, verdicts: { links: [{ id: "p1", linkTo: seedId("Limit") }, { id: "p1", linkTo: seedId("Derivative") }] } }), 400, "bad_findings", /linked twice/],
 	];
 

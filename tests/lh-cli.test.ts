@@ -240,6 +240,8 @@ describe("lh maps command lines to requests", () => {
 		fs.writeFileSync(file, JSON.stringify(body));
 		try {
 			assert.deepEqual((await lastRequest(["findings", "chat_a", "--file", file])).body, body);
+			fs.writeFileSync(file, `\uFEFF${JSON.stringify(body)}`);
+			assert.deepEqual((await lastRequest(["findings", "chat_a", "--file", file])).body, body, "a byte-order mark is dropped");
 		} finally {
 			fs.rmSync(dir, { recursive: true, force: true });
 		}
