@@ -1,6 +1,6 @@
 # 31: Graph view misses a bot merge during its first load
 
-Status: open
+Status: claimed
 Blocked by: 29
 Risk: pre-release
 Gate: none
