@@ -15,13 +15,14 @@ import { coveredSet } from "../core/coverage.ts";
 import { emit } from "../core/events.ts";
 import { getGraph, mergeFindings } from "../core/graph.ts";
 import { settleGraphLayout } from "../core/layout-settle.ts";
-import { extractionEnabled } from "../core/settings-resolution.ts";
+import { sanitizeUserSettings } from "../core/settings.ts";
+import { extractionEnabled, resolveSettings } from "../core/settings-resolution.ts";
 import type { GraphStore } from "../core/ports.ts";
 import { botLesson, conversionProblems, cursorAndItems, externalFailure, unknownFields } from "./bot-run.ts";
-import { LEDGER_FILES } from "../../config.ts";
+import { LEDGER_FILES, SETTINGS_FILE } from "../../config.ts";
 import { unreadBatches } from "./graph-reads.ts";
 import { piErrorLines, schemaProblems } from "./schema-problems.ts";
-import { effectiveSettings, stores } from "./stores.ts";
+import { stores } from "./stores.ts";
 
 /**
  * Bot findings into the knowledge graph (fork, ADR 0001; option A of
@@ -198,6 +199,26 @@ async function withAuditLock<T>(critical: () => T): Promise<T | "busy"> {
 
 const sameIds = (a: readonly string[], b: readonly string[]): boolean => a.length === b.length && a.every((id) => b.includes(id));
 
+const isObject = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === "object" && !Array.isArray(v);
+
+/** The graph switch's refusal, or null when the graph is on. Upstream's
+ *  readSettings reads a corrupt file as the defaults (graph on); this route
+ *  refuses instead when the file exists but its switch cannot be read. A
+ *  missing file is first boot: the factory default. */
+function switchRefusal(extra: Record<string, unknown>): Response | null {
+	let raw: unknown = {};
+	try {
+		raw = JSON.parse(fs.readFileSync(SETTINGS_FILE, "utf-8"));
+	} catch (err) {
+		if ((err as NodeJS.ErrnoException).code !== "ENOENT") raw = null;
+	}
+	const graph = isObject(raw) ? raw.graph : null;
+	if (!isObject(raw) || (graph !== undefined && !(isObject(graph) && [undefined, true, false].includes(graph.enabled as boolean)))) {
+		return externalFailure(500, "settings_unreadable", extra);
+	}
+	return extractionEnabled(resolveSettings(sanitizeUserSettings(raw)).graph) ? null : externalFailure(409, "graph_disabled", extra);
+}
+
 /** The merge, run inside the lock against the lesson as it is now. */
 function mergeUnderLock(id: string, body: FindingsBody): Response {
 	const record = stores.chatStore.getChat(id);
@@ -205,7 +226,8 @@ function mergeUnderLock(id: string, body: FindingsBody): Response {
 	if (!record) return externalFailure(404, "not_found");
 	const lesson = (extra: Record<string, unknown>) => ({ lesson: id, ...extra, ...cursorAndItems(record) });
 	// The switch may have been turned off while this request waited.
-	if (!extractionEnabled(effectiveSettings().graph)) return externalFailure(409, "graph_disabled", lesson({}));
+	const off = switchRefusal(lesson({}));
+	if (off) return off;
 	const { batches, covered } = unreadBatches(record);
 
 	// Which of the bot's ids are teacher passages of this lesson, and which
@@ -282,7 +304,8 @@ export async function submitFindings(id: string, body: unknown): Promise<Respons
 	if (record instanceof Response) return record;
 	// The graph master switch closes the write channel, as it does for
 	// LearnHarness's own automatic extraction (chat-handler.ts).
-	if (!extractionEnabled(effectiveSettings().graph)) return externalFailure(409, "graph_disabled", { lesson: id, ...cursorAndItems(record) });
+	const off = switchRefusal({ lesson: id, ...cursorAndItems(record) });
+	if (off) return off;
 	const parsed = parseBody(body);
 	if ("problems" in parsed) return externalFailure(400, "bad_findings", { lesson: id, problems: parsed.problems, ...cursorAndItems(record) });
 	try {

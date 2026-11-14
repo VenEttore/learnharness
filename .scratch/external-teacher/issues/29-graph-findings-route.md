@@ -33,12 +33,12 @@ Completed:
 - Guide (docs/external-teacher.md): section 7 now covers `lh findings` and its reply fields. Section 5 lists `bad_findings`, `stale_batch`, `graph_busy` and `graph_disabled`, and gives the steps after `save_failed`. GLOSSARY.md has new entries for findings and source tag.
 
 Deferred:
-- The lesson page's coverage ring does not refresh after `lh findings`: the page's activity feed drops `graphRevision`. Ticket 30 writes the lesson-close flow and can take this.
-- The graph view can miss a bot merge that lands between its first-load `/api/graph` fetch and its first status read. Upstream has the same race for run rows. The clean fix is for `/api/graph` to return its revision. That edits an upstream route, so it needs its own ticket.
+- The lesson page's coverage ring does not refresh after `lh findings`: the page's activity feed drops `graphRevision`. Moved to ticket 30.
+- The graph view can miss a bot merge that lands between its first-load `/api/graph` fetch and its first status read. Upstream has the same race for run rows. The clean fix is for `/api/graph` to return its revision. Now ticket 31.
 - The batch check matches message ids, not text. Nothing in this build edits teacher prose. If something ever does, extract-view should return a hash of each batch and the route should require it.
 - mergeFindings' chain rewrite drops ledger lines that the store's shape check rejects. This predates the ticket and is shared with the pipeline; it needs its own ticket.
 - `POST /api/graph/coverage/extract` answers 202 for a bot-run lesson and does nothing. This predates the ticket; it should refuse with 409.
-- An unreadable or corrupt settings.json reads as graph on, as everywhere else in the app.
+- An unreadable or corrupt settings.json reads as graph on, as everywhere else in the app. (Fixed for this route in the next launch: it now refuses with `settings_unreadable`.)
 - Judgement calls left as they are: the lock protocol exists in two places (extraction.ts and graph-findings.ts); the unknown-field refusal says "of this kind" (reused from the turn route); the existing-node-id refusal is broader than strictly needed; stringified arrays and nulls are refused and documented; messageIds are compared as a set; a rerun returns `alreadyRead` without re-checking.
 - Question handling was not touched, so bot-run.ts's open-question gate (ticket 27's note) needs no revisit here.
 

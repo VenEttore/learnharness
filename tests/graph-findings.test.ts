@@ -27,7 +27,7 @@ import { createFauxCore, fauxAssistantMessage, fauxToolCall, type ToolCall } fro
 const TMP_DATA = fs.mkdtempSync(path.join(os.tmpdir(), "lh-graph-findings-"));
 process.env.LH_DATA_DIR = TMP_DATA;
 
-const { LEDGER_FILES, POSITIONS_FILE } = await import("../config.ts");
+const { LEDGER_FILES, POSITIONS_FILE, SETTINGS_FILE } = await import("../config.ts");
 const { abortExtraction, createExtractionPipeline, extractionStatuses } = await import("../src/agent/subagents/extraction.ts");
 const { getGraph, mergeFindings } = await import("../src/core/graph.ts");
 const { stores } = await import("../src/server/stores.ts");
@@ -618,6 +618,87 @@ describe("the graph master switch", () => {
 			assert.deepEqual(files(), before);
 		} finally {
 			releaseHolder();
+			stores.settingsStore.writeSettings(saved ?? { version: 1 });
+		}
+	});
+
+	// A settings file that exists but cannot be read says nothing about the
+	// switch, so the route refuses rather than reading it as on.
+	const unreadable: Array<[string, () => void]> = [
+		["a file that is not JSON", () => fs.writeFileSync(SETTINGS_FILE, "{ graph: off")],
+		["a JSON array", () => fs.writeFileSync(SETTINGS_FILE, "[]")],
+		["a graph section that is not an object", () => fs.writeFileSync(SETTINGS_FILE, JSON.stringify({ version: 1, graph: "off" }))],
+		["a switch that is not true or false", () => fs.writeFileSync(SETTINGS_FILE, JSON.stringify({ version: 1, graph: { enabled: "no" } }))],
+		["a path that is a directory", () => fs.mkdirSync(SETTINGS_FILE)],
+	];
+	for (const [label, corrupt] of unreadable) {
+		it(`refuses findings with settings_unreadable for ${label}, writing nothing`, async () => {
+			resetToSeed();
+			const bot = botLessonWith(`findings-settings-${label.replaceAll(" ", "-")}`, SHORT);
+			const body = {
+				messageIds: ["t1"],
+				findings: { propositions: [{ id: "p1", name: `Limit (${label})`, statement: "A limit is approached.", messageId: "t1" }], chains: [] },
+				verdicts: { links: [] },
+			};
+			const saved = stores.settingsStore.readSettings();
+			fs.rmSync(SETTINGS_FILE, { force: true });
+			corrupt();
+			try {
+				const before = files();
+				const refused = await submit(bot, body);
+				assert.deepEqual([refused.status, refused.body.code], [500, "settings_unreadable"]);
+				assert.equal(typeof refused.body.cursor, "string");
+				assert.deepEqual(files(), before);
+			} finally {
+				fs.rmSync(SETTINGS_FILE, { force: true, recursive: true });
+				stores.settingsStore.writeSettings(saved ?? { version: 1 });
+			}
+		});
+	}
+
+	it("refuses a request whose settings file became unreadable while it waited for the lock", async () => {
+		resetToSeed();
+		const bot = botLessonWith("findings-settings-wait", SHORT);
+		const body = {
+			messageIds: ["t1"],
+			findings: { propositions: [{ id: "p1", name: "Limit (settings wait)", statement: "A limit is approached.", messageId: "t1" }], chains: [] },
+			verdicts: { links: [] },
+		};
+		const saved = stores.settingsStore.readSettings();
+		const g = globalThis as typeof globalThis & { __lhAuditLock?: { tail: Promise<void> } };
+		const lock = (g.__lhAuditLock ??= { tail: Promise.resolve() });
+		const prev = lock.tail;
+		let releaseHolder!: () => void;
+		lock.tail = new Promise<void>((resolve) => (releaseHolder = resolve));
+		await prev;
+		try {
+			const before = files();
+			const pending = submit(bot, body);
+			await new Promise((resolve) => setTimeout(resolve, 50));
+			fs.writeFileSync(SETTINGS_FILE, "not json");
+			releaseHolder();
+			const refused = await pending;
+			assert.deepEqual([refused.status, refused.body.code], [500, "settings_unreadable"]);
+			assert.deepEqual(files(), before);
+		} finally {
+			releaseHolder();
+			stores.settingsStore.writeSettings(saved ?? { version: 1 });
+		}
+	});
+
+	it("reads a missing settings file as the factory default, graph on", async () => {
+		resetToSeed();
+		const bot = botLessonWith("findings-settings-missing", SHORT);
+		const body = {
+			messageIds: ["t1"],
+			findings: { propositions: [{ id: "p1", name: "Limit (no settings)", statement: "A limit is approached.", messageId: "t1" }], chains: [] },
+			verdicts: { links: [] },
+		};
+		const saved = stores.settingsStore.readSettings();
+		fs.rmSync(SETTINGS_FILE, { force: true });
+		try {
+			assert.equal((await submit(bot, body)).body.merged, true);
+		} finally {
 			stores.settingsStore.writeSettings(saved ?? { version: 1 });
 		}
 	});
