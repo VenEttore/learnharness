@@ -73,6 +73,7 @@ import { GraphCanvasRenderer, type GraphRenderSettings } from "./graph-canvas.ts
 import { usePopoverDismiss } from "@/components/popover-dismiss";
 import { useActivity } from "@/components/activity-dock";
 import { useServerEvent, useServerResync } from "@/components/server-events";
+import { graphSnapshotRevision } from "@/components/graph-snapshot-revision";
 import { MenuShell } from "@/components/menu-shell.tsx";
 import { DeleteNodeDialog } from "@/components/delete-node-dialog.tsx";
 import { ChainTableOverlay } from "@/components/chain-table.tsx";
@@ -1034,6 +1035,9 @@ export function GraphView({
 	// Fetch the derived graph. Re-runs when a background pipeline run
 	// finishes (refreshTick) — its merges just landed in the ledger.
 	const [refreshTick, setRefreshTick] = useState(0);
+	// Fork (external-teacher 29, 31): a graph write with no run row (a Bot
+	// Teacher's findings) moves only the data stamp.
+	const [revisions] = useState(() => graphSnapshotRevision(() => setRefreshTick((t) => t + 1)));
 	// The chain table overlay (chains-overlay plan, 2026-09-29) —
 	// component-local: a browsing surface, not graph state.
 	const [chainsOpen, setChainsOpen] = useState(false);
@@ -1052,15 +1056,17 @@ export function GraphView({
 	useEffect(() => {
 		let cancelled = false;
 		fetch("/api/graph")
-			.then((res) => res.json() as Promise<GraphSnapshot>)
-			.then((data) => {
-				if (!cancelled) setSnapshot(data);
+			.then((res) => res.json() as Promise<GraphSnapshot & { graphDataRevision?: number }>)
+			.then(({ graphDataRevision, ...data }) => {
+				if (cancelled) return;
+				setSnapshot(data);
+				revisions.snapshot(graphDataRevision);
 			})
 			.catch((err) => console.error("[graph] fetch failed:", err));
 		return () => {
 			cancelled = true;
 		};
-	}, [refreshTick]);
+	}, [refreshTick, revisions]);
 
 	// Notes import (the format-agnostic front door): file picker → POST
 	// /api/graph/import; the runs surface in the status chips below, and the
@@ -1094,9 +1100,6 @@ export function GraphView({
 	// prevent — a chunk's row leaving IS its merge landing).
 	const [pipelineRuns, setPipelineRuns] = useState<{ id: string; chatId: string; title: string; phase: string; startedAt: number }[]>([]);
 	const rowIdsRef = useRef<Set<string>>(new Set());
-	// Fork (external-teacher 29): a graph write with no run row (a Bot
-	// Teacher's findings) moves only the revision stamp.
-	const revisionRef = useRef<number | undefined>(undefined);
 	const readPipelineStatus = useCallback(() => {
 		fetch("/api/graph/status")
 			.then((res) => res.json() as Promise<{ runs: typeof pipelineRuns; graphDataRevision?: number }>)
@@ -1104,13 +1107,12 @@ export function GraphView({
 				setPipelineRuns(runs);
 				const ids = new Set(runs.map((r) => r.id));
 				const rowLeft = [...rowIdsRef.current].some((id) => !ids.has(id));
-				const revisionMoved = revisionRef.current !== undefined && graphDataRevision !== revisionRef.current;
-				if (rowLeft || revisionMoved) setRefreshTick((t) => t + 1);
+				if (rowLeft) setRefreshTick((t) => t + 1);
+				else revisions.status(graphDataRevision);
 				rowIdsRef.current = ids;
-				revisionRef.current = graphDataRevision;
 			})
 			.catch(() => {}); // status is cosmetic — never surface read errors
-	}, []);
+	}, [revisions]);
 	// PUSH (S7, 2026-10-02): the standing 2s poll is RETIRED — the
 	// extraction registry announces every phase transition and every
 	// finish (activity-changed), so each read lands exactly when truth
