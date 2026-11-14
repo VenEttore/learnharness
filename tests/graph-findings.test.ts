@@ -21,6 +21,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { syncBuiltinESMExports } from "node:module";
 import { after, describe, it } from "node:test";
 import { createFauxCore, fauxAssistantMessage, fauxToolCall, type ToolCall } from "@earendil-works/pi-ai";
 
@@ -565,6 +566,54 @@ describe("an open graph view", () => {
 		await new Promise((resolve) => setTimeout(resolve, 20));
 		stores.graphStore.writePositions({ n_any: { x: 1, y: 2 } });
 		assert.equal((await status()).graphDataRevision, after.graphDataRevision, "a position commit does not move it");
+	});
+
+	it("sees the revision move even when another ledger's modification time is in the future", async () => {
+		const statusRoute = await import("../app/api/graph/status/route.ts");
+		const status = async () => (await (await statusRoute.GET()).json()) as { runs: unknown[]; graphDataRevision: number };
+		resetToSeed();
+		const bot = botLessonWith("findings-revision-future", SHORT);
+		// A bot merge never writes sessions.jsonl; a clock step back leaves it ahead.
+		if (!fs.existsSync(LEDGER_FILES.sessions)) fs.writeFileSync(LEDGER_FILES.sessions, "");
+		const future = new Date(Date.now() + 3_600_000);
+		fs.utimesSync(LEDGER_FILES.sessions, future, future);
+		try {
+			const before = await status();
+			await new Promise((resolve) => setTimeout(resolve, 20));
+			const reply = await submit(bot, {
+				messageIds: ["t1"],
+				findings: { propositions: [{ id: "p1", name: "Limit (future)", statement: "A limit is approached.", messageId: "t1" }], chains: [] },
+				verdicts: { links: [] },
+			});
+			assert.equal(reply.body.merged, true);
+			assert.notEqual((await status()).graphDataRevision, before.graphDataRevision);
+		} finally {
+			fs.utimesSync(LEDGER_FILES.sessions, new Date(), new Date());
+		}
+	});
+
+	it("answers the status read when a ledger disappears as it is read", async () => {
+		const statusRoute = await import("../app/api/graph/status/route.ts");
+		resetToSeed();
+		assert.ok(fs.existsSync(LEDGER_FILES.nodes));
+		// The file is there when checked and gone when stat'd: statSync behaves
+		// as it does for a missing path.
+		const realStat = fs.statSync;
+		const gone = (file: fs.PathLike, options?: { throwIfNoEntry?: boolean }) => {
+			if (String(file) !== LEDGER_FILES.nodes) return (realStat as (f: fs.PathLike, o?: object) => fs.Stats)(file, options);
+			if (options?.throwIfNoEntry === false) return undefined;
+			throw Object.assign(new Error(`ENOENT: no such file or directory, stat '${String(file)}'`), { code: "ENOENT" });
+		};
+		(fs as { statSync: unknown }).statSync = gone;
+		syncBuiltinESMExports();
+		try {
+			const res = await statusRoute.GET();
+			assert.equal(res.status, 200);
+			assert.equal(typeof ((await res.json()) as { graphDataRevision: unknown }).graphDataRevision, "number");
+		} finally {
+			(fs as { statSync: unknown }).statSync = realStat;
+			syncBuiltinESMExports();
+		}
 	});
 });
 

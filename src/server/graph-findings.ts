@@ -294,10 +294,17 @@ function mergeUnderLock(id: string, body: FindingsBody): Response {
 	});
 }
 
-/** /api/graph/status's stamp: graphRevision (server/graph.ts) without
- *  positions.json, so the view's own position commits do not refetch. */
+/** /api/graph/status's stamp over the ledgers, without positions.json, so
+ *  the view's own position commits do not refetch. A sum of each ledger's
+ *  modification time and size, not graphRevision's max: a write moves it
+ *  even when another ledger's time is in the future. */
 export function graphDataRevision(): number {
-	return Math.max(0, ...Object.values(LEDGER_FILES).map((file) => (fs.existsSync(file) ? fs.statSync(file).mtimeMs : 0)));
+	let revision = 0;
+	for (const file of Object.values(LEDGER_FILES)) {
+		const stat = fs.statSync(file, { throwIfNoEntry: false });
+		if (stat) revision += stat.mtimeMs + stat.size;
+	}
+	return revision;
 }
 
 /** POST /api/external/chats/:id/findings. Bot-run lessons only. */
