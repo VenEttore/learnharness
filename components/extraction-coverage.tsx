@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useActivity } from "@/components/activity-dock";
+import { useGraphDataTick } from "@/components/graph-data-tick";
 import { usePopoverDismiss } from "@/components/popover-dismiss";
 import { useSettingsSaved } from "@/components/settings-signal";
 import { formatTokens } from "@/components/usage-format";
@@ -255,6 +256,8 @@ export function CoverageRing({ chatId, refreshKey = 0 }: { chatId: string; refre
 	// re-reads coverage (same runs-empty-transition the graph view rides).
 	const feed = useActivity().feed;
 	const runHere = feed.extractions.some((run) => run.chatId === chatId);
+	// Fork (external-teacher 30): a Bot Teacher's findings have no run row.
+	const graphTick = useGraphDataTick();
 
 	useSettingsSaved((section) => {
 		if (section === "graph") setNonce((n) => n + 1);
@@ -274,7 +277,7 @@ export function CoverageRing({ chatId, refreshKey = 0 }: { chatId: string; refre
 		return () => {
 			alive = false;
 		};
-	}, [chatId, refreshKey, nonce, runHere]);
+	}, [chatId, refreshKey, nonce, runHere, graphTick]);
 
 	// While a run is in flight: poll at 2s so the ring DRAINS as folds land
 	// and settles at zero when the run completes (the "resets on

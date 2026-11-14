@@ -27,7 +27,7 @@ const { prepareAuditorReview, proberGraphTools } = await import("../src/agent/to
 const { graphSessionIndex } = await import("../src/core/graph.ts");
 const { coverageSlots } = await import("../src/core/coverage.ts");
 const { stores } = await import("../src/server/stores.ts");
-const { extractViewOf } = await import("../src/server/graph-reads.ts");
+const { EXTRACTION_METHOD, extractViewOf } = await import("../src/server/graph-reads.ts");
 const { handleChatRequest } = await import("../src/server/chat-handler.ts");
 const createRoute = await import("../app/api/external/chats/route.ts");
 const turnRoute = await import("../app/api/external/chats/[id]/turn/route.ts");
@@ -83,6 +83,8 @@ async function toolText(tool: AgentTool, input: unknown): Promise<string> {
 }
 
 const graphDeps = () => ({ chatStore: stores.chatStore, graphStore: stores.graphStore });
+/** A value as it reaches lh: through JSON. */
+const asJson = (value: unknown) => JSON.parse(JSON.stringify(value)) as unknown;
 
 // ─── the extraction view ────────────────────────────────────────────────────
 
@@ -166,6 +168,54 @@ describe("extract-view is the extractor's view", () => {
 		assert.ok(done.digest.includes(`idea ${prompts.length}`));
 	});
 
+	it("carries the extractor's and auditor's instructions and tool schemas as their models receive them", async () => {
+		// An ordinary lesson, so the real pipeline runs both models on it.
+		const chat = stores.chatStore.createChat("Integrals");
+		stores.chatStore.saveMessages(chat.id, [learner("teach me integrals"), teacher("An integral sums infinitely many infinitesimal pieces.")]);
+		// The model's request carries its prompt and tools in its leading
+		// system message.
+		type System = { role: string; content: string | { text: string }[]; toolsAdded?: { name: string; parameters: unknown }[] };
+		const seen: Record<string, { systemPrompt: string; tools: { name: string; parameters: unknown }[] }> = {};
+		const record = (role: string) => (context: { messages: unknown[] }) => {
+			const system = context.messages[0] as System;
+			assert.equal(system.role, "system");
+			const text = typeof system.content === "string" ? system.content : system.content.map((part) => part.text).join("");
+			seen[role] = { systemPrompt: text, tools: system.toolsAdded ?? [] };
+		};
+		const pipeline = createExtractionPipeline({
+			...stores,
+			engineFor: (role) =>
+				role === "extractor"
+					? fauxEngine((context) => {
+						record("extractor")(context);
+						const anchor = extractViewOf(stores.chatStore.getChat(chat.id)!).batches[0]!.messageIds[0]!;
+						return fauxAssistantMessage(
+							[fauxToolCall("submit_findings", {
+								propositions: [{ id: "p1", name: "Integral", statement: "An integral is a sum of infinitesimal pieces.", aliases: [], messageId: anchor }],
+								chains: [],
+							} as unknown as ToolCall["arguments"])],
+							{ stopReason: "toolUse" },
+						);
+					})
+					: fauxEngine((context) => {
+						record("auditor")(context);
+						return fauxAssistantMessage([fauxToolCall("submit_review", { links: [] } as unknown as ToolCall["arguments"])], { stopReason: "toolUse" });
+					}),
+		});
+		await pipeline.runExtraction(chat.id);
+
+		const created = await json(await createRoute.POST(post("http://test/api/external/chats", { title: "Method", key: "graph-reads-method" })));
+		const { body } = await extractView(created.body.id as string);
+		for (const role of ["extractor", "auditor"] as const) {
+			const method = body.method[role];
+			assert.equal(method.instructions, seen[role]!.systemPrompt, `${role}: the system prompt its model gets`);
+			const tool = seen[role]!.tools.find((t) => t.name === method.tool);
+			assert.ok(tool, `${role}: its model is offered ${method.tool}`);
+			assert.deepEqual(method.parameters, asJson(tool.parameters), `${role}: ${method.tool}'s schema, field descriptions included`);
+		}
+		assert.match(JSON.stringify(body.method.extractor.parameters), /TEACHER \[id\]/, "the messageId description reaches the bot");
+	});
+
 	it("shows a bot-run lesson's teacher text, without a model or the network", async () => {
 		const created = await json(await createRoute.POST(post("http://test/api/external/chats", { title: "Bayes", key: "graph-reads-1", prompt: "Teach me Bayes" })));
 		const id = created.body.id as string;
@@ -185,7 +235,7 @@ describe("extract-view is the extractor's view", () => {
 		assert.equal(body.batches[0].view, `# Bayes\n\nTEACHER [${saidId}] Bayes' rule turns P(B|A) into P(A|B) using the priors.`);
 		assert.equal(body.prompt, body.batches[0].view);
 		assert.ok(!body.prompt.includes("Teach me Bayes"), "learner text is not teacher text");
-		assert.deepEqual(body, { ok: true, lesson: id, cursor: saidId, items: [], ...extractViewOf(stores.chatStore.getChat(id)!) });
+		assert.deepEqual(body, { ok: true, lesson: id, cursor: saidId, items: [], ...extractViewOf(stores.chatStore.getChat(id)!), method: asJson(EXTRACTION_METHOD) });
 
 		// A covered message drops out, as it does for the extractor.
 		const slot = coverageSlots(stores.chatStore.getChat(id)!.messages).find((s) => s.message.id === saidId)!;
