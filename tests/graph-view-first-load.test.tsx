@@ -6,12 +6,12 @@
  * carry the graphDataRevision they were read at, as /api/graph does; status
  * replies carry the revision at the moment they were asked for.
  *
- * The merge lands between the first /api/graph read and the first
- * /api/graph/status read, in both reply orders. The view must fetch the graph
- * again and show the new node. A first load with no merge reads the graph
- * once.
+ * The merge lands between the first /api/graph read and a status read, in
+ * both reply orders, and with two status replies arriving out of order. The
+ * view must fetch the graph again and show the new node. A first load with
+ * no merge reads the graph once.
  *
- * linkedom as the DOM, as in coverage-ring-refresh.test.tsx. The canvas, its
+ * linkedom as the DOM, as in card-live-refresh.test.tsx. The canvas, its
  * 2D context and the browser's layout observers are stubs: the test reads
  * the chrome row (the node search shows once the graph has nodes), never
  * the drawing.
@@ -103,8 +103,9 @@ const snapshotOf = (nodes: GraphNode[]): GraphSnapshot => ({
 /** The server as the view sees it, behind a fetch stub. A reply holds the
  *  graph and revision of the moment its request reaches the server. Two
  *  kinds of delay: `lateStatus` keeps the next status request from reaching
- *  the server until the test lets it through; `slowGraph` builds the next
- *  graph reply on arrival but keeps it from the view until released. */
+ *  the server until the test lets it through; `slowGraph` and `slowStatus`
+ *  build the next reply on arrival but keep it from the view until
+ *  released. */
 const server = {
 	nodes: [] as GraphNode[],
 	revision: 100,
@@ -112,6 +113,7 @@ const server = {
 	statusReads: 0,
 	lateStatus: null as null | Array<() => void>,
 	slowGraph: null as null | Array<() => void>,
+	slowStatus: null as null | Array<() => void>,
 	/** A bot merge: a node lands and the revision moves. */
 	merge(n: GraphNode) {
 		this.nodes = [...this.nodes, n];
@@ -124,6 +126,7 @@ const server = {
 		this.statusReads = 0;
 		this.lateStatus = null;
 		this.slowGraph = null;
+		this.slowStatus = null;
 	},
 };
 const realFetch = globalThis.fetch;
@@ -146,7 +149,13 @@ globalThis.fetch = (async (input: RequestInfo | URL) => {
 			await new Promise<void>((go) => late.push(go));
 		}
 		server.statusReads++;
-		return Response.json({ runs: [], graphDataRevision: server.revision });
+		const reply = Response.json({ runs: [], graphDataRevision: server.revision });
+		const slow = server.slowStatus;
+		if (slow) {
+			server.slowStatus = null;
+			await new Promise<void>((go) => slow.push(go));
+		}
+		return reply;
 	}
 	if (url === "/api/graph/render-settings") return Response.json({});
 	if (url === "/api/graph/costs") return Response.json({ runs: [], stages: [] });
@@ -217,6 +226,28 @@ describe("graph view first load", () => {
 		assert.equal(server.statusReads, 1, "the status reply, with the merged revision, landed");
 		// Now the first graph reply, read before the merge, lands.
 		await letGo(slowGraph);
+		assert.equal(server.graphReads, 2, "the view read the graph again");
+		assert.equal(showsNodes(view.host), true, "the merged node shows without a reload");
+		await view.unmount();
+	});
+
+	it("shows the merge when two status replies land out of order before the first graph reply", async () => {
+		server.reset();
+		const slowGraph: Array<() => void> = [];
+		server.slowGraph = slowGraph;
+		const slowStatus: Array<() => void> = [];
+		server.slowStatus = slowStatus;
+		const view = await mount();
+		assert.equal(server.graphReads, 1, "the first graph read was answered from the empty graph");
+		assert.equal(server.statusReads, 1, "the mount status read was answered before the merge");
+		// The merge lands before the events channel opens; the channel's
+		// resync status read sees it, and its reply lands first.
+		server.merge(node("n_bot", "Limit"));
+		view.src.open();
+		await settle(20);
+		assert.equal(server.statusReads, 2);
+		await letGo(slowStatus); // the mount read's older reply lands last
+		await letGo(slowGraph); // then the first graph reply, read before the merge
 		assert.equal(server.graphReads, 2, "the view read the graph again");
 		assert.equal(showsNodes(view.host), true, "the merged node shows without a reload");
 		await view.unmount();
