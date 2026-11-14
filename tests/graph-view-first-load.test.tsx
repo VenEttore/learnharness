@@ -4,7 +4,7 @@
  * reload. The real GraphView is mounted under the app's events provider with
  * a fake source and a fake server behind fetch. The server's graph replies
  * carry the graphDataRevision they were read at, as /api/graph does; status
- * replies carry the revision at the moment they were asked for.
+ * replies carry the revision of the moment their request reaches the server.
  *
  * The merge lands between the first /api/graph read and a status read, in
  * both reply orders, with two status replies arriving out of order, after a

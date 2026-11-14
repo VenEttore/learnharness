@@ -5,14 +5,16 @@
  * The model is graph-view.tsx's wiring: a refetch request sets the tick; the
  * fetch effect cancels the fetch out, calls started() and sends a new one; a
  * graph reply lands only if not cancelled (snapshot(), or failed() for a
- * failed one); a status reply calls status(), or sets the tick when a run row
- * left. A deletion sets the tick. The server's stamp moves on each merge and
+ * failed one); a status reply calls status(), and also sets the tick when a
+ * run row left. A deletion sets the tick. The server's stamp moves on each merge and
  * each merge sends a status read, as activity-changed does. Requests read the
  * stamp when the server takes them; replies land later, in any order.
  *
  * After the run drains, the view must show the server's stamp, with a
- * bounded number of graph fetches. With failures, the contract is weaker: a
- * status read sent after the last failure brings the view up to date.
+ * bounded number of graph fetches. With failures: when no fetch fails twice
+ * in a row, the gate's one retry must catch up with no further status read
+ * (it never drops a stamp it has seen); with any failures, a status read
+ * sent after the last failure brings the view up to date.
  */
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
@@ -31,7 +33,7 @@ function rng(seed: number) {
 
 type Request = { kind: "graph" | "status"; stage: "sent" | "read" | "done"; stamp: number; cancelled: boolean; rowLeft: boolean; fails: boolean };
 
-function run(seed: number, opts: { steps: number; failRate: number }) {
+function run(seed: number, opts: { steps: number; failRate: number; noTwoFailuresInARow?: boolean; noFinalStatus?: boolean }) {
 	const rand = rng(seed);
 	const pick = <T>(xs: T[]): T => xs[Math.floor(rand() * xs.length)]!;
 	let server = 100;
@@ -41,6 +43,7 @@ function run(seed: number, opts: { steps: number; failRate: number }) {
 	let shown: number | undefined;
 	let fetches = 0;
 	let statusReads = 0;
+	let lastFailed = false;
 	const requests: Request[] = [];
 	const gate = graphRefetchGate(() => {
 		tick = true;
@@ -52,8 +55,9 @@ function run(seed: number, opts: { steps: number; failRate: number }) {
 			stamp: -1,
 			cancelled: false,
 			rowLeft: kind === "status" && rand() < 0.15,
-			fails: kind === "graph" && failing && rand() < opts.failRate,
+			fails: kind === "graph" && failing && !(opts.noTwoFailuresInARow && lastFailed) && rand() < opts.failRate,
 		};
+		if (kind === "graph") lastFailed = r.fails;
 		requests.push(r);
 		if (kind === "status") statusReads++;
 		return r;
@@ -75,8 +79,10 @@ function run(seed: number, opts: { steps: number; failRate: number }) {
 				shown = r.stamp;
 				gate.snapshot(r.stamp);
 			}
-		} else if (r.rowLeft) tick = true;
-		else gate.status(r.stamp);
+		} else {
+			if (r.rowLeft) tick = true;
+			gate.status(r.stamp);
+		}
 	};
 	const moves = (): Array<() => void> => {
 		const m: Array<() => void> = [];
@@ -105,7 +111,7 @@ function run(seed: number, opts: { steps: number; failRate: number }) {
 		pick(m)();
 	}
 	let quiet = drain();
-	if (failing) {
+	if (failing && !opts.noFinalStatus) {
 		failing = false;
 		send("status");
 		quiet = drain() && quiet;
@@ -132,6 +138,15 @@ describe("graph refetch gate", () => {
 		}
 	});
 
+	it("never drops a stamp it has seen through a failed fetch: with retries that succeed, it catches up with no further status read", () => {
+		for (let seed = 1; seed <= 20_000; seed++) {
+			const r = run(seed, { steps: 24, failRate: 0.3, noTwoFailuresInARow: true, noFinalStatus: true });
+			assert.ok(r.quiet, `seed ${seed}: the run drains (no retry loop)`);
+			assert.equal(r.shown, r.server, `seed ${seed}: shows the newest graph`);
+			assert.ok(r.fetches <= 3 * r.statusReads + 8, `seed ${seed}: ${r.fetches} fetches for ${r.statusReads} status reads`);
+		}
+	});
+
 	it("restarts a fetch that is out when a newer stamp arrives, and lets repeats of its stamp wait", () => {
 		let asks = 0;
 		const gate = graphRefetchGate(() => asks++);
@@ -147,6 +162,28 @@ describe("graph refetch gate", () => {
 		assert.equal(asks, 1, "repeats of the stamp the fetch answers for wait for it");
 		gate.snapshot(101);
 		assert.equal(asks, 1);
+	});
+
+	it("keeps a stamp owed through a stale reply or a fetch it did not start, and retries for it after a failure", () => {
+		let asks = 0;
+		const stale = graphRefetchGate(() => asks++);
+		stale.started();
+		stale.snapshot(100);
+		stale.status(101); // the gate asks for 101
+		stale.started();
+		stale.status(100); // an older reply lands while the 101 fetch is out
+		stale.started();
+		stale.failed();
+		assert.equal(asks, 3, "retried for 101 after the stale reply's fetch failed");
+		asks = 0;
+		const rowLeft = graphRefetchGate(() => asks++);
+		rowLeft.started();
+		rowLeft.snapshot(100);
+		rowLeft.status(101);
+		rowLeft.started(); // the view's own refetch (a run row left) replaces the gate's
+		rowLeft.started();
+		rowLeft.failed();
+		assert.equal(asks, 2, "retried for 101 after the view's refetch failed");
 	});
 
 	it("retries a failed fetch once for an unshown stamp, then waits for the next status read", () => {

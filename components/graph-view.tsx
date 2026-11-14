@@ -1112,7 +1112,7 @@ export function GraphView({
 				const ids = new Set(runs.map((r) => r.id));
 				const rowLeft = [...rowIdsRef.current].some((id) => !ids.has(id));
 				if (rowLeft) setRefreshTick((t) => t + 1);
-				else refetchGate.status(graphDataRevision);
+				refetchGate.status(graphDataRevision);
 				rowIdsRef.current = ids;
 			})
 			.catch(() => {}); // status is cosmetic — never surface read errors

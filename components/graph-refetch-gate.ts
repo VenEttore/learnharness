@@ -11,9 +11,9 @@
  * row leaving, a deletion) the first status stamp seen while it is out,
  * which is checked when it lands. A status stamp that differs from that one
  * restarts the fetch, as each moved stamp did before; repeats of it do not,
- * so steady events cannot starve a slow fetch. A failed fetch for a stamp
- * that is not shown is retried once; after that, the next status read with
- * an unshown stamp refetches. A status reply that arrives out of order costs
+ * so steady events cannot starve a slow fetch. A seen stamp stays owed until
+ * a fetch started after it lands. A failed fetch is retried once for an owed
+ * stamp, then waits for a status read. An out-of-order status reply costs
  * at most one redundant fetch.
  */
 export function graphRefetchGate(refetch: () => void) {
@@ -23,6 +23,8 @@ export function graphRefetchGate(refetch: () => void) {
 	let guessed = false;
 	let asking = false;
 	let retried = false;
+	let starts = 0;
+	const owed = new Map<number, number>(); // owed stamp -> fetch starts when it arrived
 	const ask = (revision: number | undefined, retry = false) => {
 		inFlight = true;
 		asking = true;
@@ -34,6 +36,7 @@ export function graphRefetchGate(refetch: () => void) {
 	return {
 		/** A graph fetch started. */
 		started(): void {
+			starts++;
 			if (!asking) {
 				asked = undefined;
 				guessed = false;
@@ -46,17 +49,23 @@ export function graphRefetchGate(refetch: () => void) {
 		snapshot(revision: unknown): void {
 			inFlight = false;
 			if (typeof revision === "number") shown = revision;
+			for (const [stamp, at] of owed) if (at < starts || stamp === shown) owed.delete(stamp);
 			if (guessed && asked !== shown) ask(asked);
 			guessed = false;
 		},
 		/** The latest graph fetch failed. */
 		failed(): void {
 			inFlight = false;
-			if (!retried && asked !== undefined && asked !== shown) ask(asked, true);
+			const unshown = [...owed.keys()].filter((stamp) => stamp !== shown);
+			if (!retried && unshown.length > 0) ask(unshown[unshown.length - 1], true);
 		},
 		/** A status read returned this stamp. */
 		status(revision: unknown): void {
 			if (typeof revision !== "number") return;
+			if (revision !== shown) {
+				owed.delete(revision);
+				owed.set(revision, starts);
+			}
 			if (!inFlight) {
 				if (revision !== shown) ask(revision);
 			} else if (asked === undefined) {
