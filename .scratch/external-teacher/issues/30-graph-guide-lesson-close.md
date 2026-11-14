@@ -1,6 +1,6 @@
 # 30: Guide: add to the graph at lesson close
 
-Status: open
+Status: claimed
 Blocked by: 29
 Risk: pre-release
 Gate: human (Ven reviews the facts a bot adds from one real lesson before this is the default)
