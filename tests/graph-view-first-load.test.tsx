@@ -7,9 +7,11 @@
  * replies carry the revision at the moment they were asked for.
  *
  * The merge lands between the first /api/graph read and a status read, in
- * both reply orders, and with two status replies arriving out of order. The
- * view must fetch the graph again and show the new node. A first load with
- * no merge reads the graph once.
+ * both reply orders, with two status replies arriving out of order, after a
+ * failed first read, and while the first read never settles. The view must
+ * fetch the graph again and show the new node. A first load with no merge
+ * reads the graph once, and status reads during a refetch do not restart it.
+ * tests/graph-refetch-gate.test.ts runs the gate over random orders.
  *
  * linkedom as the DOM, as in card-live-refresh.test.tsx. The canvas, its
  * 2D context and the browser's layout observers are stubs: the test reads
@@ -304,6 +306,22 @@ describe("graph view first load", () => {
 		assert.equal(server.graphReads, 2, "status reads during the refetch did not restart it");
 		await letGo(slowGraph);
 		assert.equal(server.graphReads, 2, "the landed refetch carries the merged stamp: no further read");
+		await view.unmount();
+	});
+
+	it("starts a new graph read for a merge while the first one never settles", async () => {
+		server.reset();
+		const stalled: Array<() => void> = [];
+		server.slowGraph = stalled; // the first graph read is never answered
+		const view = await mount();
+		assert.equal(server.statusReads, 1, "the mount status read saw the empty graph");
+		server.merge(node("n_bot", "Limit"));
+		view.src.open();
+		await settle(50);
+		assert.equal(server.statusReads, 2);
+		assert.equal(server.graphReads, 2, "the moved stamp started a new read");
+		assert.equal(showsNodes(view.host), true, "the merged node shows without a reload");
+		stalled.splice(0);
 		await view.unmount();
 	});
 
