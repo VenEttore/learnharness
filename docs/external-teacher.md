@@ -101,7 +101,7 @@ One question is open at a time. After a question, wait for the learner's answer 
 
 ### Probe
 
-Before the first question, see what earlier lessons covered. `lh graph sessions` lists every lesson and notes file that added facts to the knowledge graph, newest first. For any that look related to this lesson, `lh graph propositions <session id>` lists the facts it added (section 7). The prober prompt (section 6) says how to use them: a strand the learner already holds needs no re-probing. The graph records what earlier lessons taught, not how the learner did on their questions, so a fact there is a lead to check with one quick question, not proof. An empty `sessions` list means no lesson has added facts yet; just probe.
+Before the first question, see what earlier lessons covered. `lh graph sessions` lists every lesson and notes file that added facts to the knowledge graph, newest first. For any that look related to this lesson, `lh graph propositions <session id>` lists the facts first learned in it (section 7). A fact an earlier lesson already held is listed under that earlier lesson, not again under a later one that repeated it. The prober prompt (section 6) says how to use them: a strand the learner already holds needs no re-probing. The graph records what earlier lessons taught, not how the learner did on their questions, so a fact there is a lead to check with one quick question, not proof. An empty `sessions` list means no lesson has added facts yet; just probe.
 
 Find the learner's goal with `ask`. Leave out `options` for a typed answer:
 
