@@ -18,13 +18,19 @@ import { useServerEvent, useServerResync } from "@/components/server-events";
 export function useGraphDataTick(): number {
 	const [tick, setTick] = useState(0);
 	const revisionRef = useRef<number | undefined>(undefined);
+	// Replies can arrive out of order; one older than the newest applied
+	// reply is dropped, so it cannot set the revision back.
+	const sentRef = useRef(0);
+	const appliedRef = useRef(0);
 	const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
 	const read = useCallback(() => {
+		const sent = ++sentRef.current;
 		fetch("/api/graph/status")
 			.then((res) => res.json() as Promise<{ graphDataRevision?: unknown }>)
 			.then(({ graphDataRevision }) => {
-				if (typeof graphDataRevision !== "number") return;
+				if (typeof graphDataRevision !== "number" || sent < appliedRef.current) return;
+				appliedRef.current = sent;
 				if (graphDataRevision === revisionRef.current) return;
 				revisionRef.current = graphDataRevision;
 				setTick((t) => t + 1);

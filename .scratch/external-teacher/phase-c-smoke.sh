@@ -377,7 +377,6 @@ jq -n --argjson v "$VIEW" --slurpfile d "$TMP/drafts.json" '
 	   verdicts:{links:[]}}' > "$TMP/findings.json"
 cat "$TMP/findings.json"
 lh_run 0 '.ok and .merged==true and .nodes==2 and .chains==1' findings "$L" --file "$TMP/findings.json"
-FIRST="$OUT"
 while [ "$(jq -r '.remaining // 0' <<<"$OUT")" -gt 0 ]; do
 	lh_run 0 '.ok and (.batches|length)>=1' extract-view "$L" || break
 	jq -n --argjson v "$OUT" '{messageIds:$v.batches[0].messageIds, findings:{propositions:[],chains:[]}, verdicts:{links:[]}}' > "$TMP/empty.json"

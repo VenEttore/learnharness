@@ -53,8 +53,16 @@ const coverage = (uncoveredTokens: number, uncoveredCount: number): SessionCover
 	lastFoldedAt: null,
 });
 
-/** The server as the ring sees it, behind a fetch stub. */
-const server = { coverage: coverage(2048, 3), revision: 100, chatReads: 0 };
+/** The server as the ring sees it, behind a fetch stub. A status reply
+ *  carries the revision at the moment it was asked for. While `held` is a
+ *  list, status replies wait there until the test releases them. */
+const server = {
+	coverage: coverage(2048, 3),
+	revision: 100,
+	chatReads: 0,
+	statusReads: 0,
+	held: null as null | Array<() => void>,
+};
 const realFetch = globalThis.fetch;
 globalThis.fetch = (async (input: RequestInfo | URL) => {
 	const url = String(input);
@@ -63,7 +71,12 @@ globalThis.fetch = (async (input: RequestInfo | URL) => {
 		server.chatReads++;
 		return Response.json({ coverage: server.coverage });
 	}
-	if (url === "/api/graph/status") return Response.json({ runs: [], graphDataRevision: server.revision });
+	if (url === "/api/graph/status") {
+		server.statusReads++;
+		const reply = Response.json({ runs: [], graphDataRevision: server.revision });
+		if (server.held) await new Promise<void>((release) => server.held!.push(release));
+		return reply;
+	}
 	throw new Error(`unexpected fetch ${url}`);
 }) as typeof fetch;
 after(() => {
@@ -75,6 +88,23 @@ const dashOf = (html: string) => /stroke-dasharray="([^"]+)"/.exec(html)?.[1];
 const glyph = (fill: number) => dashOf(renderToStaticMarkup(<CoverageRingGlyph fill={fill} running={false} />));
 /** Lets fetches settle and the 250 ms event debounce run. */
 const settle = (ms = 0) => act(() => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+
+/** Mounts the ring under the events provider with a fresh fake source. */
+async function mountRing() {
+	const src = fakeSource();
+	const host = dom.document.createElement("div");
+	dom.document.body.appendChild(host);
+	const root = ReactDOMClient.createRoot(host as unknown as Element);
+	await act(async () => {
+		root.render(
+			<ServerEventsProvider connect={src.connect}>
+				<CoverageRing chatId="chat_ring" />
+			</ServerEventsProvider>,
+		);
+	});
+	await settle(10);
+	return { src, host, root };
+}
 
 describe("coverage ring refresh", () => {
 	it("redraws when graphDataRevision moves with no run row, and refetches nothing when it does not", async () => {
@@ -113,6 +143,63 @@ describe("coverage ring refresh", () => {
 		await act(async () => src.open());
 		await settle(10);
 		assert.ok(dashOf(host.innerHTML) === glyph(0.25), "a (re)connect redraws a missed write");
+
+		// Unmounted while an event's status read waits on its debounce: the
+		// read is cancelled.
+		const statusReads = server.statusReads;
+		await act(async () => src.frame("activity-changed", {}));
+		await act(async () => root.unmount());
+		await settle(400);
+		assert.equal(server.statusReads, statusReads, "no status read after unmount");
+	});
+
+	it("redraws a write that lands before its first status reply, with no event", async () => {
+		server.coverage = coverage(2048, 3);
+		server.revision = 400;
+		server.held = [];
+		const { host, root } = await mountRing();
+		assert.equal(dashOf(host.innerHTML), glyph(0.5), "first coverage read: half full");
+		assert.equal(server.held.length, 1, "the first status read is waiting");
+
+		// A bot merge lands after the ring's coverage read; its event came
+		// before anything listened. Only the first status reply is left.
+		server.coverage = coverage(0, 0);
+		server.revision = 500;
+		const held = server.held;
+		server.held = null;
+		await act(async () => held.forEach((release) => release()));
+		await settle(10);
+		assert.equal(dashOf(host.innerHTML), glyph(0), "the first status reply re-read coverage, so the ring drained");
+		await act(async () => root.unmount());
+	});
+
+	it("ignores a status reply that arrives after a newer one", async () => {
+		server.coverage = coverage(2048, 3);
+		server.revision = 600;
+		server.held = null;
+		const { src, root } = await mountRing();
+
+		// Two merges, two status reads; the replies arrive newest first.
+		server.held = [];
+		server.revision = 700;
+		await act(async () => src.frame("activity-changed", {}));
+		await settle(400);
+		server.revision = 800;
+		await act(async () => src.frame("activity-changed", {}));
+		await settle(400);
+		const [older, newer] = server.held;
+		assert.ok(older && newer, "two status reads are waiting");
+		server.held = null;
+		await act(async () => newer());
+		await settle(10);
+		await act(async () => older());
+		await settle(10);
+
+		// Nothing changed since revision 800, so an event reads no coverage.
+		const reads = server.chatReads;
+		await act(async () => src.frame("activity-changed", {}));
+		await settle(400);
+		assert.equal(server.chatReads, reads, "the late, older reply did not reset the revision");
 		await act(async () => root.unmount());
 	});
 });

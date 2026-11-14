@@ -101,11 +101,13 @@ export function extractViewOf(record: ChatRecord, chunkTokens: number = CHUNK_TO
 	};
 }
 
-/** LearnHarness's extractor and auditor instructions and tool schemas, as
- *  its models receive them (src/agent/subagents/extraction.ts). The source
- *  assembles them from pieces; this is the assembled text, so a bot that
- *  does their work at lesson close reads exactly what the models read, and
- *  upstream tuning reaches it without a guide change. */
+/** The system prompts LearnHarness's extractor and auditor models receive,
+ *  and the schema of the tool each submits with
+ *  (src/agent/subagents/extraction.ts). The source assembles the prompts
+ *  from pieces; this is the assembled text, so a bot that does their work
+ *  at lesson close reads what the models read, and upstream tuning reaches
+ *  it without a guide change. The auditor's read-only lookup tools are not
+ *  here: the bot has `lh graph` for them. */
 export const EXTRACTION_METHOD = {
 	extractor: { instructions: EXTRACTOR_INSTRUCTIONS, tool: "submit_findings", parameters: sessionFindingsSchema },
 	auditor: { instructions: AUDITOR_INSTRUCTIONS, tool: "submit_review", parameters: auditSchema },
