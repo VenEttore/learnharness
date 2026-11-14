@@ -210,7 +210,9 @@ function switchRefusal(extra: Record<string, unknown>): Response | null {
 	try {
 		raw = JSON.parse(fs.readFileSync(SETTINGS_FILE, "utf-8"));
 	} catch (err) {
-		if ((err as NodeJS.ErrnoException).code !== "ENOENT") raw = null;
+		raw = null;
+		// A dangling link also gives ENOENT; only a truly absent path is first boot.
+		if ((err as NodeJS.ErrnoException).code === "ENOENT" && !fs.lstatSync(SETTINGS_FILE, { throwIfNoEntry: false })) raw = {};
 	}
 	const graph = isObject(raw) ? raw.graph : null;
 	if (!isObject(raw) || (graph !== undefined && !(isObject(graph) && [undefined, true, false].includes(graph.enabled as boolean)))) {
@@ -276,7 +278,7 @@ function mergeUnderLock(id: string, body: FindingsBody): Response {
 		console.error(`[chat ${id}] layout settle after bot findings failed:`, err);
 	}
 	// The activity dock and the graph view re-read on this; the view
-	// refetches the graph because /api/graph/status's graphRevision moved
+	// refetches the graph because /api/graph/status's graphDataRevision moved
 	// (no run row comes and goes for a bot merge).
 	emit("activity-changed", {});
 	return Response.json({

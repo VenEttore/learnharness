@@ -630,6 +630,7 @@ describe("the graph master switch", () => {
 		["a graph section that is not an object", () => fs.writeFileSync(SETTINGS_FILE, JSON.stringify({ version: 1, graph: "off" }))],
 		["a switch that is not true or false", () => fs.writeFileSync(SETTINGS_FILE, JSON.stringify({ version: 1, graph: { enabled: "no" } }))],
 		["a path that is a directory", () => fs.mkdirSync(SETTINGS_FILE)],
+		["a link to a missing file", () => fs.symlinkSync(path.join(path.dirname(SETTINGS_FILE), "missing-settings.json"), SETTINGS_FILE)],
 	];
 	for (const [label, corrupt] of unreadable) {
 		it(`refuses findings with settings_unreadable for ${label}, writing nothing`, async () => {
