@@ -62,6 +62,8 @@ const server = {
 	chatReads: 0,
 	statusReads: 0,
 	held: null as null | Array<() => void>,
+	/** The next status read fails in transport. */
+	failNext: false,
 };
 const realFetch = globalThis.fetch;
 globalThis.fetch = (async (input: RequestInfo | URL) => {
@@ -73,6 +75,10 @@ globalThis.fetch = (async (input: RequestInfo | URL) => {
 	}
 	if (url === "/api/graph/status") {
 		server.statusReads++;
+		if (server.failNext) {
+			server.failNext = false;
+			throw new TypeError("fetch failed");
+		}
 		const reply = Response.json({ runs: [], graphDataRevision: server.revision });
 		if (server.held) await new Promise<void>((release) => server.held!.push(release));
 		return reply;
@@ -200,6 +206,30 @@ describe("coverage ring refresh", () => {
 		await act(async () => src.frame("activity-changed", {}));
 		await settle(400);
 		assert.equal(server.chatReads, reads, "the late, older reply did not reset the revision");
+		await act(async () => root.unmount());
+	});
+
+	it("applies an older reply when the newer read fails", async () => {
+		server.coverage = coverage(2048, 3);
+		server.revision = 900;
+		server.held = null;
+		const { src, host, root } = await mountRing();
+
+		// A merge; its status read waits. A reconnect's newer read fails.
+		server.coverage = coverage(0, 0);
+		server.revision = 1000;
+		server.held = [];
+		await act(async () => src.frame("activity-changed", {}));
+		await settle(400);
+		server.failNext = true;
+		await act(async () => src.open());
+		await settle(10);
+		const [older] = server.held;
+		assert.ok(older, "the event's status read is waiting");
+		server.held = null;
+		await act(async () => older());
+		await settle(10);
+		assert.equal(dashOf(host.innerHTML), glyph(0), "the older reply, the only one that arrived, redrew the ring");
 		await act(async () => root.unmount());
 	});
 });
