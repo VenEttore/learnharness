@@ -1,6 +1,6 @@
 # 29: Bot findings into the graph
 
-Status: claimed
+Status: resolved
 Blocked by: 28
 Risk: pre-release
 Gate: none
@@ -54,4 +54,28 @@ Verified:
 - tests/lh-cli.test.ts covers `lh findings` from stdin and --file, a byte-order mark, and bad command lines. Extraction-related suites passed 119 of 119 after the lock fix, and the graph-view UI suites passed 60 of 60.
 - phase-c-smoke.sh on port 3189 at 69cca6db: PASS, with 102 ok lines and 0 FAIL, at load 4.
 - Review: rounds 1 to 3 each ran code-review (Opus 5.5 xhigh) and interrogate A (Opus 5.5 xhigh), B (GLM 5.3 Flash high, the fallback for the GLM seat), C (Haiku 5.5 xhigh) and D (Sonnet 5.5 high, the fallback for the Composer seat; it does not offer fastMode). Round 1 had 21 proven findings, round 2 had 11 and round 3 had 13, counting repeats across seats. All Act On items are fixed or deferred above.
+- blast-radius: skipped (Risk: pre-release).
+
+### Shipped 2026-11-14
+This launch fixed the settings guard and ran review round 4, the last round left. The round found no Act On item at 7a92b674. Interrogate C found two at d01fd084, both in the graph view's revision stamp. Both are fixed with tests. The fixes after C and D's commit add 11 lines and remove 4 outside tests, add no interface, and no seat read them. They ship under the small-diff rule. Counted from 7a92b674, the commit that code-review, A and B read, the fixes add 16 lines and remove 7.
+
+Completed:
+- The findings route refuses with 500 `settings_unreadable` when settings.json exists but its graph switch cannot be read. That covers an unreadable file, a file that is not JSON, a top level that is not an object, a `graph` section that is not an object, a switch that is not true or false, and a link to a missing file. A missing file is first boot and reads as the factory default, graph on. The check runs before the audit lock and again inside it. It lives in `switchRefusal` in src/server/graph-findings.ts. Upstream's settings reading in src/store/settings.ts is unchanged. Guide section 5 lists the code: skip findings, tell the learner, and resend the batch once the file is fixed.
+- `graphDataRevision`, the number /api/graph/status returns for the graph view, is now the sum of each ledger's modification time and size, not the largest time. A merge now moves it even when another ledger's time is in the future. It reads each file with one `statSync` call and treats a missing file as 0, so a ledger deleted mid-read no longer makes the status route fail. The name and the type (a number) are unchanged, and the view still compares with `!==`.
+- Round 4 small fixes: the guide gave the tagged lines as `data/graph/...`, and now names `graph/nodes.jsonl` and `graph/chains.jsonl` in `LH_DATA_DIR`. A code comment now names `graphDataRevision`. The `settings_unreadable` row also covers a switch that is not true or false.
+
+Deferred:
+- Lesson page coverage ring not refreshing after `lh findings`: ticket 30.
+- Graph view missing a bot merge between its first `/api/graph` fetch and its first status read: ticket 31.
+- Removing bot-tagged lines is not a full undo: stays a note in ADR 0001.
+- The chain rewrite dropping lines that fail the store's shape check, and `POST /api/graph/coverage/extract` answering 202 for bot-run lessons: both predate the fork and stay notes.
+- Kept as they are after round 4: `graph: null`, `"enabled": null`, an empty file and a byte-order mark before valid JSON all get `settings_unreadable`, though upstream reads them as graph on. That is the safe direction. A batch with no facts marks coverage, which moves the stamp and costs the view one extra refetch. After `save_failed`, a resend that repeats a landed fact under its `p` id adds it twice. The guide's recovery steps prevent that.
+- Not a defect: interrogate C said extract-view ignores the learner's `extractionChunkTokens`. Nothing in the server passes `getChunkTokens` to the pipeline, so LearnHarness's own extractor also batches at the factory 4096 tokens, and the guide's wording is accurate.
+- Unverified: the new settings tests create a symlink and a directory at the settings path. They ran only on Linux, and creating a symlink on Windows may need extra privileges.
+
+Verified:
+- Full repo check at 609e67d5, the tip with feat/external-teacher (813c9840) merged in: typecheck passes. Lint has 0 errors and 1 warning, the existing `<head>` one. 3471 of 3472 tests pass. The one failure is the baseline Pi loader test.
+- tests/graph-findings.test.ts passes 23 of 23. These new tests failed on the code before their fix: the six `settings_unreadable` file cases (I watched the first five fail together, then the link case alone), the future-time stamp test and the deleted-ledger test. Two more tests were added: one where the file becomes unreadable during the lock wait, and one where a missing file still merges.
+- phase-c-smoke.sh on port 3189 at 609e67d5: PASS, with 102 ok lines and 0 FAIL.
+- Review round 4 (4 of 8 rounds used). Code-review ran on Opus 5.5 xhigh, A on Opus 5.5 xhigh, B on GLM 5.3 Flash high (the GLM seat's fallback) and C on Haiku 5.5 xhigh. D ran on Sonnet 5.5 high, the Composer seat's fallback, because Cursor is unavailable until 2026-11-19. Code-review, A and B read 7a92b674. C and D read d01fd084. Act On items: code-review 0, A 0, B 0, C 2 (fixed), D 0. Seats proved every finding by running code.
 - blast-radius: skipped (Risk: pre-release).
