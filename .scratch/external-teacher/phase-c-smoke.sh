@@ -393,7 +393,7 @@ lh_run 0 "[.sessions[]|select(.id==\"$L\")][0].propositions==2" graph sessions
 lh_run 0 '[.propositions[].name]|index("Binary search step count")' graph propositions "$L"
 REV1="$(graph_status)"; RING1="$(ring)"
 echo "graphDataRevision $REV1, ring $RING1"
-[ "$REV1" != "$REV0" ] && ok "graphDataRevision moved: the ring and the graph view redraw" || bad "graphDataRevision did not move"
+[ "$REV1" != "$REV0" ] && ok "graphDataRevision moved: the signal the ring and the graph view watch (the redraw itself is tests/coverage-ring-refresh.test.tsx)" || bad "graphDataRevision did not move"
 jq -e '.uncoveredCount==0 and .uncoveredTokens==0' >/dev/null <<<"$RING1" && ok "the ring's numbers drained to zero" || bad "ring after findings: $RING1"
 
 say "10. No model ran"
