@@ -58,7 +58,7 @@ Every command prints one JSON line and exits with a code:
 | 0 | ok: `{"ok":true,...}` |
 | 1 | not ok: a refusal (`{"ok":false,"code":"...",...}`), a `bad_reply`, or other JSON (below) |
 | 2 | `lh answer --wait` timed out: `{"ok":false,"error":"timeout"}` |
-| 3 | LearnHarness unreachable, or no answer within 30 s: `{"ok":false,"code":"unreachable","error":"...","guide":"docs/external-teacher.md"}`. This is not a refusal. If `error` says "is not reachable", start it as in section 1. If it says "did not answer", the server may be busy compiling. After a turn command, the turn may have landed, so follow "A lost reply" in section 5. After `lh lesson new`, rerun it with the same `--key`. After `lh show` or `lh answer`, rerun it. |
+| 3 | LearnHarness unreachable, or no answer within 30 s: `{"ok":false,"code":"unreachable","error":"...","guide":"docs/external-teacher.md"}`. This is not a refusal. If `error` says "is not reachable", start it as in section 1. If it says "did not answer", the server may be busy compiling. After a turn command, the turn may have landed, so follow "A lost reply" in section 5. After `lh lesson new`, rerun it with the same `--key`. After `lh show` or `lh answer`, rerun it. After `lh findings`, rerun it: if the first send landed, the rerun returns `alreadyRead` and writes nothing. |
 
 A reply with `"code":"bad_reply"` means the server on `LH_URL` answered with something other than JSON: a LearnHarness error page, or another program holding the port. Any other JSON on exit 1, not shaped like a refusal, comes from another program on the port, or from a LearnHarness in desktop mode, which replies `{"error":"Desktop API access requires the trusted LearnHarness window."}`. If you started that LearnHarness yourself with `LH_DESKTOP_SERVER` or `LH_DESKTOP_API_SECRET` set, stop it and start it again as in section 1. Otherwise read `/workspace/lh-server.log`. If your server is running on another port (its `Local:` line names the port), set `LH_URL` to that port instead of starting a second one. If your server is not running, start it on another port (section 1).
 
@@ -303,8 +303,13 @@ LearnHarness runs its checks before it saves anything, so a refused turn adds no
 | `not_bot_run` | The lesson belongs to LearnHarness's own model. Create your own with `lh lesson new`. |
 | `key_required` | `lh lesson new` needs `--key`, which makes a rerun return the same lesson. |
 | `bad_find` | The `lh graph find` input is not `{"propositions":[...]}` as section 7 describes. `problems` says what to fix. |
+| `bad_findings` | The `lh findings` input failed the extractor's or auditor's checks (section 7). `problems` says what to fix. Nothing was written. |
+| `stale_batch` | The `messageIds` you sent are not the lesson's first unread batch now, usually because new teacher text joined it. `batch` holds the current ids. Run `lh extract-view` again and redo the findings for that batch. |
+| `graph_disabled` | The learner turned the knowledge graph off in LearnHarness's settings, so `lh findings` writes nothing. Skip findings while it is off. The batch stays unread, so once the graph is back on, send it again. |
+| `settings_unreadable` | LearnHarness's settings file exists but cannot be read, or its graph switch is not `true` or `false`, so `lh findings` cannot tell whether the learner has the graph on, and writes nothing. Skip findings and tell the learner: the file is `settings.json` in `LH_DATA_DIR` (`/workspace/lh-data/settings.json` with the section 1 command). Do not edit it yourself. The batch stays unread, so once the file is fixed, send it again. |
+| `graph_busy` | Something else held the graph for over 20 seconds, usually LearnHarness's own extraction of another lesson. Nothing was written. Wait a minute and resend the same findings. |
 | `usage` | `lh` refused the command line before sending it: a missing flag, a misspelled flag, JSON that does not parse. |
-| `save_failed` | The disk write failed. Rerun the same command. |
+| `save_failed` | The disk write failed. Rerun the same command; for `lh findings`, read section 7 first. |
 | `internal_error` | LearnHarness failed on its own bug and saved nothing. Read `/workspace/lh-server.log`. Resending the same turn fails the same way. |
 | `forbidden_origin`, `forbidden_host` | The request came from a browser, or through a non-loopback host name. Call through `lh` on this computer. |
 
@@ -334,6 +339,7 @@ The cursor rules above are mechanics. For how to probe, plan and teach, read Lea
 | `quiz` (teacher prompts) | `lh quiz` |
 | `explain` (teacher prompts) | `lh explain` |
 | `list_sessions`, `list_propositions` (prober) | `lh graph sessions`, `lh graph propositions` (section 7) |
+| `submit_findings` (extractor) and `submit_review` (auditor) | `lh findings` (section 7) |
 
 The input fields match the tools' fields. The prompts call the `readingThinking` field `thinkingWhileReading`. Where a prompt says "end your turn" after a question, wait for the learner's input.
 
@@ -349,9 +355,9 @@ The input fields match the tools' fields. The prompts call the `readingThinking`
 
 Workers can research and draft, but they cannot raise widgets or talk to the learner.
 
-## 7. Read the knowledge graph
+## 7. Read and add to the knowledge graph
 
-LearnHarness keeps one knowledge graph across all lessons: the facts (`propositions`) each lesson taught, grouped by the session, the lesson or imported notes file, they were first learned in. These commands only read it. None of them calls a model.
+LearnHarness keeps one knowledge graph across all lessons: the facts (`propositions`) each lesson taught, grouped by the session, the lesson or imported notes file, they were first learned in. The commands in the table only read it; `lh findings` adds to it. None of them calls a model.
 
 | command | reply |
 |---|---|
@@ -362,3 +368,30 @@ LearnHarness keeps one knowledge graph across all lessons: the facts (`propositi
 | `lh extract-view <lesson>` | Your lesson's teacher text that has not been read for the graph yet, as LearnHarness's extractor reads it. A passage counts as read once its findings are merged, even if it added no facts. `batches` holds it oldest first, each with a `view` (`TEACHER [message id] text` passages) and its `messageIds`. `digest` lists what this lesson already added to the graph, and `prompt` is the extractor's input for the first batch: the digest, then that batch's view. Like `lh show`, it carries the lesson's `cursor` and any unread `items`. Bot-run lessons only. |
 
 A bad `find` body is refused with `bad_find` and `problems` (section 5).
+
+### Add your findings
+
+`lh findings <lesson> --file <path>` (or the JSON on stdin) merges what you found in the first batch of `lh extract-view` into the graph. LearnHarness checks it and writes it the way it writes its own extractor's and auditor's output. The input is:
+
+```json
+{
+  "messageIds": ["<the batch's messageIds from extract-view, in any order>"],
+  "findings": {
+    "propositions": [
+      { "id": "p1", "name": "Chain rule", "statement": "...", "aliases": [], "messageId": "<one of messageIds>" },
+      { "id": "p2", "name": "Derivative", "statement": "...", "messageId": "<one of messageIds>" }
+    ],
+    "chains": [{ "premises": ["p1", "<an n_ id from the digest>"], "conclusion": "p2" }]
+  },
+  "verdicts": { "links": [{ "id": "p2", "linkTo": "<an n_ id from lh graph find>" }] }
+}
+```
+
+- `messageIds` names the batch. It must be the first unread batch's ids, all of them; order does not matter. LearnHarness rebuilds that batch itself and refuses a mismatch with `stale_batch`.
+- `findings` is the extractor's `submit_findings` input: new facts only, each with its own id (`p1`, `p2`, ...; not the id of a fact already in the graph), a non-blank `name` and `statement`, and the `messageId` of the passage that states it, and the chains among your facts and existing facts' `n_` ids (the digest lists this lesson's; any fact in the graph is accepted, as for LearnHarness's extractor). Pass `"chains": []` when there are none. A batch with nothing new takes `"propositions": []` and `"chains": []`: it is marked read with nothing added, so send that only after reading the batch.
+- `verdicts` is the auditor's `submit_review` input: a link says your fact is that existing fact (an id from `lh graph find`). Leave a fact out of `links` to add it as new. A chain whose premise and conclusion become the same fact once the links apply is refused.
+- The reply has `merged`, the `nodes` added, the `chains` written (counted before the merge's simplification pass), `droppedChains` when that pass removed chains that a leaner chain now makes redundant (any lesson's, possibly one just written), `read` (the messages now read) and `remaining` (unread batches left). Run `lh extract-view` again before the next batch: the digest changed.
+- Resending findings for a batch that is already read returns `"merged": false, "alreadyRead": true` and writes nothing, without checking the findings again.
+- Every field takes real JSON values: an array, not a string holding one (LearnHarness repairs that for its own model, not for `lh`). Leave an optional field out rather than sending `null`. Unknown fields are refused.
+- Facts you add are tagged `"source": "external"` on their lines in `graph/nodes.jsonl` and `graph/chains.jsonl` in `LH_DATA_DIR` (`/workspace/lh-data/graph/` with the section 1 command).
+- A `save_failed` reply means a disk write failed partway: some facts, and some of the batch's messages, may already be recorded, so resending the same findings can add facts twice or get `stale_batch`. Run `lh extract-view` first: facts that landed are in its `digest`, and its first batch lists the messages still unread. Send findings for that batch, leaving out facts already in the digest and using their `n_` ids in chains instead.

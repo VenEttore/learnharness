@@ -75,7 +75,7 @@ _Avoid_: Handoff (the code's name for the marker the end of the probe leaves), t
 ## Knowledge graph
 
 **Knowledge graph**:
-The one store of what the learner has been taught, shared by every lesson. LearnHarness's extractor and auditor decide what goes in, and plain code writes it.
+The one store of what the learner has been taught, shared by every lesson. LearnHarness's extractor and auditor decide what goes in (in a bot-run lesson, the Bot Teacher's findings), and plain code writes it.
 _Avoid_: Graph data, memory
 
 **Extractor**:
@@ -105,6 +105,14 @@ _Avoid_: Transcript (the whole lesson), prose view
 **Digest**:
 The propositions and chains a lesson has already added to the knowledge graph, listed for the extractor before its next batch.
 _Avoid_: Summary
+
+**Findings**:
+What the extractor found in one batch (propositions and chains) together with the auditor's links to existing propositions. In a bot-run lesson the Bot Teacher sends them with `lh findings`, and LearnHarness merges them. The request body calls the extractor's part `findings` and the auditor's links `verdicts` (the code's names).
+_Avoid_: Results, extraction output
+
+**Source tag**:
+`"source": "external"` on a stored proposition or chain line that a Bot Teacher's findings added. It lets a cleanup find bot-added lines, since the graph is shared with ordinary lessons. Removing them is not a full undo: a chain from another lesson that the chain simplification dropped because of a bot chain stays dropped.
+_Avoid_: Bot flag, origin
 
 **Candidate**:
 A proposition already in the knowledge graph that looks like a new one, found by word overlap. Deciding whether the two are the same idea is the auditor's job.

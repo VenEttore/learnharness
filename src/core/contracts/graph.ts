@@ -51,6 +51,11 @@ export interface GraphChain {
 	 *  unioned across assertion lines at read time. */
 	provenance: ProvenancePoint[];
 	createdAt: string;
+	/** Fork (ADR 0001): "external" on a line a Bot Teacher's findings
+	 *  wrote (src/server/graph-findings.ts); absent otherwise. A merged
+	 *  record (getGraph) carries its first line's value only, so a cleanup
+	 *  reads the raw lines. */
+	source?: "external";
 }
 
 /** What one extraction run merged into the graph ledgers — the merger's
@@ -144,6 +149,11 @@ export interface GraphNode {
 	createdAt: string;
 	/** Every (chat, message) point where this proposition came up. */
 	provenance: ProvenancePoint[];
+	/** Fork (ADR 0001): "external" on a line a Bot Teacher's findings
+	 *  wrote (src/server/graph-findings.ts); absent otherwise. A merged
+	 *  record (getGraph) carries its first line's value only, so a cleanup
+	 *  reads the raw lines. */
+	source?: "external";
 }
 
 /** sessions.jsonl line — the emission checkpoint for one chat (which chats
