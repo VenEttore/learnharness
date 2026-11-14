@@ -1055,6 +1055,7 @@ export function GraphView({
 	}, [chainSelectOpen]);
 	useEffect(() => {
 		let cancelled = false;
+		revisions.started();
 		fetch("/api/graph")
 			.then((res) => res.json() as Promise<GraphSnapshot & { graphDataRevision?: number }>)
 			.then(({ graphDataRevision, ...data }) => {
@@ -1062,7 +1063,10 @@ export function GraphView({
 				setSnapshot(data);
 				revisions.snapshot(graphDataRevision);
 			})
-			.catch((err) => console.error("[graph] fetch failed:", err));
+			.catch((err) => {
+				if (!cancelled) revisions.failed();
+				console.error("[graph] fetch failed:", err);
+			});
 		return () => {
 			cancelled = true;
 		};

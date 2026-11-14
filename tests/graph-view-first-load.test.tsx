@@ -114,6 +114,8 @@ const server = {
 	lateStatus: null as null | Array<() => void>,
 	slowGraph: null as null | Array<() => void>,
 	slowStatus: null as null | Array<() => void>,
+	/** The next graph read fails in transport. */
+	failGraph: false,
 	/** A bot merge: a node lands and the revision moves. */
 	merge(n: GraphNode) {
 		this.nodes = [...this.nodes, n];
@@ -127,6 +129,7 @@ const server = {
 		this.lateStatus = null;
 		this.slowGraph = null;
 		this.slowStatus = null;
+		this.failGraph = false;
 	},
 };
 const realFetch = globalThis.fetch;
@@ -134,6 +137,10 @@ globalThis.fetch = (async (input: RequestInfo | URL) => {
 	const url = String(input);
 	if (url === "/api/graph") {
 		server.graphReads++;
+		if (server.failGraph) {
+			server.failGraph = false;
+			throw new TypeError("fetch failed");
+		}
 		const reply = Response.json({ ...snapshotOf(server.nodes), graphDataRevision: server.revision });
 		const slow = server.slowGraph;
 		if (slow) {
@@ -250,6 +257,53 @@ describe("graph view first load", () => {
 		await letGo(slowGraph); // then the first graph reply, read before the merge
 		assert.equal(server.graphReads, 2, "the view read the graph again");
 		assert.equal(showsNodes(view.host), true, "the merged node shows without a reload");
+		await view.unmount();
+	});
+
+	it("shows a later merge after the first graph read failed", async () => {
+		server.reset();
+		server.failGraph = true;
+		const realError = console.error;
+		console.error = () => {}; // the view logs the failed fetch
+		try {
+			const view = await mount();
+			assert.equal(server.statusReads, 1);
+			assert.equal(server.graphReads, 2, "the first graph read failed; the first status read retried it");
+			assert.equal(showsNodes(view.host), false);
+			server.merge(node("n_bot", "Limit"));
+			view.src.open();
+			await settle(50);
+			assert.equal(server.statusReads, 2);
+			assert.equal(server.graphReads, 3, "the moved stamp refetched the graph");
+			assert.equal(showsNodes(view.host), true, "the merged node shows without a reload");
+			await view.unmount();
+		} finally {
+			console.error = realError;
+		}
+	});
+
+	it("lets a refetch finish while status reads keep arriving", async () => {
+		server.reset([node("n_old", "Old")]);
+		const view = await mount();
+		view.src.open();
+		await settle(50);
+		assert.equal(server.graphReads, 1);
+		server.merge(node("n_new", "New"));
+		const slowGraph: Array<() => void> = [];
+		server.slowGraph = slowGraph;
+		view.src.frame("activity-changed", {});
+		await settle(300);
+		assert.equal(server.graphReads, 2, "the moved stamp started one refetch");
+		// More activity while the refetch is out: each status read sees the
+		// merged stamp, which the refetch already asked for.
+		for (let i = 0; i < 3; i++) {
+			view.src.frame("activity-changed", {});
+			await settle(300);
+		}
+		assert.equal(server.statusReads, 6);
+		assert.equal(server.graphReads, 2, "status reads during the refetch did not restart it");
+		await letGo(slowGraph);
+		assert.equal(server.graphReads, 2, "the landed refetch carries the merged stamp: no further read");
 		await view.unmount();
 	});
 

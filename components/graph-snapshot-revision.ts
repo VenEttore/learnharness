@@ -5,28 +5,47 @@
  * graphDataRevision it was read at, so a status stamp is compared with the
  * shown snapshot's, not with the previous status read.
  *
- * Every status stamp read before the first snapshot lands is held and
- * compared when it lands, so a merge between the first graph read and a
- * status read still refetches, whatever order the replies arrive in. Once a
- * snapshot is shown, a status reply that arrives out of order costs at most
- * one redundant fetch.
+ * A status stamp that arrives while a graph fetch is out is held and
+ * compared when that fetch lands, whatever order the replies arrive in: a
+ * merge during the first load still refetches, and status reads during a
+ * refetch do not restart it. Stamps that arrived before a fetch started are
+ * dropped, since that fetch reads newer data. After a failed fetch the next
+ * status read refetches, as nothing newer is shown. Once a snapshot is
+ * shown, a status reply that arrives out of order costs at most one
+ * redundant fetch.
  */
 export function graphSnapshotRevision(refetch: () => void) {
 	let shown: number | undefined;
-	const early = new Set<number>();
+	let inFlight = false;
+	const held = new Set<number>();
+	const ask = () => {
+		inFlight = true;
+		held.clear();
+		refetch();
+	};
 	return {
-		/** A snapshot landed with this stamp. */
+		/** A graph fetch started. */
+		started(): void {
+			inFlight = true;
+			held.clear();
+		},
+		/** The latest graph fetch landed with this stamp. */
 		snapshot(revision: unknown): void {
-			if (typeof revision !== "number") return;
-			shown = revision;
-			if ([...early].some((r) => r !== revision)) refetch();
-			early.clear();
+			inFlight = false;
+			if (typeof revision === "number") shown = revision;
+			if ([...held].some((r) => r !== shown)) ask();
+			else held.clear();
+		},
+		/** The latest graph fetch failed. */
+		failed(): void {
+			inFlight = false;
+			held.clear();
 		},
 		/** A status read returned this stamp. */
 		status(revision: unknown): void {
 			if (typeof revision !== "number") return;
-			if (shown === undefined) early.add(revision);
-			else if (revision !== shown) refetch();
+			if (inFlight) held.add(revision);
+			else if (revision !== shown) ask();
 		},
 	};
 }
