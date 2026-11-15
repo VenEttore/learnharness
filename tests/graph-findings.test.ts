@@ -615,6 +615,31 @@ describe("an open graph view", () => {
 			syncBuiltinESMExports();
 		}
 	});
+
+	it("gets the graph with the stamp status returns, so a merge during the first load is not missed (ticket 31)", async () => {
+		const statusRoute = await import("../app/api/graph/status/route.ts");
+		const graphRoute = await import("../app/api/graph/route.ts");
+		type Stamped = { graphDataRevision: number; nodes: Array<{ name: string }> };
+		const graph = async () => (await (await graphRoute.GET()).json()) as Stamped;
+		const status = async () => ((await (await statusRoute.GET()).json()) as { graphDataRevision: number }).graphDataRevision;
+		resetToSeed();
+		const bot = botLessonWith("findings-first-load", SHORT);
+		const first = await graph();
+		assert.equal(typeof first.graphDataRevision, "number");
+		assert.equal(first.graphDataRevision, await status(), "a graph read and a status read with no write between agree");
+		await new Promise((resolve) => setTimeout(resolve, 20));
+		const reply = await submit(bot, {
+			messageIds: ["t1"],
+			findings: { propositions: [{ id: "p1", name: "Limit (first load)", statement: "A limit is approached.", messageId: "t1" }], chains: [] },
+			verdicts: { links: [] },
+		});
+		assert.equal(reply.body.merged, true);
+		assert.notEqual(await status(), first.graphDataRevision, "the view sees its snapshot is older than the merge");
+		const second = await graph();
+		assert.equal(second.graphDataRevision, await status(), "the refetched snapshot carries the merged stamp");
+		assert.ok(second.nodes.some((n) => n.name === "Limit (first load)"));
+		assert.ok(!first.nodes.some((n) => n.name === "Limit (first load)"));
+	});
 });
 
 describe("the graph master switch", () => {
