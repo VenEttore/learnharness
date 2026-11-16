@@ -27,6 +27,12 @@ Lesson chat_mwiox0ir_7dcab15d on bench-30 at c5eebf6, empty graph before. Close 
 - Empty `messageId` on chains is by design (chains are chat-level, graph.ts:121, 251; same on the built-in path).
 - Not tested: linking to an existing fact (graph was empty), the ring on the page.
 
+### Chain rule, 2026-11-16
+Guide fix for the two weak chains from Bench 1. `docs/external-teacher.md` section 7, step 2, now tells the bot to check each chain before sending: keep it only if its premises together give the conclusion; a specific case drawn from a general rule is not a chain when the specific detail is not in the premises. It also says nothing on the send path checks chains. Wording follows the extractor prompt's entailment rule (extraction.ts:405).
+- Size: 1 doc line changed (docs only, no code, GLOSSARY and smoke untouched).
+- Check: `bash .scratch/external-teacher/phase-c-smoke.sh 3127` ended PASS, 0 FAIL lines.
+- Unreviewed under the small-diff rule. Status stays claimed; Gate: human stays open. Ven's bench needs a rerun of a lesson close to see the bot drop such chains.
+
 ### Stopped at review cap 2026-11-14 (status stays claimed; Gate: human still open)
 Three review rounds ran, all this launch allowed. Round 3 found 4 Act On items, all in guide wording and one smoke message. Commit 78692872 fixes all 4. It changes 6 lines outside tests (4 in the guide, 1 in GLOSSARY.md, 1 in the smoke) and adds no interface, so it fits the small-diff rule, but no seat has read it. No Act On item is open. Checklist items 1 to 4 are done. Item 5 is Ven's bench, below.
 
