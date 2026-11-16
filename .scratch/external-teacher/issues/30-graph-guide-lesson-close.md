@@ -20,6 +20,13 @@ Option A, part 3.
 ### Matt 2026-11-15
 Accepted 78692872 unreviewed under the small-diff rule (no "Continue 30"). Gate: human stays open: Ven's lesson of 2026-11-14 ran on a bench with 27 and 28 only, so the lesson-close steps below have not run on a real lesson yet. No follow-up ticket for a hung graph fetch.
 
+### Bench 1, 2026-11-16 (Ven via Watcher; not yet "30 done")
+Lesson chat_mwiox0ir_7dcab15d on bench-30 at c5eebf6, empty graph before. Close per section 7 wrote 8 facts and 3 chains, all `"source":"external"`; `lh extract-view` then returns `items: []`.
+- Facts: all 8 true, standalone and taught. Pass.
+- Chains: arg_e1c56a56315c is a real derivation. arg_82d21c1ac2f9 and arg_426e63dee3aa go from "same kanji, different readings, use the furigana" alone to a specific reading (来ない as こ, 日 as ひ). The premise does not give the reading, so they break the extractor prompt's own rule ("premises that JOINTLY entail a conclusion", extraction.ts:405). Nothing checks chains on either path; the auditor sees only propositions.
+- Empty `messageId` on chains is by design (chains are chat-level, graph.ts:121, 251; same on the built-in path).
+- Not tested: linking to an existing fact (graph was empty), the ring on the page.
+
 ### Stopped at review cap 2026-11-14 (status stays claimed; Gate: human still open)
 Three review rounds ran, all this launch allowed. Round 3 found 4 Act On items, all in guide wording and one smoke message. Commit 78692872 fixes all 4. It changes 6 lines outside tests (4 in the guide, 1 in GLOSSARY.md, 1 in the smoke) and adds no interface, so it fits the small-diff rule, but no seat has read it. No Act On item is open. Checklist items 1 to 4 are done. Item 5 is Ven's bench, below.
 
