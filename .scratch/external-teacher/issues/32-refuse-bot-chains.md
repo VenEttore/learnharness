@@ -1,6 +1,6 @@
 # 32: Refuse bot chains; a ready count line for the learner
 
-Status: claimed
+Status: resolved
 Blocked by: 30
 Risk: pre-release
 Gate: none
@@ -77,4 +77,21 @@ Smoke PASS (117 ok, 0 FAIL); 41/41 in the two graph test files; the known-limit 
 
 ### Interrogate round 1, seat A (claude-opus-5-5 xhigh, 1aa3f704) 2026-11-24
 Full check matched the baseline: 3497 tests, 1 failure, the Pi loader test. Everything else held: a partial `save_failed` with the guide's resend, multi-batch closes, the refusal order against graph_disabled, settings_unreadable, stale_batch, graph_busy and alreadyRead, chains sent in odd shapes, and the fact that a lesson cannot become bot-run after LearnHarness extracted it. The one finding is seat C's, from the same root: the guide defined `linkedFacts` as the links written, while the count follows the graph after a deletion. cc24f29d fixed the guide, and it now also says a linked fact counts as new once its creating lesson is deleted. This is the same fix as seat C's, tagged there.
+
+### Shipped 2026-11-24
+Completed:
+- POST /api/external/chats/:id/findings refuses any non-empty `findings.chains` with 400 `chains_not_accepted` and a message to resend with `"chains": []`. It runs after the lesson and graph-switch checks and before the shape check and the lock, and runs again inside the lock on the findings the merge writes. Nothing is written. `"chains": []` merges. A missing `chains` was `bad_findings` before this ticket and still is. LearnHarness's own extraction still writes chains.
+- `lh extract-view`'s `method.extractor` opens its instructions with BOT_CHAINS_NOTE, and its schema limits `chains` to `maxItems: 0` with the same note. Upstream constants and files are untouched.
+- Merge and `alreadyRead` replies carry the whole lesson's `newFacts` (equal to `lh graph sessions`), `linkedFacts` (the lesson's link lines still in the graph) and `learnerLine`, e.g. "This lesson added 4 new facts to your graph and matched 1 of its statements to facts already there."
+- Guide section 7 and the section 5 table, the extract-view row, GLOSSARY.md, ADR 0001 (a dated update line), docs/architecture.md and smoke 9c updated. The known limit for chains bots wrote earlier is in the guide.
+Deferred: nothing. The optional bench is still open: on Ven's next real lesson close, 0 new chains and the count line reaches the learner.
+Verified:
+- On the merged tip, `npm run typecheck && npm run lint && NODE_ENV=test npx tsx --test --test-concurrency=2 tests/*.test.ts tests/*.test.tsx`: typecheck and lint pass (lint has 1 existing warning in tests/source-name-ui.test.tsx); tests 3498, pass 3497, fail 1, the baseline Pi loader test.
+- `bash .scratch/external-teacher/phase-c-smoke.sh <free port>`, run with CLAUDE*, AI_AGENT, CURSOR_AGENT and CURSOR_TRACE_ID unset because Next 16.4.3 halts `next dev` under an agent: PASS, 117 ok, 0 FAIL.
+- Review, 1 round:
+  - code-review: Standards and Spec on claude-opus-5-5 xhigh, then a recheck. Every finding was fixed.
+  - interrogate panel, all seats on their primary models: A claude-opus-5-5 xhigh, B cursor deepseek-v41-flash-1017 high, C claude-haiku-5-5 xhigh, D cursor composer-2.5. A and C found one wording issue from the same root, fixed in the guide; B and D found nothing.
+  - Unreviewed: aadebfb6's one guide sentence (the orphaned-link case), 1 line under the small-diff rule.
+  - Blast-radius skipped: Risk pre-release.
+- ship-check and ticket-numbers exit 0.
 
