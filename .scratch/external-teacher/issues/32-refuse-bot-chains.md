@@ -54,3 +54,9 @@ Standards and Spec on claudeAgent claude-opus-5-5 effort=xhigh, reviewing 94cc9f
 - Small cleanups: un-exported lessonTotals, one `lesson` object in submitFindings, one graph-reads import and the banner back in place in the test.
 - Tests added: a read batch resent with a chain, two links to one node, and a chain while the graph is off.
 
+### Review round 1 recheck (code-review Standards) 2026-11-24
+Reviewing 1aa3f704. One hard finding and four judgement calls, all fixed (`.scratch/external-teacher/32/code-review-r1.md`):
+- The chainsRefusal docstring named only the raw-body caller. (mechanism: stale-doc-wording)
+- linkedFacts is now the lesson's node lines minus newFacts, so the birth rule is graphSessionIndex's alone and the two counts cannot drift. (mechanism: count-birth-line)
+- Comment and naming cleanups: the in-lock guard is marked defensive, submitFindings' object is `about`, and the taggedStore docstring is fixed.
+

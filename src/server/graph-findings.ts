@@ -94,9 +94,11 @@ function checkedAgainst<S extends TSchema>(schema: S, name: string, value: unkno
 	return converted.length > 0 ? { problems: converted } : { value: checked };
 }
 
-/** The chains refusal, or null. It reads the raw body, before the schema
- *  check, so a bot whose findings are otherwise malformed still learns
- *  that chains go. A `chains` that is not an array is the schema check's. */
+/** The chains refusal, or null. submitFindings runs it on the raw body,
+ *  before the schema check, so a bot whose findings are otherwise
+ *  malformed still learns that chains go; a `chains` that is not an array
+ *  is the schema check's. mergeUnderLock runs it again on the findings the
+ *  merge writes. */
 function chainsRefusal(body: unknown, extra: Record<string, unknown>): Response | null {
 	const findings = isObject(body) ? body.findings : undefined;
 	const chains = isObject(findings) ? findings.chains : undefined;
@@ -159,8 +161,9 @@ function strictProblems(findings: SessionFindings, verdicts: AuditVerdicts, exis
 	return problems;
 }
 
-/** The graph store with every node and chain line it appends tagged
- *  `source: "external"`. Everything else passes through to the real store. */
+/** The graph store with every node line it appends tagged
+ *  `source: "external"`, and any chain line too, though the route refuses
+ *  chains. Everything else passes through to the real store. */
 function taggedStore(store: GraphStore): GraphStore {
 	return new Proxy(store, {
 		get(target, prop) {
@@ -231,24 +234,17 @@ function switchRefusal(extra: Record<string, unknown>): Response | null {
 
 /** What the whole lesson has added to the graph so far, for the line the
  *  bot sends the learner at close. `newFacts` is the lesson's
- *  `propositions` in `lh graph sessions`. `linkedFacts` counts the node
- *  lines that name this lesson, other than the line a node of the lesson
- *  was born on: one per link a merge (or a merge that failed partway)
- *  wrote. A node's birth line is its first line with provenance, the rule
- *  graphSessionIndex reads, so a node another session created and then
- *  lost (session deletion empties its create line) counts once, as new. */
+ *  `propositions` in `lh graph sessions` (graphSessionIndex). Each of
+ *  those nodes has exactly one line that names the lesson as its birth;
+ *  every other node line that names the lesson is a link a merge (or a
+ *  merge that failed partway) wrote. So `linkedFacts` is the lesson's node
+ *  lines minus `newFacts`, and the birth rule stays graphSessionIndex's:
+ *  a node another session created and then lost (session deletion empties
+ *  its create line) counts once, as new. */
 function lessonTotals(id: string): { newFacts: number; linkedFacts: number; learnerLine: string } {
 	const newFacts = graphSessionIndex(stores).find((s) => s.id === id)?.propositions ?? 0;
-	const born = new Set<string>();
-	let linkedFacts = 0;
-	for (const line of stores.graphStore.readNodes()) {
-		if (!born.has(line.id)) {
-			if (line.provenance.length === 0) continue;
-			born.add(line.id);
-			if (line.provenance[0]!.chatId === id) continue; // counted in newFacts
-		}
-		if (line.provenance.some((pt) => pt.chatId === id)) linkedFacts++;
-	}
+	const lines = stores.graphStore.readNodes().filter((line) => line.provenance.some((pt) => pt.chatId === id)).length;
+	const linkedFacts = lines - newFacts;
 	const added = newFacts === 0 ? "no new facts" : `${newFacts} new ${newFacts === 1 ? "fact" : "facts"}`;
 	const learnerLine =
 		linkedFacts === 0
@@ -288,7 +284,9 @@ function mergeUnderLock(id: string, body: FindingsBody): Response {
 	// The pipeline's own lift: runSubmitAgent fills, runExtractor lifts.
 	const findings: SessionFindings = asSessionFindings(fillFindings(body.findings));
 	const verdicts: AuditVerdicts = fillAudit(body.verdicts);
-	// The guard on the value the merge acts on, after fill and lift.
+	// Defensive: the guard on the value the merge acts on, after fill and
+	// lift. The raw-body check already refused any chain, and fill and lift
+	// pass chains through unchanged, so this does not fire today.
 	const chains = chainsRefusal({ findings }, lesson({}));
 	if (chains) return chains;
 	const existingIds = new Set(getGraph(stores.graphStore).nodes.map((n) => n.id));
@@ -351,21 +349,21 @@ export function graphDataRevision(): number {
 export async function submitFindings(id: string, body: unknown): Promise<Response> {
 	const record: ChatRecord | Response = botLesson(id);
 	if (record instanceof Response) return record;
-	const lesson = { lesson: id, ...cursorAndItems(record) };
+	const about = { lesson: id, ...cursorAndItems(record) };
 	// The graph master switch closes the write channel, as it does for
 	// LearnHarness's own automatic extraction (chat-handler.ts).
-	const off = switchRefusal(lesson);
+	const off = switchRefusal(about);
 	if (off) return off;
-	const chains = chainsRefusal(body, lesson);
+	const chains = chainsRefusal(body, about);
 	if (chains) return chains;
 	const parsed = parseBody(body);
-	if ("problems" in parsed) return externalFailure(400, "bad_findings", { ...lesson, problems: parsed.problems });
+	if ("problems" in parsed) return externalFailure(400, "bad_findings", { ...about, problems: parsed.problems });
 	try {
 		const result = await withAuditLock(() => mergeUnderLock(id, parsed.body));
-		return result === "busy" ? externalFailure(503, "graph_busy", lesson) : result;
+		return result === "busy" ? externalFailure(503, "graph_busy", about) : result;
 	} catch (err) {
 		// A check's own bug, not the bot's input: nothing was written.
 		console.error(`[chat ${id}] bot findings failed:`, err);
-		return externalFailure(500, "internal_error", lesson);
+		return externalFailure(500, "internal_error", about);
 	}
 }

@@ -16,3 +16,12 @@ Result: Fail (Standards had 2 hard findings). All findings fixed in the round-1 
 1. Docstring and ticket comment said linkedFacts "equals the links entries sent"; it counts links written (a save_failed send's unwritten links are not counted). Fixed: docstring and ticket comment say "links the lesson's merges wrote", as the guide already did.
 2. After the session that created a linked fact is deleted, the fact counted as both new and linked. Fixed: a node's birth line (its first line with provenance, the rule graphSessionIndex reads) is skipped for linkedFacts. Test: "counts a linked fact once, as new, after the session that created it is deleted".
 3. Untested clauses: resend of a read batch with a chain, two links to one node, a chain while the graph is off. Fixed: tests added (chains test, "counts two links to one fact as two links sent", graph_disabled test).
+
+# Code-review round 1 recheck (reviewed 1aa3f704; same seats)
+
+## Standards (5)
+H1. HARD chainsRefusal docstring said it reads the raw body before the schema check; it now has a second caller inside the lock. Fixed: docstring names both callers.
+J1. The in-lock guard cannot fire today. Fixed: its comment says it is defensive and why.
+J2. Two `lesson`s of different shapes in one file. Fixed: submitFindings' object is `about`.
+J3. lessonTotals re-implemented the birth rule. Fixed: linkedFacts = the lesson's node lines minus newFacts (graphSessionIndex's count), so the birth rule is upstream's alone.
+J4. taggedStore's docstring said every chain line; the route refuses chains. Fixed: docstring says so. The appendChain wrapper stays so any chain line a future path writes is still tagged.
