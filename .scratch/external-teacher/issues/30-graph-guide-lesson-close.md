@@ -33,6 +33,15 @@ Guide fix for the two weak chains from Bench 1. `docs/external-teacher.md` secti
 - Check: `bash .scratch/external-teacher/phase-c-smoke.sh 3127` ended PASS, 0 FAIL lines.
 - Unreviewed under the small-diff rule. Status stays claimed; Gate: human stays open. Ven's bench needs a rerun of a lesson close to see the bot drop such chains.
 
+### Bench 2, 2026-11-24 (Ven via Watcher; reported as a failure)
+Box at fd0e330 from 2026-11-17. Lessons 9 to 12 closed into the graph after lesson 1: 15 new facts, 3 chains, 1 link.
+- Facts: all true and taught on a read of the verbatim lines. No exact duplicates. Lesson 12 linked "来 as き in 来た" to lesson 11's n_770aed28d90d.
+- Not linked: lesson 1 facts never came back as facts. Near pairs (来ない as こ / 来た as き; two-clause て ending in た / in ている) are different claims, so new nodes are right.
+- Chains: lessons 9 and 10 wrote 3 more general-to-specific chains (Furigana readings => 出 as で, 前 as まえ, 中 as なか). Lessons 11 and 12 wrote none. Only lesson 12's parent read the new sentence: closes run in executor subagents told only "run lh extract-view and merge the findings", so they read `method`, not the guide. `method.extractor.instructions` already says premises must jointly entail, and lessons 1, 9 and 10 broke it anyway. A rule written in prose has now failed twice by this mechanism (the prompt rule, then the guide sentence).
+- Bot never sent the learner the new-fact and linked-fact count line.
+- Ring: empty on lesson 1's page (screenshot). Pass.
+- Box: build/ and the tracked app/api/graph/coverage/extract/route.ts are missing from its working tree; HEAD still fd0e330.
+
 ### Stopped at review cap 2026-11-14 (status stays claimed; Gate: human still open)
 Three review rounds ran, all this launch allowed. Round 3 found 4 Act On items, all in guide wording and one smoke message. Commit 78692872 fixes all 4. It changes 6 lines outside tests (4 in the guide, 1 in GLOSSARY.md, 1 in the smoke) and adds no interface, so it fits the small-diff rule, but no seat has read it. No Act On item is open. Checklist items 1 to 4 are done. Item 5 is Ven's bench, below.
 
