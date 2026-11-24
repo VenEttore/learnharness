@@ -34,10 +34,10 @@ process.env.LH_DATA_DIR = TMP_DATA;
 const { LEDGER_FILES, POSITIONS_FILE, SETTINGS_FILE } = await import("../config.ts");
 const { abortExtraction, createExtractionPipeline, extractionStatuses } = await import("../src/agent/subagents/extraction.ts");
 const { getGraph, mergeFindings } = await import("../src/core/graph.ts");
+const { deleteChatTraces } = await import("../src/core/graph-deletion.ts");
 const { stores } = await import("../src/server/stores.ts");
-const { extractViewOf, unreadBatches } = await import("../src/server/graph-reads.ts");
+const { extractViewOf, listGraphSessions, unreadBatches } = await import("../src/server/graph-reads.ts");
 const { findingsLockWaitMs, graphDataRevision } = await import("../src/server/graph-findings.ts");
-const { listGraphSessions } = await import("../src/server/graph-reads.ts");
 const findingsRoute = await import("../app/api/external/chats/[id]/findings/route.ts");
 type PiEngine = import("../src/agent/models.ts").PiEngine;
 type LhMessage = import("../src/core/native-messages.ts").LhMessage;
@@ -395,8 +395,6 @@ describe("bad submissions are refused and write nothing", () => {
 	});
 });
 
-// ─── the audit lock ─────────────────────────────────────────────────────────
-
 // ─── chains (ticket 32) ─────────────────────────────────────────────────────
 
 describe("a Bot Teacher's chains are refused (ticket 32)", () => {
@@ -426,6 +424,12 @@ describe("a Bot Teacher's chains are refused (ticket 32)", () => {
 		const resent = await submit(bot, { ...withChain, findings: { ...withChain.findings, chains: [] } });
 		assert.equal(resent.status, 200, JSON.stringify(resent.body));
 		assert.deepEqual([resent.body.merged, resent.body.nodes, resent.body.chains], [true, 1, 0]);
+
+		// Once the batch is read, a resend with a chain is still refused.
+		const after = files();
+		const rerun = await submit(bot, withChain);
+		assert.deepEqual([rerun.status, rerun.body.code], [400, "chains_not_accepted"]);
+		assert.deepEqual(files(), after);
 	});
 
 	it("leaves LearnHarness's own extraction writing chains", async () => {
@@ -483,6 +487,47 @@ describe("the count line for the learner", () => {
 		assert.deepEqual([again.body.alreadyRead, again.body.learnerLine], [true, r2.body.learnerLine]);
 	});
 
+	it("counts two links to one fact as two links sent", async () => {
+		resetToSeed();
+		const bot = botLessonWith("findings-count-twice", SHORT);
+		const reply = await submit(bot, {
+			messageIds: ["t1"],
+			findings: {
+				propositions: [
+					{ id: "p1", name: "Limit", statement: "A limit is the value a function approaches.", messageId: "t1" },
+					{ id: "p2", name: "Limit value", statement: "The value a function approaches is its limit.", messageId: "t1" },
+				],
+				chains: [],
+			},
+			verdicts: { links: [{ id: "p1", linkTo: seedId("Limit") }, { id: "p2", linkTo: seedId("Limit") }] },
+		});
+		assert.equal(reply.status, 200, JSON.stringify(reply.body));
+		assert.deepEqual([reply.body.newFacts, reply.body.linkedFacts], [0, 2]);
+		assert.equal(reply.body.learnerLine, "This lesson added no new facts to your graph and linked 2 to facts it already had.");
+	});
+
+	it("counts a linked fact once, as new, after the session that created it is deleted", async () => {
+		resetToSeed();
+		const deps = { chatStore: stores.chatStore, graphStore: stores.graphStore };
+		mergeFindings("chat_other", { propositions: [{ id: "x", name: "Squeeze theorem", statement: "A function squeezed between two with one limit has that limit.", aliases: [] }], chains: [] }, { links: [] }, deps, { foldedAt: "2026-01-02T00:00:00.000Z" });
+		const squeeze = getGraph(stores.graphStore).nodes.find((n) => n.name === "Squeeze theorem")!.id;
+		const bot = botLessonWith("findings-count-orphan", SHORT);
+		const body = {
+			messageIds: ["t1"],
+			findings: { propositions: [{ id: "p1", name: "Squeeze", statement: "Squeezed between two functions with one limit, a function has it too.", messageId: "t1" }], chains: [] },
+			verdicts: { links: [{ id: "p1", linkTo: squeeze }] },
+		};
+		const first = await submit(bot, body);
+		assert.deepEqual([first.body.newFacts, first.body.linkedFacts], [0, 1]);
+		deleteChatTraces(stores.graphStore, "chat_other", "delete-nodes");
+		const again = await submit(bot, body);
+		assert.equal(again.body.alreadyRead, true);
+		const sessions = (await (await listGraphSessions()).json()) as Json;
+		assert.equal(sessions.sessions.find((s: Json) => s.id === bot)?.propositions, 1, "the fact is now born in the bot's lesson");
+		assert.deepEqual([again.body.newFacts, again.body.linkedFacts], [1, 0]);
+		assert.equal(again.body.learnerLine, "This lesson added 1 new fact to your graph.");
+	});
+
 	it("says the lesson added nothing when it did", async () => {
 		resetToSeed();
 		const bot = botLessonWith("findings-count-none", SHORT);
@@ -492,6 +537,8 @@ describe("the count line for the learner", () => {
 		assert.equal(reply.body.learnerLine, "This lesson added no new facts to your graph.");
 	});
 });
+
+// ─── the audit lock ─────────────────────────────────────────────────────────
 
 describe("the route shares the pipeline's audit lock", () => {
 	it("waits while a LearnHarness audit holds it, and gives up with graph_busy, writing nothing", async () => {
@@ -749,6 +796,8 @@ describe("the graph master switch", () => {
 			const off = await submit(bot, body);
 			assert.deepEqual([off.status, off.body.code], [409, "graph_disabled"]);
 			assert.equal(typeof off.body.cursor, "string");
+			const withChain = await submit(bot, { ...body, findings: { ...body.findings, chains: [{ premises: [seedId("Limit")], conclusion: "p1" }] } });
+			assert.deepEqual([withChain.status, withChain.body.code], [409, "graph_disabled"], "the switch is named before a chain");
 			assert.deepEqual(files(), before);
 		} finally {
 			stores.settingsStore.writeSettings(saved ?? { version: 1 });

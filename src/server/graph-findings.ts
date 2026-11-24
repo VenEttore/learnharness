@@ -39,7 +39,9 @@ import { stores } from "./stores.ts";
  * batch's slots.
  *
  * NO CHAINS (ticket 32): a request whose findings carry any chain is
- * refused with chains_not_accepted before anything else is checked. Bots
+ * refused with chains_not_accepted before its shape is checked (only the
+ * lesson and graph-switch refusals come first), and again inside the lock
+ * on the findings the merge would write. Bots
  * wrote chains whose premises did not give the conclusion, and no check
  * short of a model call can judge entailment. LearnHarness's own
  * extraction still writes chains.
@@ -48,8 +50,8 @@ import { stores } from "./stores.ts";
  * carries `"source": "external"` (GraphNode in
  * src/core/contracts/graph.ts). That covers new nodes and link lines (a bot
  * verdict that a proposition is an existing node), so a cleanup can find
- * and remove every line a bot wrote. Chain lines appended through this
- * route would be tagged too; chains written by bots before ticket 32 are. Coverage lines carry no tag; they name the lesson, and a
+ * and remove every line a bot wrote. Chain lines bots wrote before
+ * ticket 32 carry the tag too. Coverage lines carry no tag; they name the lesson, and a
  * bot-run lesson is `driver: "external"` on its chat record.
  */
 
@@ -230,17 +232,22 @@ function switchRefusal(extra: Record<string, unknown>): Response | null {
 /** What the whole lesson has added to the graph so far, for the line the
  *  bot sends the learner at close. `newFacts` is the lesson's
  *  `propositions` in `lh graph sessions`. `linkedFacts` counts the node
- *  lines that name this lesson on a node an earlier line created: one per
- *  link a merge (or a merge that failed partway) wrote, so it equals the
- *  `links` entries sent across the lesson's batches. */
-export function lessonTotals(id: string): { newFacts: number; linkedFacts: number; learnerLine: string } {
-	const deps = { chatStore: stores.chatStore, graphStore: stores.graphStore };
-	const newFacts = graphSessionIndex(deps).find((s) => s.id === id)?.propositions ?? 0;
-	const seen = new Set<string>();
+ *  lines that name this lesson, other than the line a node of the lesson
+ *  was born on: one per link a merge (or a merge that failed partway)
+ *  wrote. A node's birth line is its first line with provenance, the rule
+ *  graphSessionIndex reads, so a node another session created and then
+ *  lost (session deletion empties its create line) counts once, as new. */
+function lessonTotals(id: string): { newFacts: number; linkedFacts: number; learnerLine: string } {
+	const newFacts = graphSessionIndex(stores).find((s) => s.id === id)?.propositions ?? 0;
+	const born = new Set<string>();
 	let linkedFacts = 0;
 	for (const line of stores.graphStore.readNodes()) {
-		if (seen.has(line.id) && line.provenance.some((pt) => pt.chatId === id)) linkedFacts++;
-		seen.add(line.id);
+		if (!born.has(line.id)) {
+			if (line.provenance.length === 0) continue;
+			born.add(line.id);
+			if (line.provenance[0]!.chatId === id) continue; // counted in newFacts
+		}
+		if (line.provenance.some((pt) => pt.chatId === id)) linkedFacts++;
 	}
 	const added = newFacts === 0 ? "no new facts" : `${newFacts} new ${newFacts === 1 ? "fact" : "facts"}`;
 	const learnerLine =
@@ -281,6 +288,9 @@ function mergeUnderLock(id: string, body: FindingsBody): Response {
 	// The pipeline's own lift: runSubmitAgent fills, runExtractor lifts.
 	const findings: SessionFindings = asSessionFindings(fillFindings(body.findings));
 	const verdicts: AuditVerdicts = fillAudit(body.verdicts);
+	// The guard on the value the merge acts on, after fill and lift.
+	const chains = chainsRefusal({ findings }, lesson({}));
+	if (chains) return chains;
 	const existingIds = new Set(getGraph(stores.graphStore).nodes.map((n) => n.id));
 	const law = validateSessionAnchors(body.findings, new Set(batch.messageIds));
 	const problems = [...(law === null ? [] : [law]), ...strictProblems(findings, verdicts, existingIds)];
@@ -341,20 +351,21 @@ export function graphDataRevision(): number {
 export async function submitFindings(id: string, body: unknown): Promise<Response> {
 	const record: ChatRecord | Response = botLesson(id);
 	if (record instanceof Response) return record;
+	const lesson = { lesson: id, ...cursorAndItems(record) };
 	// The graph master switch closes the write channel, as it does for
 	// LearnHarness's own automatic extraction (chat-handler.ts).
-	const off = switchRefusal({ lesson: id, ...cursorAndItems(record) });
+	const off = switchRefusal(lesson);
 	if (off) return off;
-	const chains = chainsRefusal(body, { lesson: id, ...cursorAndItems(record) });
+	const chains = chainsRefusal(body, lesson);
 	if (chains) return chains;
 	const parsed = parseBody(body);
-	if ("problems" in parsed) return externalFailure(400, "bad_findings", { lesson: id, problems: parsed.problems, ...cursorAndItems(record) });
+	if ("problems" in parsed) return externalFailure(400, "bad_findings", { ...lesson, problems: parsed.problems });
 	try {
 		const result = await withAuditLock(() => mergeUnderLock(id, parsed.body));
-		return result === "busy" ? externalFailure(503, "graph_busy", { lesson: id, ...cursorAndItems(record) }) : result;
+		return result === "busy" ? externalFailure(503, "graph_busy", lesson) : result;
 	} catch (err) {
 		// A check's own bug, not the bot's input: nothing was written.
 		console.error(`[chat ${id}] bot findings failed:`, err);
-		return externalFailure(500, "internal_error", { lesson: id, ...cursorAndItems(record) });
+		return externalFailure(500, "internal_error", lesson);
 	}
 }
