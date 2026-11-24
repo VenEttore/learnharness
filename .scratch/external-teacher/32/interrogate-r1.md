@@ -5,3 +5,11 @@
 
 ## Seat A (claudeAgent claude-opus-5-5 xhigh, reviewed 1aa3f704)
 1. Same root as C/1 (guide's linkedFacts definition vs deletion). Merged with C/1; guide also names the "counts as new once its creating lesson is deleted" case. Seat's full check: tests 3497, pass 3496, fail 1 (baseline).
+
+## Seat D (cursor composer-2.5 fastMode=false, reviewed cc24f29d)
+No findings. Upstream extraction.ts untouched; EXTRACTION_METHOD not reused by the native extractor; maxItems 0 survives JSON; native extraction still writes chains (tests/extraction.test.ts 81/81). Full suite: tests 3498, pass 3497, fail 1 (baseline).
+
+## Seat B (cursor deepseek-v41-flash-1017 reasoning_effort=high, reviewed e5e4da3e)
+No findings. Fuzzed chains shapes, coercion, prototype keys, duplicate keys, deep and huge payloads, lh passthrough, refusal order, extract-view writes nothing; ajv strict and Python jsonschema accept the bot schema, `[]` valid, one chain invalid. Full suite: tests 3497, pass 3496, fail 1 (baseline). Smoke PASS.
+
+## Act On after round 1: empty (A/C's one finding fixed in the guide, cc24f29d + aadebfb6, doc-only).
