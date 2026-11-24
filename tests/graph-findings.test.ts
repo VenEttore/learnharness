@@ -7,7 +7,10 @@
  *   parity    the same findings through the route and through the real
  *             pipeline (scripted models) leave the same ledgers, apart
  *             from the source tag, ids and timestamps
- *   refusals  bad shapes and stale batches are refused and write nothing
+ *   refusals  bad shapes, stale batches and any chain are refused and
+ *             write nothing (a bot sends "chains": [], ticket 32)
+ *   count     every merge and rerun reply carries the lesson's totals and
+ *             the line the bot sends the learner
  *   reruns    a rerun over read messages is a no-op, also when two land
  *             at once
  *   lock      the route waits for the pipeline's audit lock, and gives up
@@ -31,9 +34,10 @@ process.env.LH_DATA_DIR = TMP_DATA;
 const { LEDGER_FILES, POSITIONS_FILE, SETTINGS_FILE } = await import("../config.ts");
 const { abortExtraction, createExtractionPipeline, extractionStatuses } = await import("../src/agent/subagents/extraction.ts");
 const { getGraph, mergeFindings } = await import("../src/core/graph.ts");
+const { deleteChatTraces } = await import("../src/core/graph-deletion.ts");
 const { stores } = await import("../src/server/stores.ts");
-const { extractViewOf, unreadBatches } = await import("../src/server/graph-reads.ts");
-const { findingsLockWaitMs } = await import("../src/server/graph-findings.ts");
+const { extractViewOf, listGraphSessions, unreadBatches } = await import("../src/server/graph-reads.ts");
+const { findingsLockWaitMs, graphDataRevision } = await import("../src/server/graph-findings.ts");
 const findingsRoute = await import("../app/api/external/chats/[id]/findings/route.ts");
 type PiEngine = import("../src/agent/models.ts").PiEngine;
 type LhMessage = import("../src/core/native-messages.ts").LhMessage;
@@ -135,9 +139,8 @@ const resetToSeed = () => {
 	stores.graphStore.writePositions({});
 };
 
-/** What an extractor and an auditor would send for batch `i`: new ideas, a
- *  link to a seed node, a chain the simplification drops, and in batch 2 a
- *  chain from an idea batch 1 added (by its id in the graph now). */
+/** What a Bot Teacher sends for batch `i`: new ideas and, in batch 1, a
+ *  link to a seed node. No chains: the route refuses them (ticket 32). */
 function planFor(i: number, messageIds: string[]): { findings: Json; verdicts: Json } {
 	if (i === 0) {
 		return {
@@ -146,19 +149,15 @@ function planFor(i: number, messageIds: string[]): { findings: Json; verdicts: J
 					{ id: "p1", name: "Chain rule", statement: "(f∘g)' = f'(g)·g'.", aliases: ["composition rule"], messageId: messageIds[0] },
 					{ id: "p2", name: "Derivative", statement: "A derivative is the limit of difference quotients.", messageId: messageIds[1] },
 				],
-				chains: [
-					{ premises: ["p1"], conclusion: "p2" },
-					{ premises: ["p1", seedId("Limit")], conclusion: "p2" },
-				],
+				chains: [],
 			},
 			verdicts: { links: [{ id: "p2", linkTo: seedId("Derivative") }] },
 		};
 	}
-	const chainRule = getGraph(stores.graphStore).nodes.find((n) => n.name === "Chain rule")!.id;
 	return {
 		findings: {
 			propositions: [{ id: "p1", name: "Quotient rule", statement: "(f/g)' = (f'g − fg')/g².", aliases: [], messageId: messageIds[0] }],
-			chains: [{ premises: [chainRule, seedId("Limit")], conclusion: "p1" }],
+			chains: [],
 		},
 		verdicts: { links: [] },
 	};
@@ -229,7 +228,7 @@ describe("the findings route writes what LearnHarness's pipeline writes", () => 
 		});
 		const stats = await pipeline.runExtraction(ordinary);
 		assert.equal(extractorCalls, 2);
-		assert.deepEqual(stats, { nodes: 2, chains: 3, droppedChains: 1 }, "batch 1 appends two chains and drops one; batch 2 appends one");
+		assert.deepEqual(stats, { nodes: 2, chains: 0 }, "one new idea per batch, no chains");
 		const viaPipeline = normalized(files(), ordinary, false);
 		assert.ok(viaPipeline.positions.length > 0, "the layout settled");
 
@@ -240,13 +239,13 @@ describe("the findings route writes what LearnHarness's pipeline writes", () => 
 		const r1 = await submit(bot, { messageIds: first.messageIds, ...planFor(0, first.messageIds) });
 		assert.equal(r1.status, 200, JSON.stringify(r1.body));
 		assert.equal(r1.body.merged, true);
-		assert.deepEqual([r1.body.nodes, r1.body.chains, r1.body.droppedChains, r1.body.remaining], [1, 2, 1, 1]);
+		assert.deepEqual([r1.body.nodes, r1.body.chains, r1.body.droppedChains, r1.body.remaining], [1, 0, undefined, 1]);
 		assert.deepEqual(r1.body.read, ["t1", "t2"]);
 		const second = extractViewOf(stores.chatStore.getChat(bot)!).batches[0]!;
 		assert.deepEqual(second.messageIds, ["t3"]);
 		const r2 = await submit(bot, { messageIds: second.messageIds, ...planFor(1, second.messageIds) });
 		assert.equal(r2.status, 200, JSON.stringify(r2.body));
-		assert.deepEqual([r2.body.merged, r2.body.nodes, r2.body.chains, r2.body.remaining], [true, 1, 1, 0]);
+		assert.deepEqual([r2.body.merged, r2.body.nodes, r2.body.chains, r2.body.remaining], [true, 1, 0, 0]);
 		const viaRoute = normalized(files(), bot, true);
 
 		assert.deepEqual(viaRoute, viaPipeline);
@@ -255,7 +254,7 @@ describe("the findings route writes what LearnHarness's pipeline writes", () => 
 		assert.deepEqual(extractViewOf(stores.chatStore.getChat(bot)!).batches, [], "nothing left unread");
 	});
 
-	it("marks every bot line so a cleanup can find them: new nodes, link lines and chains", async () => {
+	it("marks every bot line so a cleanup can find them: new nodes and link lines", async () => {
 		resetToSeed();
 		const bot = botLessonWith("findings-tag", LESSON);
 		const first = extractViewOf(stores.chatStore.getChat(bot)!).batches[0]!;
@@ -265,9 +264,8 @@ describe("the findings route writes what LearnHarness's pipeline writes", () => 
 		const nodeLines = lines(read(LEDGER_FILES.nodes));
 		const chainLines = lines(read(LEDGER_FILES.chains));
 		assert.deepEqual(nodeLines.filter(tagged), nodeLines.filter(fromBot));
-		assert.deepEqual(chainLines.filter(tagged), chainLines.filter(fromBot));
 		assert.equal(nodeLines.filter(tagged).length, 2, "one new node and one link line");
-		assert.equal(chainLines.filter(tagged).length, 1, "the chain the simplification kept");
+		assert.deepEqual(chainLines.filter((l) => tagged(l) || fromBot(l)), [], "a bot writes no chains");
 	});
 });
 
@@ -334,7 +332,7 @@ describe("bad submissions are refused and write nothing", () => {
 				{ id: "p1", name: "Chain rule", statement: "(f∘g)' = f'(g)·g'.", aliases: [], messageId: "t1" },
 				{ id: "p2", name: "Derivative", statement: "A derivative is a limit.", messageId: "t2" },
 			],
-			chains: [{ premises: ["p1"], conclusion: "p2" }],
+			chains: [] as Json[],
 		},
 		verdicts: { links: [] as Json[] },
 	});
@@ -349,13 +347,11 @@ describe("bad submissions are refused and write nothing", () => {
 		["part of the batch", (b) => ({ ...b, messageIds: ["t1"] }), 409, "stale_batch", /./],
 		["a later batch", (b) => ({ ...b, messageIds: ["t3"] }), 409, "stale_batch", /./],
 		["a name of the wrong type", (b) => ({ ...b, findings: { ...b.findings, propositions: [{ ...b.findings.propositions[0], name: 42 }] } }), 400, "bad_findings", /findings\.propositions\[0\]\.name/],
-		["no chains", (b) => ({ ...b, findings: { propositions: b.findings.propositions } }), 400, "bad_findings", /chains/],
+		["no chains field", (b) => ({ ...b, findings: { propositions: b.findings.propositions } }), 400, "bad_findings", /chains/],
+		["chains that are not an array", (b) => ({ ...b, findings: { ...b.findings, chains: "none" } }), 400, "bad_findings", /findings\.chains/],
 		["an unknown proposition field", (b) => ({ ...b, findings: { ...b.findings, propositions: [{ ...b.findings.propositions[0], weight: 1 }] } }), 400, "bad_findings", /weight is not a field/],
 		["no messageId", (b) => ({ ...b, findings: { ...b.findings, propositions: [{ id: "p1", name: "x", statement: "y" }] } }), 400, "bad_findings", /messageId/],
 		["an anchor outside the batch", (b) => ({ ...b, findings: { ...b.findings, propositions: [{ ...b.findings.propositions[0], messageId: "t3" }] } }), 400, "bad_findings", /not a passage of THIS stretch/],
-		["an unknown chain endpoint", (b) => ({ ...b, findings: { ...b.findings, chains: [{ premises: ["p9"], conclusion: "p2" }] } }), 400, "bad_findings", /"p9" is neither/],
-		["a conclusion that is its own premise", (b) => ({ ...b, findings: { ...b.findings, chains: [{ premises: ["p1", "p2"], conclusion: "p2" }] } }), 400, "bad_findings", /its own premise/],
-		["no premises", (b) => ({ ...b, findings: { ...b.findings, chains: [{ premises: [], conclusion: "p2" }] } }), 400, "bad_findings", /premises/],
 		["a repeated proposition id", (b) => ({ ...b, findings: { ...b.findings, propositions: [b.findings.propositions[0], { ...b.findings.propositions[1], id: "p1" }] } }), 400, "bad_findings", /"p1" repeats/],
 		["no verdicts", (b) => ({ messageIds: b.messageIds, findings: b.findings }), 400, "bad_findings", /verdicts is required/],
 		["links of the wrong type", (b) => ({ ...b, verdicts: { links: "none" } }), 400, "bad_findings", /verdicts\.links/],
@@ -365,7 +361,6 @@ describe("bad submissions are refused and write nothing", () => {
 		["a blank id", (b) => ({ ...b, findings: { ...b.findings, propositions: [{ ...b.findings.propositions[0], id: " " }, b.findings.propositions[1]] } }), 400, "bad_findings", /id must not be blank/],
 		["a blank name", (b) => ({ ...b, findings: { ...b.findings, propositions: [{ ...b.findings.propositions[0], name: "  " }, b.findings.propositions[1]] } }), 400, "bad_findings", /name must not be blank/],
 		["a blank statement", (b) => ({ ...b, findings: { ...b.findings, propositions: [{ ...b.findings.propositions[0], statement: "" }, b.findings.propositions[1]] } }), 400, "bad_findings", /statement must not be blank/],
-		["a premise that is the conclusion once linked", (b) => ({ ...b, verdicts: { links: [{ id: "p1", linkTo: seedId("Limit") }, { id: "p2", linkTo: seedId("Limit") }] } }), 400, "bad_findings", /same node once the links apply/],
 		["a proposition linked twice", (b) => ({ ...b, verdicts: { links: [{ id: "p1", linkTo: seedId("Limit") }, { id: "p1", linkTo: seedId("Derivative") }] } }), 400, "bad_findings", /linked twice/],
 	];
 
@@ -397,6 +392,182 @@ describe("bad submissions are refused and write nothing", () => {
 		const browser = await submit(bot, good(), { Origin: "http://evil.example" });
 		assert.deepEqual([browser.status, browser.body.code], [403, "forbidden_origin"]);
 		assert.deepEqual(files(), before);
+	});
+});
+
+// ─── chains (ticket 32) ─────────────────────────────────────────────────────
+
+describe("a Bot Teacher's chains are refused (ticket 32)", () => {
+	it("refuses findings with a chain as chains_not_accepted, writing nothing, and merges them resent with \"chains\": []", async () => {
+		resetToSeed();
+		const bot = botLessonWith("findings-chains", LESSON);
+		const first = extractViewOf(stores.chatStore.getChat(bot)!).batches[0]!;
+		const plan = planFor(0, first.messageIds);
+		const withChain = { messageIds: first.messageIds, findings: { ...plan.findings, chains: [{ premises: ["p1"], conclusion: "p2" }] }, verdicts: plan.verdicts };
+		const before = files();
+		const revision = graphDataRevision();
+
+		const refused = await submit(bot, withChain);
+		assert.equal(refused.status, 400, JSON.stringify(refused.body));
+		assert.deepEqual([refused.body.ok, refused.body.code], [false, "chains_not_accepted"]);
+		assert.match(refused.body.message, /Resend the same findings with "chains": \[\]/);
+		assert.equal(typeof refused.body.cursor, "string", "carries the cursor");
+		assert.deepEqual(files(), before, "ledgers, coverage and layout unchanged");
+		assert.equal(graphDataRevision(), revision, "an open graph view sees no change");
+		assert.deepEqual(extractViewOf(stores.chatStore.getChat(bot)!).batches[0]!.messageIds, first.messageIds, "the batch is still unread");
+
+		// A chain is named first even when the rest of the body is bad too.
+		const alsoBad = await submit(bot, { ...withChain, messageIds: [], verdicts: { links: "none" } });
+		assert.deepEqual([alsoBad.status, alsoBad.body.code], [400, "chains_not_accepted"]);
+		assert.deepEqual(files(), before);
+
+		const resent = await submit(bot, { ...withChain, findings: { ...withChain.findings, chains: [] } });
+		assert.equal(resent.status, 200, JSON.stringify(resent.body));
+		assert.deepEqual([resent.body.merged, resent.body.nodes, resent.body.chains], [true, 1, 0]);
+
+		// Once the batch is read, a resend with a chain is still refused.
+		const after = files();
+		const rerun = await submit(bot, withChain);
+		assert.deepEqual([rerun.status, rerun.body.code], [400, "chains_not_accepted"]);
+		assert.deepEqual(files(), after);
+	});
+
+	it("leaves LearnHarness's own extraction writing chains", async () => {
+		resetToSeed();
+		const ordinary = ordinaryLessonWith(SHORT);
+		const pipeline = createExtractionPipeline({
+			...stores,
+			engineFor: (role) =>
+				role === "extractor"
+					? fauxEngine(submitCall("submit_findings", {
+						propositions: [{ id: "p1", name: "Continuity", statement: "A function is continuous where its limit equals its value.", aliases: [], messageId: "t1" }],
+						chains: [{ premises: [seedId("Limit")], conclusion: "p1" }],
+					}))
+					: fauxEngine(submitCall("submit_review", { links: [] })),
+		});
+		const stats = await pipeline.runExtraction(ordinary);
+		assert.equal(stats.chains, 1);
+		const written = lines(read(LEDGER_FILES.chains)).filter((l) => l.provenance.some((pt: Json) => pt.chatId === ordinary));
+		assert.equal(written.length, 1);
+		assert.equal(written[0]!.source, undefined, "untagged: LearnHarness wrote it");
+	});
+});
+
+// ─── the count line ─────────────────────────────────────────────────────────
+
+describe("the count line for the learner", () => {
+	it("matches lh graph sessions and the links sent, batch after batch and on a rerun", async () => {
+		resetToSeed();
+		const bot = botLessonWith("findings-count", LESSON);
+		const first = extractViewOf(stores.chatStore.getChat(bot)!).batches[0]!;
+		const r1 = await submit(bot, { messageIds: first.messageIds, ...planFor(0, first.messageIds) });
+		assert.equal(r1.status, 200, JSON.stringify(r1.body));
+		assert.deepEqual([r1.body.newFacts, r1.body.linkedFacts], [1, 1]);
+		assert.equal(r1.body.learnerLine, "This lesson added 1 new fact to your graph and matched 1 of its statements to facts already there.");
+
+		// Batch 2 adds a fact and links one to the fact batch 1 added.
+		const second = extractViewOf(stores.chatStore.getChat(bot)!).batches[0]!;
+		const plan = planFor(1, second.messageIds);
+		const chainRule = getGraph(stores.graphStore).nodes.find((n) => n.name === "Chain rule")!.id;
+		plan.findings.propositions.push({ id: "p2", name: "Chain rule", statement: "Differentiate the outer function, then multiply by the inner's derivative.", aliases: [], messageId: second.messageIds[0] });
+		plan.verdicts.links.push({ id: "p2", linkTo: chainRule });
+		const body2 = { messageIds: second.messageIds, ...plan };
+		const r2 = await submit(bot, body2);
+		assert.equal(r2.status, 200, JSON.stringify(r2.body));
+		assert.equal(r2.body.remaining, 0);
+		assert.deepEqual([r2.body.newFacts, r2.body.linkedFacts], [2, 2]);
+		assert.equal(r2.body.learnerLine, "This lesson added 2 new facts to your graph and matched 2 of its statements to facts already there.");
+
+		const sessions = (await (await listGraphSessions()).json()) as Json;
+		assert.equal(sessions.sessions.find((s: Json) => s.id === bot).propositions, r2.body.newFacts, "the new count is lh graph sessions' propositions");
+		assert.equal(r2.body.linkedFacts, r1.body.linkedFacts + plan.verdicts.links.length, "the linked count is every links entry sent");
+
+		// A resend after a lost reply carries the same line.
+		const again = await submit(bot, body2);
+		assert.deepEqual([again.body.alreadyRead, again.body.learnerLine], [true, r2.body.learnerLine]);
+	});
+
+	it("counts two links to one fact as two links sent", async () => {
+		resetToSeed();
+		const bot = botLessonWith("findings-count-twice", SHORT);
+		const reply = await submit(bot, {
+			messageIds: ["t1"],
+			findings: {
+				propositions: [
+					{ id: "p1", name: "Limit", statement: "A limit is the value a function approaches.", messageId: "t1" },
+					{ id: "p2", name: "Limit value", statement: "The value a function approaches is its limit.", messageId: "t1" },
+				],
+				chains: [],
+			},
+			verdicts: { links: [{ id: "p1", linkTo: seedId("Limit") }, { id: "p2", linkTo: seedId("Limit") }] },
+		});
+		assert.equal(reply.status, 200, JSON.stringify(reply.body));
+		assert.deepEqual([reply.body.newFacts, reply.body.linkedFacts], [0, 2]);
+		assert.equal(reply.body.learnerLine, "This lesson added no new facts to your graph and matched 2 of its statements to facts already there.");
+	});
+
+	it("counts a linked fact once, as new, after the session that created it is deleted", async () => {
+		resetToSeed();
+		const deps = { chatStore: stores.chatStore, graphStore: stores.graphStore };
+		mergeFindings("chat_other", { propositions: [{ id: "x", name: "Squeeze theorem", statement: "A function squeezed between two with one limit has that limit.", aliases: [] }], chains: [] }, { links: [] }, deps, { foldedAt: "2026-01-02T00:00:00.000Z" });
+		const squeeze = getGraph(stores.graphStore).nodes.find((n) => n.name === "Squeeze theorem")!.id;
+		const bot = botLessonWith("findings-count-orphan", SHORT);
+		const body = {
+			messageIds: ["t1"],
+			findings: { propositions: [{ id: "p1", name: "Squeeze", statement: "Squeezed between two functions with one limit, a function has it too.", messageId: "t1" }], chains: [] },
+			verdicts: { links: [{ id: "p1", linkTo: squeeze }] },
+		};
+		const first = await submit(bot, body);
+		assert.deepEqual([first.body.newFacts, first.body.linkedFacts], [0, 1]);
+		deleteChatTraces(stores.graphStore, "chat_other", "delete-nodes");
+		const again = await submit(bot, body);
+		assert.equal(again.body.alreadyRead, true);
+		const sessions = (await (await listGraphSessions()).json()) as Json;
+		assert.equal(sessions.sessions.find((s: Json) => s.id === bot)?.propositions, 1, "the fact is now born in the bot's lesson");
+		assert.deepEqual([again.body.newFacts, again.body.linkedFacts], [1, 0]);
+		assert.equal(again.body.learnerLine, "This lesson added 1 new fact to your graph.");
+	});
+
+	it("counts the links a save_failed send wrote before it failed", async () => {
+		resetToSeed();
+		const bot = botLessonWith("findings-count-failed", SHORT);
+		const p1 = { id: "p1", name: "Limit", statement: "A limit is the value a function approaches.", messageId: "t1" };
+		const p2 = { id: "p2", name: "Derivative", statement: "A derivative is an instantaneous rate of change.", messageId: "t1" };
+		const both = {
+			messageIds: ["t1"],
+			findings: { propositions: [p1, p2], chains: [] },
+			verdicts: { links: [{ id: "p1", linkTo: seedId("Limit") }, { id: "p2", linkTo: seedId("Derivative") }] },
+		};
+		// The second node line fails to append: p1's link lands, p2's does not.
+		const store = stores.graphStore as { appendNode: (...args: unknown[]) => void };
+		const appendNode = store.appendNode;
+		let appends = 0;
+		store.appendNode = function (this: unknown, ...args: unknown[]) {
+			if (++appends === 2) throw new Error("disk full");
+			return appendNode.apply(this, args);
+		};
+		let failed;
+		try {
+			failed = await submit(bot, both);
+		} finally {
+			store.appendNode = appendNode;
+		}
+		assert.deepEqual([failed.status, failed.body.code], [500, "save_failed"]);
+		// As the guide says: extract-view, then resend without what landed.
+		assert.deepEqual(extractViewOf(stores.chatStore.getChat(bot)!).batches[0]!.messageIds, ["t1"], "the batch is still unread");
+		const resent = await submit(bot, { ...both, findings: { propositions: [p2], chains: [] }, verdicts: { links: [{ id: "p2", linkTo: seedId("Derivative") }] } });
+		assert.equal(resent.status, 200, JSON.stringify(resent.body));
+		assert.deepEqual([resent.body.newFacts, resent.body.linkedFacts], [0, 2], "the landed link and the resent one");
+		assert.equal(resent.body.learnerLine, "This lesson added no new facts to your graph and matched 2 of its statements to facts already there.");
+	});
+
+	it("says the lesson added nothing when it did", async () => {
+		resetToSeed();
+		const bot = botLessonWith("findings-count-none", SHORT);
+		const reply = await submit(bot, { messageIds: ["t1"], findings: { propositions: [], chains: [] }, verdicts: { links: [] } });
+		assert.equal(reply.status, 200, JSON.stringify(reply.body));
+		assert.deepEqual([reply.body.newFacts, reply.body.linkedFacts], [0, 0]);
+		assert.equal(reply.body.learnerLine, "This lesson added no new facts to your graph.");
 	});
 });
 
@@ -658,6 +829,8 @@ describe("the graph master switch", () => {
 			const off = await submit(bot, body);
 			assert.deepEqual([off.status, off.body.code], [409, "graph_disabled"]);
 			assert.equal(typeof off.body.cursor, "string");
+			const withChain = await submit(bot, { ...body, findings: { ...body.findings, chains: [{ premises: [seedId("Limit")], conclusion: "p1" }] } });
+			assert.deepEqual([withChain.status, withChain.body.code], [409, "graph_disabled"], "the switch is named before a chain");
 			assert.deepEqual(files(), before);
 		} finally {
 			stores.settingsStore.writeSettings(saved ?? { version: 1 });

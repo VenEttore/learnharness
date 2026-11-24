@@ -20,6 +20,7 @@ import {
 import { FACTORY_SETTINGS } from "../core/settings.ts";
 import type { ChatRecord } from "../core/contracts.ts";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
+import { Type } from "typebox";
 import { botLesson, cursorAndItems, externalFailure } from "./bot-run.ts";
 import { stores } from "./stores.ts";
 
@@ -101,15 +102,33 @@ export function extractViewOf(record: ChatRecord, chunkTokens: number = CHUNK_TO
 	};
 }
 
+/** The findings route refuses chains from a bot (ticket 32): bots wrote
+ *  chains whose premises did not give the conclusion, and broke both the
+ *  extractor's own entailment rule and a guide rule. A bot that closes a
+ *  lesson in a helper reads only `method`, so the refusal is stated there,
+ *  at the head of the extractor's instructions and on the `chains` field of
+ *  its schema, rather than in upstream's constants. */
+export const BOT_CHAINS_NOTE =
+	'LearnHarness does not accept chains from a Bot Teacher. Draft no chains and send "chains": [] in submit_findings; a request with any chain is refused with chains_not_accepted. Where the instructions below ask for chains, skip that part. Everything else they say about propositions and their messageIds applies as written.';
+
+/** submit_findings's schema as the bot sees it: the same propositions, and
+ *  `chains` limited to []. The route checks bodies against upstream's
+ *  schema after its own chains refusal. */
+const botFindingsSchema = Type.Object({
+	propositions: sessionFindingsSchema.properties.propositions,
+	chains: Type.Array(sessionFindingsSchema.properties.chains.items, { maxItems: 0, description: BOT_CHAINS_NOTE }),
+});
+
 /** The system prompts LearnHarness's extractor and auditor models receive,
  *  and the schema of the tool each submits with
  *  (src/agent/subagents/extraction.ts). The source assembles the prompts
  *  from pieces; this is the assembled text, so a bot that does their work
  *  at lesson close reads what the models read, and upstream tuning reaches
- *  it without a guide change. The auditor's read-only lookup tools are not
- *  here: the bot has `lh graph` for them. */
+ *  it without a guide change. The extractor's text and schema carry
+ *  BOT_CHAINS_NOTE. The auditor's read-only lookup tools are not here: the
+ *  bot has `lh graph` for them. */
 export const EXTRACTION_METHOD = {
-	extractor: { instructions: EXTRACTOR_INSTRUCTIONS, tool: "submit_findings", parameters: sessionFindingsSchema },
+	extractor: { instructions: `${BOT_CHAINS_NOTE}\n\n${EXTRACTOR_INSTRUCTIONS}`, tool: "submit_findings", parameters: botFindingsSchema },
 	auditor: { instructions: AUDITOR_INSTRUCTIONS, tool: "submit_review", parameters: auditSchema },
 } as const;
 
