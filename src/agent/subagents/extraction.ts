@@ -557,7 +557,7 @@ function runNotesExtractor(
 // ─── the auditor ───────────────────────────────────────────────────────────
 
 
-const AUDITOR_INSTRUCTIONS = `You reconcile newly extracted knowledge with existing graph records. The extractor has
+export const AUDITOR_INSTRUCTIONS = `You reconcile newly extracted knowledge with existing graph records. The extractor has
 already read the source and supplied its findings. Your task is to identify useful matches, not verify the source.
 
 REVIEW THE PROVIDED RECORDS:

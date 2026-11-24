@@ -103,7 +103,7 @@ A lesson's teacher text that has not been read for the knowledge graph yet (a pa
 _Avoid_: Transcript (the whole lesson), prose view
 
 **Digest**:
-The propositions and chains a lesson has already added to the knowledge graph, listed for the extractor before its next batch.
+The propositions and chains a lesson has already added to the knowledge graph, including existing propositions it linked to, listed for the extractor before its next batch.
 _Avoid_: Summary
 
 **Findings**:

@@ -353,6 +353,49 @@ cursor
 lh_run 0 '.items[0].type=="skip" and .items[0].kind=="ask" and .openQuestion==null' submit "$S" --after "$C" <<<'{"skip":true}'
 lh_run 0 '.repeat==true' submit "$S" --after "$C" <<<'{"skip":true}'
 
+say "9c. Lesson close: the knowledge graph (guide section 7, \"At lesson close\"; ticket 30)"
+# graph_status: /api/graph/status's graphDataRevision, the number the
+# lesson page's coverage ring and the graph view watch.
+graph_status() { curl -s "$LH_URL/api/graph/status" -H "Origin: $LH_URL" | jq '.graphDataRevision'; }
+# ring: the lesson page's coverage numbers (GET /api/chats/:id .coverage).
+ring() { curl -s "$LH_URL/api/chats/$L" -H "Origin: $LH_URL" | jq -c '.coverage | {uncoveredCount, uncoveredTokens}'; }
+lh_run 0 '.ok and .sessions==[]' graph sessions
+REV0="$(graph_status)"; RING0="$(ring)"
+echo "graphDataRevision $REV0, ring $RING0"
+jq -e '.uncoveredCount > 0' >/dev/null <<<"$RING0" && ok "the ring shows unread teacher text before findings" || bad "ring before findings: $RING0"
+lh_run 0 '.ok and (.batches|length)>=1 and .prompt==.batches[0].view and (.prompt|test("TEACHER \\[")) and .method.extractor.tool=="submit_findings" and (.method.extractor.instructions|test("extraction stage")) and (.method.extractor.parameters.properties.propositions.items.properties.messageId.description|test("TEACHER")) and .method.auditor.tool=="submit_review" and (.method.auditor.instructions|test("submit_review")) and (.method.auditor.parameters.properties.links|type=="object")' extract-view "$L"
+VIEW="$OUT"
+jq -n '{propositions:[
+	{id:"p1",name:"Halving the search range",statement:"Each comparison in binary search discards the half of the remaining sorted range that cannot hold the target.",aliases:[]},
+	{id:"p2",name:"Binary search step count",statement:"Binary search on n sorted items takes about log2 n comparisons.",aliases:[]}]}' > "$TMP/drafts.json"
+lh_run 0 '.ok and ([.matches[].propositionId]==["p1","p2"])' graph find --file "$TMP/drafts.json"
+jq -n --argjson v "$VIEW" --slurpfile d "$TMP/drafts.json" '
+	($v.batches[0].messageIds) as $ids
+	| {messageIds:$ids,
+	   findings:{propositions:[$d[0].propositions[0] + {messageId:$ids[0]}, $d[0].propositions[1] + {messageId:$ids[-1]}],
+	             chains:[{premises:["p1"],conclusion:"p2"}]},
+	   verdicts:{links:[]}}' > "$TMP/findings.json"
+cat "$TMP/findings.json"
+lh_run 0 '.ok and .merged==true and .nodes==2 and .chains==1' findings "$L" --file "$TMP/findings.json"
+while [ "$(jq -r '.remaining // 0' <<<"$OUT")" -gt 0 ]; do
+	lh_run 0 '.ok and (.batches|length)>=1' extract-view "$L" || break
+	jq -n --argjson v "$OUT" '{messageIds:$v.batches[0].messageIds, findings:{propositions:[],chains:[]}, verdicts:{links:[]}}' > "$TMP/empty.json"
+	lh_run 0 '.ok and .merged==true and .nodes==0' findings "$L" --file "$TMP/empty.json" || break
+done
+echo "rerun the first batch's findings (a missed close run again)"
+lh_run 0 '.ok and .merged==false and .alreadyRead==true' findings "$L" --file "$TMP/findings.json"
+lh_run 0 '.ok and .batches==[] and .prompt==null and (.digest|test("Binary search step count")) and (.digest|test("⇒"))' extract-view "$L"
+printf '$ grep -c %s %s %s\n' "'\"source\":\"external\"'" "$DATA/graph/nodes.jsonl" "$DATA/graph/chains.jsonl"
+tagged_nodes="$(grep -c '"source":"external"' "$DATA/graph/nodes.jsonl")"; tagged_chains="$(grep -c '"source":"external"' "$DATA/graph/chains.jsonl")"
+echo "tagged node lines $tagged_nodes, tagged chain lines $tagged_chains"
+[ "$tagged_nodes" -ge 2 ] && [ "$tagged_chains" -ge 1 ] && ok "the bot's facts and chain are tagged source external" || bad "tagged lines: nodes $tagged_nodes, chains $tagged_chains"
+lh_run 0 "[.sessions[]|select(.id==\"$L\")][0].propositions==2" graph sessions
+lh_run 0 '[.propositions[].name]|index("Binary search step count")' graph propositions "$L"
+REV1="$(graph_status)"; RING1="$(ring)"
+echo "graphDataRevision $REV1, ring $RING1"
+[ "$REV1" != "$REV0" ] && ok "graphDataRevision moved: the signal the ring and the graph view watch (the redraw itself is tests/coverage-ring-refresh.test.tsx)" || bad "graphDataRevision did not move"
+jq -e '.uncoveredCount==0 and .uncoveredTokens==0' >/dev/null <<<"$RING1" && ok "the ring's numbers drained to zero" || bad "ring after findings: $RING1"
+
 say "10. No model ran"
 printf '$ grep -iE "agent|provider|api key|error" %s\n' "$LOG"
 grep -iE "agent|provider|api key|error" "$LOG" || echo "(no matches)"

@@ -101,6 +101,8 @@ One question is open at a time. After a question, wait for the learner's answer 
 
 ### Probe
 
+Before the first question, see what earlier lessons covered. `lh graph sessions` lists every lesson and notes file that added facts to the knowledge graph, newest first. For any that look related to this lesson, `lh graph propositions <session id>` lists the facts first learned in it (section 7). A fact an earlier lesson already held is listed under that earlier lesson, not again under a later one that repeated it. The prober prompt (section 6) says how to use them: a strand the learner already holds needs no re-probing. The graph records what earlier lessons taught, not how the learner did on their questions, so a fact there is a lead to check with one quick question, not proof. A lesson whose facts were all already in the graph adds no new facts, so it is not listed at all. An empty `sessions` list means no lesson has added facts yet; just probe.
+
 Find the learner's goal with `ask`. Leave out `options` for a typed answer:
 
 ```bash
@@ -188,7 +190,7 @@ EOF
 
 The node check reads the latest plan that `lh plan` accepted, the one the page draws and `lh show` returns as `plan`. A `nodeId` that is not in it is refused with `invalid`, and `problems` lists some of the plan's ids. With no plan yet, `problems` says "call plan_init". That means send `lh plan` first. Sometimes a question lands, its reply is lost, and then a plan rewrite drops its node. Resending that question still returns `"repeat":true`, so the lost-reply recovery in section 5 works after a rewrite too. Teach between questions with `say`, one step at a time.
 
-When the learner can do what their goal asked for, which is the last node of the plan, close the lesson with a `say` that sums up what they built.
+When the learner can do what their goal asked for, which is the last node of the plan, close the lesson with a `say` that sums up what they built. Then add what the lesson taught to the knowledge graph (section 7, "At lesson close").
 
 ## 4. Read learner input
 
@@ -327,6 +329,7 @@ The cursor rules above are mechanics. For how to probe, plan and teach, read Lea
 - `src/agent/prompts/prober/10-probe-doctrine.md`: the probe.
 - `src/agent/prompts/teacher/`: `05-method.md`, `10-planning.md`, `20-teaching.md`, `28-predictions.md`, `30-question-principles.md`. Skip `40-jobs.md` and `50-demos.md`, which cover tools you lack. `20-teaching.md` says `ask_user_question` arrives behind the "Check your understanding" button. On the page it arrives open; only a teach-phase `quiz` or `explain` of type `check` sits behind the button.
 - `src/agent/prompts/shared/`: `10-voice.md`, `15-accuracy.md`, `16-mental-model.md`, `20-question-tools.md`, `25-confidence.md`, `40-formatting.md`. `30-learner-files.md` covers tools you lack.
+- `src/agent/subagents/extraction.ts`: the extractor's and the auditor's instructions (`EXTRACTOR_INSTRUCTIONS`, `AUDITOR_INSTRUCTIONS`) and their tools' schemas (`sessionFindingsSchema` for `submit_findings`, `auditSchema` for `submit_review`), for lesson close. The file builds the extractor's text from pieces, so read the assembled copy that `lh extract-view` returns in `method` (section 7).
 
 | LearnHarness tool | `lh` command |
 |---|---|
@@ -338,7 +341,8 @@ The cursor rules above are mechanics. For how to probe, plan and teach, read Lea
 | `plan_init` | `lh plan`, with the `mermaid` text as input |
 | `quiz` (teacher prompts) | `lh quiz` |
 | `explain` (teacher prompts) | `lh explain` |
-| `list_sessions`, `list_propositions` (prober) | `lh graph sessions`, `lh graph propositions` (section 7) |
+| `list_sessions`, `list_propositions` (prober and auditor) | `lh graph sessions`, `lh graph propositions` (section 7) |
+| `find_candidates` (auditor) | `lh graph find --file`. To continue a search where the tool takes `cursor`, resend the same entry, `hints` included, with `offset` set to its `nextOffset` (section 7) |
 | `submit_findings` (extractor) and `submit_review` (auditor) | `lh findings` (section 7) |
 
 The input fields match the tools' fields. The prompts call the `readingThinking` field `thinkingWhileReading`. Where a prompt says "end your turn" after a question, wait for the learner's input.
@@ -365,9 +369,30 @@ LearnHarness keeps one knowledge graph across all lessons: the facts (`propositi
 | `lh graph propositions <session>` | `propositions`: the facts first learned in that session, each with `nodeId`, `name`, `statement` and `aliases`. `proberText` and `auditorText` as above. An unknown id gives `[]`. |
 | `lh graph find "<query>" [--offset <n>]` | Facts already in the graph that look like the query, five per page, best first: `matches[0].candidateIds` points into `candidates` (each with `statement`, the `matchedAliases` that matched, and the `sessions` it came from). `nextOffset` is the `--offset` for the next page, or `null`. Word overlap only, so a miss does not prove the fact is new. |
 | `lh graph find --file <path>` | The same for several draft facts at once. The file (or stdin) is `{"propositions":[{"id":"p1","name":"Chain rule","statement":"...","aliases":[],"hints":["composition"],"offset":0}]}`; only `id` and `name` are required, and each `id` once. This is LearnHarness's auditor's `find_candidates`. |
-| `lh extract-view <lesson>` | Your lesson's teacher text that has not been read for the graph yet, as LearnHarness's extractor reads it. A passage counts as read once its findings are merged, even if it added no facts. `batches` holds it oldest first, each with a `view` (`TEACHER [message id] text` passages) and its `messageIds`. `digest` lists what this lesson already added to the graph, and `prompt` is the extractor's input for the first batch: the digest, then that batch's view. Like `lh show`, it carries the lesson's `cursor` and any unread `items`. Bot-run lessons only. |
+| `lh extract-view <lesson>` | Your lesson's teacher text that has not been read for the graph yet, as LearnHarness's extractor reads it. A passage counts as read once its findings are merged, even if it added no facts. `batches` holds it oldest first, each with a `view` (`TEACHER [message id] text` passages) and its `messageIds`. `digest` lists what this lesson already added to the graph, including existing facts it linked to, and `prompt` is the extractor's input for the first batch: the digest, then that batch's view. `method` holds the instructions LearnHarness's extractor and auditor models receive as their system prompt, and the tool each one submits with: `method.extractor` and `method.auditor`, each with `instructions`, the `tool` name, and `parameters`, that tool's JSON schema, whose field descriptions carry details the instructions leave to them. The auditor's lookup tools are `lh` commands instead ("At lesson close", step 3). Like `lh show`, it carries the lesson's `cursor` and any unread `items`. Bot-run lessons only. |
 
 A bad `find` body is refused with `bad_find` and `problems` (section 5).
+
+### At lesson close
+
+After the lesson's closing `say`, add what it taught to the graph. You do the work of LearnHarness's extractor and auditor, its two graph models; LearnHarness checks your result and writes it. Do it once, at the end, not during the lesson. Read the instructions from `method` once per close, from an `lh extract-view` reply, not from memory: they change when LearnHarness updates. The reply is long (tens of kilobytes for a long lesson) and `method` comes last, so read `view.json` (step 1) with `jq` rather than printing the whole file:
+
+```bash
+jq -r '"== EXTRACTOR ==", .method.extractor.instructions, "", "== AUDITOR ==", .method.auditor.instructions' view.json   # once per close
+jq '.method.extractor.parameters, .method.auditor.parameters' view.json          # once per close
+jq -r '.prompt' view.json                                                         # each batch
+jq -c '.batches[0].messageIds' view.json                                          # each batch
+```
+
+1. `lh extract-view "$L" > view.json`. If `batches` is `[]`, everything is read: you are done.
+2. **Extractor.** Follow `method.extractor.instructions` over `prompt`: what this lesson already added (the digest), then the first batch's teacher text. Draft `{"propositions":[...],"chains":[...]}` as `method.extractor.parameters` describes. Each fact's `messageId` is the id in the label of the `TEACHER [id]` passage it came from. Before you send, check each chain: keep it only if its premises together give the conclusion with nothing else needed. A specific case (an example, one word's reading) drawn from a general rule is not a chain when the specific detail is not in the premises, so leave that chain out. Nothing on the send path checks chains for you.
+3. **Auditor.** Put your drafted facts in a file as `{"propositions":[{"id":"p1","name":"...","statement":"...","aliases":[]}]}`, each without its `messageId` and with no `chains` (`lh graph find` refuses unknown fields), and run `lh graph find --file drafts.json`. Its `matches` and `candidates` are the auditor's input, the five ranked candidates per finding its instructions describe. Follow `method.auditor.instructions` to decide which facts are already in the graph. Its tools are `lh` commands: `find_candidates` is `lh graph find` (add `hints` for other wording; to continue a search where the tool says `nextCursor`, resend that fact's same entry, `hints` included, with `offset` set to its match's `nextOffset`, because a different `hints` list is a different search), and `list_sessions` and `list_propositions` are `lh graph sessions` and `lh graph propositions`. Write the result as `{"links":[{"id":"p1","linkTo":"n_..."}]}`, or `{"links":[]}` when nothing matches.
+4. Send both, with the batch's `messageIds` from `view.json`, as `lh findings "$L" --file findings.json` (format below).
+5. If the reply's `remaining` is above 0, go back to step 1. The digest now holds what you just added, and the next batch builds on it.
+
+When `remaining` is 0, tell the learner in one line how many new facts the lesson added and how many it linked to facts already in the graph. Take the new count from `lh graph sessions`: the lesson's `propositions`, or 0 when the lesson is not listed. Adding up `nodes` from the replies undercounts after a lost reply, a `save_failed` send or a close run in more than one go. The linked count is the number of entries in `links` in the findings each batch was finally read with, plus those of any `save_failed` send, since its links can land before it fails. On the lesson page, the coverage ring next to the phase chip empties within a few seconds, and the facts appear in the graph on LearnHarness's home page, `http://127.0.0.1:3000/` (your port if you changed it).
+
+If a lesson closed without this, because the session ended or a reply was lost, run the same steps later, from step 1, at any time. `lh extract-view` lists only what is still unread, and findings resent for a batch that is already read return `"alreadyRead": true` (with the graph on) and write nothing, so running the steps twice is safe. Your notes name each lesson's id (section 5); run `lh extract-view` on any lesson whose close you are not sure of. A `graph_disabled` or `settings_unreadable` refusal means skip this step for now (section 5). Nothing before `lh findings` tells you the graph is off, so you may meet that refusal only after the extractor and auditor work; keep your findings file and send it again once the graph is back on, after `lh extract-view` shows the same batch.
 
 ### Add your findings
 
@@ -388,10 +413,10 @@ A bad `find` body is refused with `bad_find` and `problems` (section 5).
 ```
 
 - `messageIds` names the batch. It must be the first unread batch's ids, all of them; order does not matter. LearnHarness rebuilds that batch itself and refuses a mismatch with `stale_batch`.
-- `findings` is the extractor's `submit_findings` input: new facts only, each with its own id (`p1`, `p2`, ...; not the id of a fact already in the graph), a non-blank `name` and `statement`, and the `messageId` of the passage that states it, and the chains among your facts and existing facts' `n_` ids (the digest lists this lesson's; any fact in the graph is accepted, as for LearnHarness's extractor). Pass `"chains": []` when there are none. A batch with nothing new takes `"propositions": []` and `"chains": []`: it is marked read with nothing added, so send that only after reading the batch.
+- `findings` is the extractor's `submit_findings` input: new facts only, each with its own id (`p1`, `p2`, ...; not the id of a fact already in the graph), a non-blank `name` and `statement`, and the `messageId` of the passage that states it, and the chains among your facts and existing facts' `n_` ids (the digest lists this lesson's facts and the existing facts it linked to; any fact in the graph is accepted, as for LearnHarness's extractor). Pass `"chains": []` when there are none. A batch with nothing new takes `"propositions": []` and `"chains": []`: it is marked read with nothing added, so send that only after reading the batch.
 - `verdicts` is the auditor's `submit_review` input: a link says your fact is that existing fact (an id from `lh graph find`). Leave a fact out of `links` to add it as new. A chain whose premise and conclusion become the same fact once the links apply is refused.
 - The reply has `merged`, the `nodes` added, the `chains` written (counted before the merge's simplification pass), `droppedChains` when that pass removed chains that a leaner chain now makes redundant (any lesson's, possibly one just written), `read` (the messages now read) and `remaining` (unread batches left). Run `lh extract-view` again before the next batch: the digest changed.
-- Resending findings for a batch that is already read returns `"merged": false, "alreadyRead": true` and writes nothing, without checking the findings again.
+- Resending findings for a batch that is already read returns `"merged": false, "alreadyRead": true` and writes nothing. Before that, a resend can still get `graph_disabled` while the graph is off, `bad_findings` when its JSON fails the shape check or a `messageIds` entry is not a teacher passage of this lesson, or `graph_busy` (section 5). Its facts and links are not checked against the graph.
 - Every field takes real JSON values: an array, not a string holding one (LearnHarness repairs that for its own model, not for `lh`). Leave an optional field out rather than sending `null`. Unknown fields are refused.
-- Facts you add are tagged `"source": "external"` on their lines in `graph/nodes.jsonl` and `graph/chains.jsonl` in `LH_DATA_DIR` (`/workspace/lh-data/graph/` with the section 1 command).
+- Facts you add are tagged `"source": "external"` on their lines in `graph/nodes.jsonl` and `graph/chains.jsonl` in `LH_DATA_DIR` (`/workspace/lh-data/graph/` with the section 1 command). A linked fact adds a tagged line too, with the existing fact's id and your wording: the graph keeps the existing name and statement and shows the statement you sent as an alias.
 - A `save_failed` reply means a disk write failed partway: some facts, and some of the batch's messages, may already be recorded, so resending the same findings can add facts twice or get `stale_batch`. Run `lh extract-view` first: facts that landed are in its `digest`, and its first batch lists the messages still unread. Send findings for that batch, leaving out facts already in the digest and using their `n_` ids in chains instead.
