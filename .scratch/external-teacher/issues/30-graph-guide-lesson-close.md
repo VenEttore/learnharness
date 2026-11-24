@@ -1,9 +1,9 @@
 # 30: Guide: add to the graph at lesson close
 
-Status: claimed
+Status: resolved
 Blocked by: 29
 Risk: pre-release
-Gate: human (Ven reviews the facts a bot adds from one real lesson before this is the default)
+Gate: none (Ven passed it on its facts, 2026-11-24)
 Host: linuxdev
 Touches: docs/external-teacher.md, phase-c-smoke.sh, the lesson page coverage ring (whatever refetch the graph view got in 29)
 
@@ -13,9 +13,16 @@ Option A, part 3.
 - [x] Guide, probe: use `lh graph sessions` and `lh graph propositions` to see what earlier lessons covered.
 - [x] The lesson page's coverage ring (how much of the lesson has been read for facts) redraws after `lh findings`, as the graph view does since 29. Deferred from 29; Matt put it here (2026-11-14).
 - [x] Smoke covers extract-view, findings and a rerun.
-- [ ] Bench: Ven reviews the facts and chains a bot adds from one real lesson (e.g. the Japanese lessons) on the home graph.
+- [x] Bench: Ven reviews the facts and chains a bot adds from one real lesson (e.g. the Japanese lessons) on the home graph.
 
 ## Comments
+
+### Shipped 2026-11-24 (Ven-approved: "Ship it", option A)
+Completed: everything in the checklist. Ven passed the bench on its facts: 23 bot facts over 5 real lessons, all true and taught, no duplicates, one correct link, the ring empties, `extract-view` empty after each close.
+Deferred:
+- Weak chains are a known limit of this ticket. Bots wrote 5 general-to-specific chains over 3 lessons, and prose rules (the extractor prompt, then fd0e330's guide sentence) did not stop them. Ticket 32 refuses bot chains in the server and tells the bot to send none. Until 32 ships, the guide still asks for chains. The 5 weak chains stay in Ven's graph.
+- The bot did not tell the learner the new and linked counts; 32 puts a ready line in the `lh findings` reply.
+- fd0e330 (1 guide line) is unreviewed under the small-diff rule.
 
 ### Matt 2026-11-15
 Accepted 78692872 unreviewed under the small-diff rule (no "Continue 30"). Gate: human stays open: Ven's lesson of 2026-11-14 ran on a bench with 27 and 28 only, so the lesson-close steps below have not run on a real lesson yet. No follow-up ticket for a hung graph fetch.
