@@ -27,7 +27,7 @@ const { prepareAuditorReview, proberGraphTools } = await import("../src/agent/to
 const { graphSessionIndex } = await import("../src/core/graph.ts");
 const { coverageSlots } = await import("../src/core/coverage.ts");
 const { stores } = await import("../src/server/stores.ts");
-const { EXTRACTION_METHOD, extractViewOf } = await import("../src/server/graph-reads.ts");
+const { BOT_CHAINS_NOTE, EXTRACTION_METHOD, extractViewOf } = await import("../src/server/graph-reads.ts");
 const { handleChatRequest } = await import("../src/server/chat-handler.ts");
 const createRoute = await import("../app/api/external/chats/route.ts");
 const turnRoute = await import("../app/api/external/chats/[id]/turn/route.ts");
@@ -168,7 +168,7 @@ describe("extract-view is the extractor's view", () => {
 		assert.ok(done.digest.includes(`idea ${prompts.length}`));
 	});
 
-	it("carries the extractor's and auditor's instructions and tool schemas as their models receive them", async () => {
+	it("carries the extractor's and auditor's instructions and tool schemas as their models receive them, with the extractor told to send no chains", async () => {
 		// An ordinary lesson, so the real pipeline runs both models on it.
 		const chat = stores.chatStore.createChat("Integrals");
 		stores.chatStore.saveMessages(chat.id, [learner("teach me integrals"), teacher("An integral sums infinitely many infinitesimal pieces.")]);
@@ -206,12 +206,31 @@ describe("extract-view is the extractor's view", () => {
 
 		const created = await json(await createRoute.POST(post("http://test/api/external/chats", { title: "Method", key: "graph-reads-method" })));
 		const { body } = await extractView(created.body.id as string);
+		// The findings route refuses chains (ticket 32), so the extractor's
+		// part opens with that, and its schema allows only "chains": [].
+		// Everything else is what the models receive.
+		const note = body.method.extractor.instructions.split("\n\n")[0] as string;
+		assert.equal(note, BOT_CHAINS_NOTE);
+		assert.match(note, /"chains": \[\]/);
+		assert.match(note, /chains_not_accepted/);
+		const params = body.method.extractor.parameters as Json;
+		assert.deepEqual([params.properties.chains.maxItems, params.properties.chains.description], [0, BOT_CHAINS_NOTE], "the chains field says the same");
 		for (const role of ["extractor", "auditor"] as const) {
 			const method = body.method[role];
-			assert.equal(method.instructions, seen[role]!.systemPrompt, `${role}: the system prompt its model gets`);
+			const fork = role === "extractor" ? `${BOT_CHAINS_NOTE}\n\n` : "";
+			assert.equal(method.instructions, fork + seen[role]!.systemPrompt, `${role}: the system prompt its model gets`);
 			const tool = seen[role]!.tools.find((t) => t.name === method.tool);
 			assert.ok(tool, `${role}: its model is offered ${method.tool}`);
-			assert.deepEqual(method.parameters, asJson(tool.parameters), `${role}: ${method.tool}'s schema, field descriptions included`);
+			const offered = asJson(tool.parameters) as Json;
+			if (role === "extractor") {
+				const { maxItems, description, ...chains } = method.parameters.properties.chains as Json;
+				const { description: upstream, ...offeredChains } = offered.properties.chains as Json;
+				assert.ok(maxItems === 0 && typeof description === "string" && typeof upstream === "string");
+				assert.deepEqual(chains, offeredChains, "extractor: the same chain items");
+				assert.deepEqual({ ...method.parameters, properties: { ...method.parameters.properties, chains: null } }, { ...offered, properties: { ...offered.properties, chains: null } }, "extractor: the rest of submit_findings' schema");
+			} else {
+				assert.deepEqual(method.parameters, offered, `${role}: ${method.tool}'s schema, field descriptions included`);
+			}
 		}
 		assert.match(JSON.stringify(body.method.extractor.parameters), /TEACHER \[id\]/, "the messageId description reaches the bot");
 	});

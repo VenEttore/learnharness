@@ -353,7 +353,7 @@ cursor
 lh_run 0 '.items[0].type=="skip" and .items[0].kind=="ask" and .openQuestion==null' submit "$S" --after "$C" <<<'{"skip":true}'
 lh_run 0 '.repeat==true' submit "$S" --after "$C" <<<'{"skip":true}'
 
-say "9c. Lesson close: the knowledge graph (guide section 7, \"At lesson close\"; ticket 30)"
+say "9c. Lesson close: the knowledge graph (guide section 7, \"At lesson close\"; tickets 30 and 32)"
 # graph_status: /api/graph/status's graphDataRevision, the number the
 # lesson page's coverage ring and the graph view watch.
 graph_status() { curl -s "$LH_URL/api/graph/status" -H "Origin: $LH_URL" | jq '.graphDataRevision'; }
@@ -363,7 +363,7 @@ lh_run 0 '.ok and .sessions==[]' graph sessions
 REV0="$(graph_status)"; RING0="$(ring)"
 echo "graphDataRevision $REV0, ring $RING0"
 jq -e '.uncoveredCount > 0' >/dev/null <<<"$RING0" && ok "the ring shows unread teacher text before findings" || bad "ring before findings: $RING0"
-lh_run 0 '.ok and (.batches|length)>=1 and .prompt==.batches[0].view and (.prompt|test("TEACHER \\[")) and .method.extractor.tool=="submit_findings" and (.method.extractor.instructions|test("extraction stage")) and (.method.extractor.parameters.properties.propositions.items.properties.messageId.description|test("TEACHER")) and .method.auditor.tool=="submit_review" and (.method.auditor.instructions|test("submit_review")) and (.method.auditor.parameters.properties.links|type=="object")' extract-view "$L"
+lh_run 0 '.ok and (.batches|length)>=1 and .prompt==.batches[0].view and (.prompt|test("TEACHER \\[")) and .method.extractor.tool=="submit_findings" and (.method.extractor.instructions|test("extraction stage")) and (.method.extractor.instructions|startswith("LearnHarness does not accept chains from a Bot Teacher")) and .method.extractor.parameters.properties.chains.maxItems==0 and (.method.extractor.parameters.properties.propositions.items.properties.messageId.description|test("TEACHER")) and .method.auditor.tool=="submit_review" and (.method.auditor.instructions|test("submit_review")) and (.method.auditor.parameters.properties.links|type=="object")' extract-view "$L"
 VIEW="$OUT"
 jq -n '{propositions:[
 	{id:"p1",name:"Halving the search range",statement:"Each comparison in binary search discards the half of the remaining sorted range that cannot hold the target.",aliases:[]},
@@ -373,22 +373,28 @@ jq -n --argjson v "$VIEW" --slurpfile d "$TMP/drafts.json" '
 	($v.batches[0].messageIds) as $ids
 	| {messageIds:$ids,
 	   findings:{propositions:[$d[0].propositions[0] + {messageId:$ids[0]}, $d[0].propositions[1] + {messageId:$ids[-1]}],
-	             chains:[{premises:["p1"],conclusion:"p2"}]},
+	             chains:[]},
 	   verdicts:{links:[]}}' > "$TMP/findings.json"
+echo "the same findings with a chain are refused and write nothing"
+jq '.findings.chains=[{premises:["p1"],conclusion:"p2"}]' "$TMP/findings.json" > "$TMP/with-chain.json"
+lh_run 1 '.ok==false and .code=="chains_not_accepted" and (.message|test("\"chains\": \\[\\]")) and (.cursor|type=="string")' findings "$L" --file "$TMP/with-chain.json"
+REV_REFUSED="$(graph_status)"
+[ "$REV_REFUSED" = "$REV0" ] && ok "graphDataRevision unchanged after the refused chain" || bad "graphDataRevision moved after a refusal: $REV0 -> $REV_REFUSED"
 cat "$TMP/findings.json"
-lh_run 0 '.ok and .merged==true and .nodes==2 and .chains==1' findings "$L" --file "$TMP/findings.json"
+lh_run 0 '.ok and .merged==true and .nodes==2 and .chains==0 and .newFacts==2 and .linkedFacts==0 and .learnerLine=="This lesson added 2 new facts to your graph."' findings "$L" --file "$TMP/findings.json"
 while [ "$(jq -r '.remaining // 0' <<<"$OUT")" -gt 0 ]; do
 	lh_run 0 '.ok and (.batches|length)>=1' extract-view "$L" || break
 	jq -n --argjson v "$OUT" '{messageIds:$v.batches[0].messageIds, findings:{propositions:[],chains:[]}, verdicts:{links:[]}}' > "$TMP/empty.json"
 	lh_run 0 '.ok and .merged==true and .nodes==0' findings "$L" --file "$TMP/empty.json" || break
 done
+jq -e '.remaining==0 and .learnerLine=="This lesson added 2 new facts to your graph."' >/dev/null <<<"$OUT" && ok "the last findings reply carries the count line for the learner" || bad "last findings reply: $OUT"
 echo "rerun the first batch's findings (a missed close run again)"
-lh_run 0 '.ok and .merged==false and .alreadyRead==true' findings "$L" --file "$TMP/findings.json"
-lh_run 0 '.ok and .batches==[] and .prompt==null and (.digest|test("Binary search step count")) and (.digest|test("⇒"))' extract-view "$L"
+lh_run 0 '.ok and .merged==false and .alreadyRead==true and .learnerLine=="This lesson added 2 new facts to your graph."' findings "$L" --file "$TMP/findings.json"
+lh_run 0 '.ok and .batches==[] and .prompt==null and (.digest|test("Binary search step count")) and (.digest|test("⇒")|not)' extract-view "$L"
 printf '$ grep -c %s %s %s\n' "'\"source\":\"external\"'" "$DATA/graph/nodes.jsonl" "$DATA/graph/chains.jsonl"
-tagged_nodes="$(grep -c '"source":"external"' "$DATA/graph/nodes.jsonl")"; tagged_chains="$(grep -c '"source":"external"' "$DATA/graph/chains.jsonl")"
+tagged_nodes="$(grep -c '"source":"external"' "$DATA/graph/nodes.jsonl")"; tagged_chains="$(cat "$DATA/graph/chains.jsonl" 2>/dev/null | grep -c '"source":"external"')"
 echo "tagged node lines $tagged_nodes, tagged chain lines $tagged_chains"
-[ "$tagged_nodes" -ge 2 ] && [ "$tagged_chains" -ge 1 ] && ok "the bot's facts and chain are tagged source external" || bad "tagged lines: nodes $tagged_nodes, chains $tagged_chains"
+[ "$tagged_nodes" -ge 2 ] && [ "$tagged_chains" = 0 ] && ok "the bot's facts are tagged source external, and it wrote no chain" || bad "tagged lines: nodes $tagged_nodes, chains $tagged_chains"
 lh_run 0 "[.sessions[]|select(.id==\"$L\")][0].propositions==2" graph sessions
 lh_run 0 '[.propositions[].name]|index("Binary search step count")' graph propositions "$L"
 REV1="$(graph_status)"; RING1="$(ring)"
