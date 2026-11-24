@@ -10,8 +10,8 @@ Settled decisions (do not reopen):
 
 Context: docs/external-teacher.md section 7 (the Bot Teacher guide), ticket 30's file `.scratch/external-teacher/issues/30-graph-guide-lesson-close.md` (Bench 1 and Bench 2 comments), src/core/graph.ts (mergeFindings, graphSessionIndex), src/core/graph-deletion.ts.
 
-Checks already run on 1026ae70 (record, do not rerun unless you need to):
+Checks already run (1026ae70, then again on the round-1 fixes: tests 3497, pass 3496, fail 1, the same baseline test):
 - `npm run typecheck && npm run lint && NODE_ENV=test npx tsx --test --test-concurrency=2 tests/*.test.ts tests/*.test.tsx`: tests 3495, pass 3494, fail 1 (baseline: "main loader resolves Pi's import-only PUBLIC package exports and native OAuth without a CLI or network").
 - `bash .scratch/external-teacher/phase-c-smoke.sh <port>` with CLAUDE*/AI_AGENT env vars unset: last line PASS.
 
-Prior findings: none (round 1).
+Prior findings: `.scratch/external-teacher/32/code-review-r1.md` (round-1 findings, all fixed at f09a1742; check each fix is right and look for anything new).

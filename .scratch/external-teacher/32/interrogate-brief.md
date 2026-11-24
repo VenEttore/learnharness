@@ -17,4 +17,4 @@ Repo check (docs/agents/check.md): `npm run typecheck && npm run lint && NODE_EN
 
 Shell rules: never `rm` on `$(...)`, variables or globs; make scratch with `mktemp -d`; stop only processes you started.
 
-Prior findings: see `.scratch/external-teacher/32/code-review-r1.md` (code-review round 1 and dispositions).
+Prior findings: `.scratch/external-teacher/32/code-review-r1.md` (code-review round 1, all fixed in f09a1742). Do not re-report those unless a fix is wrong.
