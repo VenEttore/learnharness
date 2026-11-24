@@ -57,6 +57,12 @@ Standards and Spec on claudeAgent claude-opus-5-5 effort=xhigh, reviewing 94cc9f
 ### Review round 1 recheck (code-review Standards) 2026-11-24
 Reviewing 1aa3f704. One hard finding and four judgement calls, all fixed (`.scratch/external-teacher/32/code-review-r1.md`):
 - The chainsRefusal docstring named only the raw-body caller. (mechanism: stale-doc-wording)
-- linkedFacts is now the lesson's node lines minus newFacts, so the birth rule is graphSessionIndex's alone and the two counts cannot drift. (mechanism: count-birth-line)
+- linkedFacts is now the lesson's node lines minus newFacts, so the birth rule is graphSessionIndex's alone and the two counts cannot drift. This removes a duplicated rule; the round-1 count fix itself held. (mechanism: duplicated-birth-rule)
 - Comment and naming cleanups: the in-lock guard is marked defensive, submitFindings' object is `about`, and the taggedStore docstring is fixed.
+
+### Diagnosis 2026-11-24
+Covers (mechanism: stale-doc-wording).
+Symptom: three review findings, each a comment or doc line that no longer matched the code: docs/architecture.md (round 1), the graph-findings.ts header (round 1), and the chainsRefusal docstring (recheck). The recheck finding was a new instance: round 1's fix 5 added a second caller and left the docstring describing one.
+Shared premise: "after a code change I update the comments that describe what I changed." That premise was false twice. The docs search covered docs/external-teacher.md and GLOSSARY.md but not docs/architecture.md. Fix 5 changed who calls chainsRefusal without rereading that function's own docstring.
+Loop: `.scratch/external-teacher/32/wording-check.sh` lists every line in the ticket's reach (both route files, all four docs, the ADR, lh.mjs and the smoke) that names chains, the chains refusal, the count fields or the source tag. I ran it at e40b0e94 and read each hit against the code: every hit matches, and docs/tool-content-recovery.md has no hit. From here on, rerun it after each fix and before each commit.
 
