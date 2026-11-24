@@ -463,7 +463,7 @@ describe("the count line for the learner", () => {
 		const r1 = await submit(bot, { messageIds: first.messageIds, ...planFor(0, first.messageIds) });
 		assert.equal(r1.status, 200, JSON.stringify(r1.body));
 		assert.deepEqual([r1.body.newFacts, r1.body.linkedFacts], [1, 1]);
-		assert.equal(r1.body.learnerLine, "This lesson added 1 new fact to your graph and linked 1 to facts it already had.");
+		assert.equal(r1.body.learnerLine, "This lesson added 1 new fact to your graph and matched 1 of its statements to facts already there.");
 
 		// Batch 2 adds a fact and links one to the fact batch 1 added.
 		const second = extractViewOf(stores.chatStore.getChat(bot)!).batches[0]!;
@@ -476,7 +476,7 @@ describe("the count line for the learner", () => {
 		assert.equal(r2.status, 200, JSON.stringify(r2.body));
 		assert.equal(r2.body.remaining, 0);
 		assert.deepEqual([r2.body.newFacts, r2.body.linkedFacts], [2, 2]);
-		assert.equal(r2.body.learnerLine, "This lesson added 2 new facts to your graph and linked 2 to facts it already had.");
+		assert.equal(r2.body.learnerLine, "This lesson added 2 new facts to your graph and matched 2 of its statements to facts already there.");
 
 		const sessions = (await (await listGraphSessions()).json()) as Json;
 		assert.equal(sessions.sessions.find((s: Json) => s.id === bot).propositions, r2.body.newFacts, "the new count is lh graph sessions' propositions");
@@ -503,7 +503,7 @@ describe("the count line for the learner", () => {
 		});
 		assert.equal(reply.status, 200, JSON.stringify(reply.body));
 		assert.deepEqual([reply.body.newFacts, reply.body.linkedFacts], [0, 2]);
-		assert.equal(reply.body.learnerLine, "This lesson added no new facts to your graph and linked 2 to facts it already had.");
+		assert.equal(reply.body.learnerLine, "This lesson added no new facts to your graph and matched 2 of its statements to facts already there.");
 	});
 
 	it("counts a linked fact once, as new, after the session that created it is deleted", async () => {
@@ -526,6 +526,39 @@ describe("the count line for the learner", () => {
 		assert.equal(sessions.sessions.find((s: Json) => s.id === bot)?.propositions, 1, "the fact is now born in the bot's lesson");
 		assert.deepEqual([again.body.newFacts, again.body.linkedFacts], [1, 0]);
 		assert.equal(again.body.learnerLine, "This lesson added 1 new fact to your graph.");
+	});
+
+	it("counts the links a save_failed send wrote before it failed", async () => {
+		resetToSeed();
+		const bot = botLessonWith("findings-count-failed", SHORT);
+		const p1 = { id: "p1", name: "Limit", statement: "A limit is the value a function approaches.", messageId: "t1" };
+		const p2 = { id: "p2", name: "Derivative", statement: "A derivative is an instantaneous rate of change.", messageId: "t1" };
+		const both = {
+			messageIds: ["t1"],
+			findings: { propositions: [p1, p2], chains: [] },
+			verdicts: { links: [{ id: "p1", linkTo: seedId("Limit") }, { id: "p2", linkTo: seedId("Derivative") }] },
+		};
+		// The second node line fails to append: p1's link lands, p2's does not.
+		const store = stores.graphStore as { appendNode: (...args: unknown[]) => void };
+		const appendNode = store.appendNode;
+		let appends = 0;
+		store.appendNode = function (this: unknown, ...args: unknown[]) {
+			if (++appends === 2) throw new Error("disk full");
+			return appendNode.apply(this, args);
+		};
+		let failed;
+		try {
+			failed = await submit(bot, both);
+		} finally {
+			store.appendNode = appendNode;
+		}
+		assert.deepEqual([failed.status, failed.body.code], [500, "save_failed"]);
+		// As the guide says: extract-view, then resend without what landed.
+		assert.deepEqual(extractViewOf(stores.chatStore.getChat(bot)!).batches[0]!.messageIds, ["t1"], "the batch is still unread");
+		const resent = await submit(bot, { ...both, findings: { propositions: [p2], chains: [] }, verdicts: { links: [{ id: "p2", linkTo: seedId("Derivative") }] } });
+		assert.equal(resent.status, 200, JSON.stringify(resent.body));
+		assert.deepEqual([resent.body.newFacts, resent.body.linkedFacts], [0, 2], "the landed link and the resent one");
+		assert.equal(resent.body.learnerLine, "This lesson added no new facts to your graph and matched 2 of its statements to facts already there.");
 	});
 
 	it("says the lesson added nothing when it did", async () => {

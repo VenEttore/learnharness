@@ -249,7 +249,7 @@ function lessonTotals(id: string): { newFacts: number; linkedFacts: number; lear
 	const learnerLine =
 		linkedFacts === 0
 			? `This lesson added ${added} to your graph.`
-			: `This lesson added ${added} to your graph and linked ${linkedFacts} to facts it already had.`;
+			: `This lesson added ${added} to your graph and matched ${linkedFacts} of its statements to facts already there.`;
 	return { newFacts, linkedFacts, learnerLine };
 }
 

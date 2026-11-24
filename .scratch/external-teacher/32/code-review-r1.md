@@ -25,3 +25,8 @@ J1. The in-lock guard cannot fire today. Fixed: its comment says it is defensive
 J2. Two `lesson`s of different shapes in one file. Fixed: submitFindings' object is `about`.
 J3. lessonTotals re-implemented the birth rule. Fixed: linkedFacts = the lesson's node lines minus newFacts (graphSessionIndex's count), so the birth rule is upstream's alone.
 J4. taggedStore's docstring said every chain line; the route refuses chains. Fixed: docstring says so. The appendChain wrapper stays so any chain line a future path writes is still tagged.
+
+## Spec recheck (3)
+1. In-lock guard untested and unreachable: already marked defensive in e40b0e94.
+2. "linked M to facts it already had" counted a link to this lesson's own batch-1 fact as a further fact. Fixed: wording "matched M of its statements to facts already there"; numbers unchanged.
+3. No save_failed count test. Fixed: test added.
