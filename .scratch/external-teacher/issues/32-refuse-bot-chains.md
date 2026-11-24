@@ -72,3 +72,6 @@ Reviewing 1aa3f704. Three findings:
 2. Batch 2's link to a fact batch 1 added counted as linking to a fact the graph "already had", so the learner heard 4 facts where 3 exist. The numbers stay as the ticket defines them, matching `lh graph sessions` and the links. The line now says "matched M of its statements to facts already there", so a link reads as a restatement, not a fourth fact. (mechanism: learner-line-wording)
 3. No test covered a `save_failed` send's links. Added "counts the links a save_failed send wrote before it failed": the second append throws, the landed link counts, and a resend without it brings linkedFacts to 2.
 
+### Interrogate round 1, seat C (claude-haiku-5-5 xhigh, 5afc629a) 2026-11-24
+Smoke PASS (117 ok, 0 FAIL); 41/41 in the two graph test files; the known-limit claim held (deleting a fact removed the chain that named it). Finding: after the learner deletes a lesson or a fact, a resend's `learnerLine` follows the graph, not the line the merge returned. Verified by rerunning the seat's repro. The ticket names `lh graph sessions` as the source of the count, so the live count stays. The guide now says the counts are read from the graph when each reply is built, and that `linkedFacts` drops links the learner has since deleted. (mechanism: count-contract-wording)
+
