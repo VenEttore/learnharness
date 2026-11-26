@@ -44,9 +44,9 @@ import { piErrorLines, schemaProblems } from "./schema-problems.ts";
 import { stores } from "./stores.ts";
 import { settledTurnResponse } from "./turn-runs.ts";
 
-/** The refusal code for input a bot-run lesson cannot take: `continue`
- *  and `retry` (no model turn to run) and server-origin input such as
- *  steers (handleBotRunInput). */
+/** The refusal code for input a bot-run lesson cannot take: `continue`,
+ *  `retry` and `retry-question` (no model turn to run) and server-origin
+ *  input such as steers (handleBotRunInput). */
 export const BOT_RUN_LESSON_CODE = "bot_run_lesson";
 
 /** Any driver at all means someone other than LearnHarness teaches, so an
@@ -78,14 +78,16 @@ export function sideQuestionRefusal(): Response {
 }
 
 /** Page input on a bot-run lesson: append it with the ordinary input
- *  logic and settle at once. `continue` and `retry` would ask for a model
- *  turn, so they are 422 (409 reads to the page as "turn running" and it
- *  resends). Server-origin inputs never belong here: 400. */
+ *  logic and settle at once. `continue`, `retry` and `retry-question`
+ *  would ask for a model turn, so they are 422 (409 reads to the page as
+ *  "turn running" and it resends). Server-origin inputs never belong
+ *  here: 400. */
 export function handleBotRunInput(record: ChatRecord, input: TurnInput): Response {
 	switch (input.type) {
 		case "continue":
 		case "retry":
-			return refusal(`A bot-run lesson has no model turn to ${input.type}.`, 422);
+		case "retry-question":
+			return refusal(`A bot-run lesson has no model turn to ${input.type === "retry-question" ? "re-ask a question" : input.type}.`, 422);
 		case "steers":
 			return refusal("A bot-run lesson takes only page input.", 400);
 	}

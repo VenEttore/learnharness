@@ -29,6 +29,7 @@ const { compactionCutIndex } = await import("../src/core/compaction.ts");
 const { chatStore } = await import("../src/store/chats.ts");
 const { subscribe } = await import("../src/core/events.ts");
 const { danglingQuestionOf, newUserMessage } = await import("../src/core/native-messages.ts");
+const { questionRecoveryAppends } = await import("../src/core/input-events.ts");
 type LhMessage = import("../src/core/native-messages.ts").LhMessage;
 type ServerEvent = import("../src/core/events.ts").ServerEvent;
 
@@ -83,6 +84,13 @@ function seedOpenAsk(chatId: string, callId: string): LhMessage[] {
 	const seeded = [newUserMessage("teach me maths"), ask];
 	chatStore.saveMessages(chatId, seeded);
 	return seeded;
+}
+
+/** An assistant message whose quiz call has unfinished arguments: the page
+ *  shows it as a malformed question with a retry control. */
+function malformedAsk(id: string, callId: string): LhMessage {
+	const partial = { type: "check", nodeId: "n1", question: "What follows from $\\frac" };
+	return { ...fauxAssistantMessage([fauxToolCall("quiz", partial, { id: callId })], { stopReason: "toolUse" }), id } as LhMessage;
 }
 
 describe("the bot-run flag on the lesson record", () => {
@@ -196,6 +204,49 @@ describe("page input a bot-run lesson refuses", () => {
 			assert.equal(chatStore.getChat(chat.id)!.messages.length, 1);
 		});
 	}
+
+	it("retry-question is 422 bot_run_lesson, saves nothing, and announces nothing", async () => {
+		const chat = botLesson("Refuse retry-question", true);
+		const seeded = [newUserMessage("hi"), malformedAsk("msg-bad", "call-bad")];
+		chatStore.saveMessages(chat.id, seeded);
+		const input = { type: "retry-question", messageId: "msg-bad", contentIndex: 0, toolCallId: "call-bad" } as const;
+		// Precondition: the occurrence is a live malformed question, so the
+		// ordinary append logic would accept it.
+		assert.equal(questionRecoveryAppends(seeded, input).length, 1);
+		agentBuilds = 0;
+		const { res, events } = await eventsDuring(() => handleChatRequest(post(chat.id, input), throwingBuilder));
+		assert.equal(res.status, 422);
+		const body = (await res.json()) as { code: string; error: string };
+		assert.equal(body.code, "bot_run_lesson");
+		assert.equal(body.error, "A bot-run lesson has no model turn to re-ask a question.");
+		assert.equal(agentBuilds, 0);
+		assert.deepEqual(chatStore.getChat(chat.id)!.messages, seeded);
+		assert.ok(!events.some((e) => e.type === "record-changed" || e.type === "chats-changed"), "nothing was written");
+		// A stale occurrence is refused the same way: the bot-run check
+		// comes before the recovery check's 400.
+		const stale = await handleChatRequest(post(chat.id, { ...input, messageId: "msg-gone" }), throwingBuilder);
+		assert.equal(stale.status, 422);
+		assert.deepEqual(chatStore.getChat(chat.id)!.messages, seeded);
+	});
+
+	it("retry-question on an ordinary lesson still runs its own checks (the contrast)", async () => {
+		const chat = chatStore.createChat("Ordinary retry-question");
+		const seeded = [newUserMessage("hi"), malformedAsk("msg-bad", "call-bad")];
+		chatStore.saveMessages(chat.id, seeded);
+		const stale = await handleChatRequest(
+			post(chat.id, { type: "retry-question", messageId: "msg-gone", contentIndex: 0, toolCallId: "call-bad" }),
+			throwingBuilder,
+		);
+		assert.equal(stale.status, 400, "a stale occurrence is the recovery check's 400");
+		assert.match(((await stale.json()) as { error: string }).error, /no longer available to retry/);
+		const live = await handleChatRequest(
+			post(chat.id, { type: "retry-question", messageId: "msg-bad", contentIndex: 0, toolCallId: "call-bad" }),
+			throwingBuilder,
+		);
+		assert.equal(live.status, 503, "a live one passes the check and reaches the model gate");
+		assert.equal(((await live.json()) as { code: string }).code, "models_not_configured");
+		assert.deepEqual(chatStore.getChat(chat.id)!.messages, seeded);
+	});
 
 	it("a practice-only input is 400 with the append error and saves nothing", async () => {
 		const chat = botLesson("Next on teach", true);
