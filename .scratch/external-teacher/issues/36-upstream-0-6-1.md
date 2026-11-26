@@ -99,7 +99,7 @@ On the box, through the Watcher. This build moves lessons to chat format 2. Tick
 6. Run one real lesson through `lh`: probe, probe done, plan, teaching questions, and close it per guide section 7 (findings into the graph).
 7. Checks:
    - `grep -iE 'turn refused|models_not_configured|Error:|agent|provider|api key|not extensible' /workspace/lh-server.log` prints nothing: no LearnHarness model turn and no error.
-   - The lesson page `http://127.0.0.1:3000/chat/<lesson id>` loads. Before the upstream fix in this branch, every lesson page returned 500 under `next dev`.
+   - The lesson page `http://127.0.0.1:3000/chat/<lesson id>` loads. Before the upstream fix in this branch, every lesson page returned 500 under `next dev`. The two old Bench 2 test lessons from ticket 35's bench (chat_mvzen211_0a859d0f, chat_mvzenc8e_74316c4b) still return 500 with `saved.map is not a function`; that is ticket 40, not this step.
    - With the lesson page open after a learner answer, the page sends no `continue`. The lesson never shows a model "thinking" state, and the log has no `POST /api/chat` with `continue`.
    - Quiz numbers from `lh show` match the question card and what `lh submit` saves, in the same order.
    - The close adds facts (`merged: true`, `newFacts` above 0), and a findings call that carries a chain is refused with `chains_not_accepted`.
