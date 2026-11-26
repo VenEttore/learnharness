@@ -5,6 +5,7 @@
 [API index](README.md) · [Data access and host boundaries](../plugin-authoring.md#backend-and-data)
 
 - [CallUsage](#callusage) — supporting declaration
+- [ChatDriver](#chatdriver) — supporting declaration
 - [ChatKind](#chatkind) — supporting declaration
 - [ChatListItem](#chatlistitem)
 - [ChatRecord](#chatrecord)
@@ -92,6 +93,17 @@ The reasoning portion of the output tokens.
 reasoningTokens: number | undefined;
 ```
 
+## ChatDriver
+
+Supporting declaration used by a public type. This is not an additional runtime API or SDK helper.
+
+Who drives the lesson's turns (fork, ADR 0001). Only "external"
+exists; absence means LearnHarness's own model.
+
+```ts
+export type ChatDriver = "external";
+```
+
 ## ChatKind
 
 Supporting declaration used by a public type. This is not an additional runtime API or SDK helper.
@@ -158,6 +170,8 @@ export interface ChatRecord {
     messages: LhMessage[];
     imageSnapshots?: Record<string, ImageSnapshot>;
     kind?: ChatKind;
+    driver?: ChatDriver;
+    externalKey?: string;
     tree?: PlanTree;
     turns?: TurnUsage[];
     extractions?: ExtractionRunUsage[];
@@ -167,7 +181,7 @@ export interface ChatRecord {
 }
 ```
 
-**Related types:** [ChatKind](contracts-chat.md#chatkind), [ChatSettings](contracts-chat.md#chatsettings), [ExtractionRunUsage](contracts-chat.md#extractionrunusage), [ImageSnapshot](contracts-chat.md#imagesnapshot), [LhMessage](native-messages.md#lhmessage), [PlanTree](contracts-plan.md#plantree), [SideChatThread](contracts-chat.md#sidechatthread), [TurnUsage](contracts-chat.md#turnusage).
+**Related types:** [ChatDriver](contracts-chat.md#chatdriver), [ChatKind](contracts-chat.md#chatkind), [ChatSettings](contracts-chat.md#chatsettings), [ExtractionRunUsage](contracts-chat.md#extractionrunusage), [ImageSnapshot](contracts-chat.md#imagesnapshot), [LhMessage](native-messages.md#lhmessage), [PlanTree](contracts-plan.md#plantree), [SideChatThread](contracts-chat.md#sidechatthread), [TurnUsage](contracts-chat.md#turnusage).
 
 **Member index** (including nested object members; inherited members are defined in the linked base types):
 
@@ -178,6 +192,8 @@ export interface ChatRecord {
 - [messages](#chatrecord-messages)
 - [imageSnapshots](#chatrecord-imagesnapshots)
 - [kind](#chatrecord-kind)
+- [driver](#chatrecord-driver)
+- [externalKey](#chatrecord-externalkey)
 - [tree](#chatrecord-tree)
 - [turns](#chatrecord-turns)
 - [extractions](#chatrecord-extractions)
@@ -229,6 +245,26 @@ The session's kind; an absent field reads as teach.
 
 ```ts
 kind?: ChatKind;
+```
+
+### ChatRecord driver
+
+Bot-run lesson (fork, ADR 0001): "external" means an outside Bot
+Teacher writes the turns and LearnHarness never calls its model.
+Absent = LearnHarness drives, as before.
+
+```ts
+driver?: ChatDriver;
+```
+
+### ChatRecord externalKey
+
+The Bot Teacher's create key, stored at birth. The create route
+(external-teacher ticket 03) uses it to return this lesson on a
+rerun instead of making a new one. Bot-run lessons only.
+
+```ts
+externalKey?: string;
 ```
 
 ### ChatRecord tree
@@ -366,11 +402,13 @@ export interface ChatSummary {
     phase: Phase3;
     pendingQuestion: boolean;
     pendingProblem: boolean;
+    driver?: ChatDriver;
+    externalKey?: string;
     settings?: ChatSettings;
 }
 ```
 
-**Related types:** [ChatKind](contracts-chat.md#chatkind), [ChatSettings](contracts-chat.md#chatsettings), [Phase3](phases.md#phase3).
+**Related types:** [ChatDriver](contracts-chat.md#chatdriver), [ChatKind](contracts-chat.md#chatkind), [ChatSettings](contracts-chat.md#chatsettings), [Phase3](phases.md#phase3).
 
 **Member index** (including nested object members; inherited members are defined in the linked base types):
 
@@ -383,6 +421,8 @@ export interface ChatSummary {
 - [phase](#chatsummary-phase)
 - [pendingQuestion](#chatsummary-pendingquestion)
 - [pendingProblem](#chatsummary-pendingproblem)
+- [driver](#chatsummary-driver)
+- [externalKey](#chatsummary-externalkey)
 - [settings](#chatsummary-settings)
 
 ### ChatSummary id
@@ -446,6 +486,21 @@ A practice problem is posed but not concluded. False on teaching sessions.
 
 ```ts
 pendingProblem: boolean;
+```
+
+### ChatSummary driver
+
+Bot-run fields (fork, ADR 0001), riding the summary spread like
+`settings`; the external create route finds a lesson by its key.
+
+```ts
+driver?: ChatDriver;
+```
+
+### ChatSummary externalKey
+
+```ts
+externalKey?: string;
 ```
 
 ### ChatSummary settings

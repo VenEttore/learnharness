@@ -182,6 +182,7 @@ export interface GraphChain {
     conclusion: string;
     provenance: ProvenancePoint[];
     createdAt: string;
+    source?: "external";
 }
 ```
 
@@ -194,6 +195,7 @@ export interface GraphChain {
 - [conclusion](#graphchain-conclusion)
 - [provenance](#graphchain-provenance)
 - [createdAt](#graphchain-createdat)
+- [source](#graphchain-source)
 
 ### GraphChain id
 
@@ -233,6 +235,17 @@ provenance: ProvenancePoint[];
 
 ```ts
 createdAt: string;
+```
+
+### GraphChain source
+
+Fork (ADR 0001): "external" on a line a Bot Teacher's findings
+wrote (src/server/graph-findings.ts); absent otherwise. A merged
+record (getGraph) carries its first line's value only, so a cleanup
+reads the raw lines.
+
+```ts
+source?: "external";
 ```
 
 ## GraphEdge
@@ -280,6 +293,7 @@ export interface GraphNode {
     aliases: string[];
     createdAt: string;
     provenance: ProvenancePoint[];
+    source?: "external";
 }
 ```
 
@@ -293,6 +307,7 @@ export interface GraphNode {
 - [aliases](#graphnode-aliases)
 - [createdAt](#graphnode-createdat)
 - [provenance](#graphnode-provenance)
+- [source](#graphnode-source)
 
 ### GraphNode id
 
@@ -347,6 +362,17 @@ Every (chat, message) point where this proposition came up.
 
 ```ts
 provenance: ProvenancePoint[];
+```
+
+### GraphNode source
+
+Fork (ADR 0001): "external" on a line a Bot Teacher's findings
+wrote (src/server/graph-findings.ts); absent otherwise. A merged
+record (getGraph) carries its first line's value only, so a cleanup
+reads the raw lines.
+
+```ts
+source?: "external";
 ```
 
 ## GraphSnapshot
