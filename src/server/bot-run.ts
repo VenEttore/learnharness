@@ -80,7 +80,7 @@ export function handleBotRunInput(record: ChatRecord, input: TurnInput): Respons
 		case "continue":
 		case "retry":
 		case "retry-question":
-			return refusal(`A bot-run lesson has no model turn to ${input.type}.`, 422);
+			return refusal(`A bot-run lesson has no model turn to ${input.type === "retry-question" ? "re-ask a question" : input.type}.`, 422);
 		case "steers":
 			return refusal("A bot-run lesson takes only page input.", 400);
 	}

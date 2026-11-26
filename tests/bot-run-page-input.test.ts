@@ -216,10 +216,17 @@ describe("page input a bot-run lesson refuses", () => {
 		agentBuilds = 0;
 		const { res, events } = await eventsDuring(() => handleChatRequest(post(chat.id, input), throwingBuilder));
 		assert.equal(res.status, 422);
-		assert.equal(((await res.json()) as { code: string }).code, "bot_run_lesson");
+		const body = (await res.json()) as { code: string; error: string };
+		assert.equal(body.code, "bot_run_lesson");
+		assert.equal(body.error, "A bot-run lesson has no model turn to re-ask a question.");
 		assert.equal(agentBuilds, 0);
 		assert.deepEqual(chatStore.getChat(chat.id)!.messages, seeded);
 		assert.ok(!events.some((e) => e.type === "record-changed" || e.type === "chats-changed"), "nothing was written");
+		// A stale occurrence is refused the same way: the bot-run check
+		// comes before the recovery check's 400.
+		const stale = await handleChatRequest(post(chat.id, { ...input, messageId: "msg-gone" }), throwingBuilder);
+		assert.equal(stale.status, 422);
+		assert.deepEqual(chatStore.getChat(chat.id)!.messages, seeded);
 	});
 
 	it("retry-question on an ordinary lesson still runs its own checks (the contrast)", async () => {
@@ -237,6 +244,7 @@ describe("page input a bot-run lesson refuses", () => {
 			throwingBuilder,
 		);
 		assert.equal(live.status, 503, "a live one passes the check and reaches the model gate");
+		assert.equal(((await live.json()) as { code: string }).code, "models_not_configured");
 		assert.deepEqual(chatStore.getChat(chat.id)!.messages, seeded);
 	});
 
