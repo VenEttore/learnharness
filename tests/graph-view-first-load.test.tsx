@@ -60,6 +60,8 @@ g.cancelAnimationFrame = (id: ReturnType<typeof setTimeout>) => clearTimeout(id)
 g.devicePixelRatio ??= 1;
 
 const { ServerEventsProvider } = await import("../components/server-events.tsx");
+// AppShell provides interaction layers since upstream 0.6.0.
+const { InteractionLayersProvider } = await import("../components/interaction-layers.tsx");
 type NotifySource = import("../components/server-events.tsx").NotifySource;
 const { GraphView } = await import("../components/graph-view.tsx");
 
@@ -190,7 +192,9 @@ async function mount() {
 	await act(async () => {
 		root.render(
 			<ServerEventsProvider connect={src.connect}>
-				<GraphView />
+				<InteractionLayersProvider>
+					<GraphView />
+				</InteractionLayersProvider>
 			</ServerEventsProvider>,
 		);
 	});

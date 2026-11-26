@@ -18,6 +18,8 @@ import * as ReactDOMClient from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { parseHTML } from "linkedom";
 import { ServerEventsProvider, type NotifySource } from "../components/server-events.tsx";
+// AppShell provides interaction layers since upstream 0.6.0.
+import { InteractionLayersProvider } from "../components/interaction-layers.tsx";
 import { CoverageRing, CoverageRingGlyph, type SessionCoverage } from "../components/extraction-coverage.tsx";
 
 const dom = parseHTML("<!doctype html><html><head></head><body></body></html>");
@@ -104,7 +106,9 @@ async function mountRing() {
 	await act(async () => {
 		root.render(
 			<ServerEventsProvider connect={src.connect}>
-				<CoverageRing chatId="chat_ring" />
+				<InteractionLayersProvider>
+					<CoverageRing chatId="chat_ring" />
+				</InteractionLayersProvider>
 			</ServerEventsProvider>,
 		);
 	});
@@ -121,7 +125,9 @@ describe("coverage ring refresh", () => {
 		await act(async () => {
 			root.render(
 				<ServerEventsProvider connect={src.connect}>
-					<CoverageRing chatId="chat_ring" />
+					<InteractionLayersProvider>
+						<CoverageRing chatId="chat_ring" />
+					</InteractionLayersProvider>
 				</ServerEventsProvider>,
 			);
 		});
