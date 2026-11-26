@@ -118,10 +118,17 @@ for ip in $(hostname -I); do
 	echo "[curl exit $code]"
 	if [ "$code" = 7 ]; then ok "$ip:$PORT refuses the connection"; else bad "$ip:$PORT answered or hung (curl exit $code)"; fi
 done
+# Since upstream 0.6.0, proxy.ts refuses a Host that is neither localhost
+# nor an IP before any route runs (403, no code). The fork's own check
+# still refuses a non-loopback IP Host (forbidden_host).
 printf '$ curl -H "Host: example.com" %s/api/external/chats/x\n' "$LH_URL"
-body="$(curl -s -H 'Host: example.com' "$LH_URL/api/external/chats/x")"
+reply="$(curl -s -w '\n%{http_code}' -H 'Host: example.com' "$LH_URL/api/external/chats/x")"
+echo "$reply"
+[ "$(tail -n1 <<<"$reply")" = 403 ] && jq -e '.error|test("host name is not allowed")' >/dev/null 2>&1 <<<"$(sed '$d' <<<"$reply")" && ok "forged Host name is refused (proxy.ts, 403)" || bad "forged Host name was not refused"
+printf '$ curl -H "Host: 10.9.8.7:%s" %s/api/external/chats/x\n' "$PORT" "$LH_URL"
+body="$(curl -s -H "Host: 10.9.8.7:$PORT" "$LH_URL/api/external/chats/x")"
 echo "$body"
-jq -e '.code=="forbidden_host"' >/dev/null <<<"$body" && ok "forged Host is refused" || bad "forged Host was not refused"
+jq -e '.code=="forbidden_host"' >/dev/null <<<"$body" && ok "forged non-loopback IP Host is refused (forbidden_host)" || bad "forged IP Host was not refused"
 printf '$ curl -H "Origin: http://evil.example" %s/api/external/chats/x\n' "$LH_URL"
 body="$(curl -s -H 'Origin: http://evil.example' "$LH_URL/api/external/chats/x")"
 echo "$body"

@@ -314,7 +314,7 @@ LearnHarness runs its checks before it saves anything, so a refused turn adds no
 | `usage` | `lh` refused the command line before sending it: a missing flag, a misspelled flag, JSON that does not parse. |
 | `save_failed` | The disk write failed. Rerun the same command; for `lh findings`, read section 7 first. |
 | `internal_error` | LearnHarness failed on its own bug and saved nothing. Read `/workspace/lh-server.log`. Resending the same turn fails the same way. |
-| `forbidden_origin`, `forbidden_host` | The request came from a browser, or through a non-loopback host name. Call through `lh` on this computer. |
+| `forbidden_origin`, `forbidden_host` | The request came from a browser, or through a non-loopback host name. Call through `lh` on this computer. A host name that is neither `localhost` nor an IP address gets `{"error":"This host name is not allowed. ..."}` with no `code` instead; the fix is the same: keep `LH_URL` at `http://127.0.0.1:<port>`. |
 
 **A lost reply.** If a turn's reply never arrives (a timeout, a crash), run `lh show "$L"` before you resend. If your turn is in `messages`, take the cursor from that reply and carry on. If not, resend the same turn with the same `--after`. When the first send did land, the resend returns `{"ok":true,"repeat":true,...}` and saves nothing. Resend the exact same content, because a reworded `say` counts as a new turn.
 
