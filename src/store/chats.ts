@@ -60,10 +60,7 @@ function createChat(title: string, kind?: "practice", init?: ChatDriverInit): Ch
 /** THE WRITE CHOKE POINT (schema-versioning wave, owner 2026-10-10): every
  *  record persist goes through here and carries the CURRENT version stamp —
  *  lazy migration means existing files only get stamped on their next write.
- *  A future-version guard lives on the read side (getChat).
- *  Tmp + rename through the shared atomic writer (fork, external-teacher 16):
- *  a write cut off partway leaves the previous file whole. The tmp name does
- *  not end in .json, so listChats never sees it. */
+ *  A future-version guard lives on the read side (getChat). */
 function writeChat(record: ChatRecord): void {
 	// No in-place fallback (fork, D2 in external-teacher 35): when Windows holds
 	// the file past the rename retry, the save throws and the old file stays whole.
