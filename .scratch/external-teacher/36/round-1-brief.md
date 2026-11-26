@@ -27,6 +27,12 @@ Then commit 5bb568f8 (fork work):
 - Tests: `tests/bot-run-side-questions.test.ts` (new), `tests/render-bot-run-lesson.test.tsx` (providers upstream's view now needs; the second-message case now expects both texts posted in order; side-button cases).
 - Smoke step 8b; guide and `docs/agents/check.md` add `npm run plugins:setup` (and `plugins:build-core` for the server).
 
+Then the fork follow-ups up to bc05e8f2:
+
+- `tests/coverage-ring-refresh.test.tsx`, `tests/graph-view-first-load.test.tsx`: mount under `InteractionLayersProvider` (upstream's views now require it).
+- Merge of ticket 39 (branch `external-teacher-39-refuse-retry-question`, 2c8b05da): `handleBotRunInput` refuses `retry-question` with 422 `bot_run_lesson`. It merged without conflict.
+- `src/server/bot-run.ts`: `plugin-question-answer` and `plugin-problem-submission` are refused in `handleBotRunInput` with 422 `bot_run_lesson` (`pluginQuestionRefusal()`); `app/api/chats/[id]/dismiss/route.ts` refuses `dismiss-plugin-question` on a bot-run lesson the same way. Tests in `tests/bot-run-page-input.test.ts`.
+
 Chat records move to version 2 in this step (`CURRENT_CHAT_VERSION = 2`). A pre-merge build reads a version-2 chat as absent.
 
 ## Settled decisions (do not relitigate)
@@ -41,7 +47,7 @@ Chat records move to version 2 in this step (`CURRENT_CHAT_VERSION = 2`). A pre-
 ## Fork guards to check survive
 
 - `src/server/chat-handler.ts`: `if (isBotRun(initialRecord)) return handleBotRunInput(initialRecord, input);` in `handleChatInput`, before any model gate, compaction or turn.
-- `src/server/bot-run.ts` `handleBotRunInput`: refuses `continue` and `retry` (422 `bot_run_lesson`) and `steers` (400); plugin-question and plugin-problem inputs throw in `inputAppends` (400).
+- `src/server/bot-run.ts` `handleBotRunInput`: refuses `continue`, `retry`, `retry-question`, `plugin-question-answer` and `plugin-problem-submission` (422 `bot_run_lesson`) and `steers` (400).
 - `components/session-core.ts`: auto-wake skips when `this.botRun` is set.
 - `components/chat.tsx`: `turnBusy`; `prepareText` skips the zero-keys and model-picker checks when `botRun`.
 - `src/core/contracts/chat.ts`, `src/store/chats.ts`: `driver`/`externalKey` stamped at birth and kept through version-2 writes and the summary spread.
