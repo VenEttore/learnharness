@@ -1,6 +1,6 @@
 # Ticket 36, review round 1 brief
 
-Scope: `git diff external-teacher-35-upstream-0-5-0...<SHA>` on branch `external-teacher-36-upstream-0-6-1`. The SHA is in each seat's launch message. Nothing is uncommitted. Ticket 35's branch is fetched as `origin/external-teacher-35-upstream-0-5-0` (tip 261a583f).
+Scope: `git diff origin/external-teacher-35-upstream-0-5-0...<SHA>` on branch `external-teacher-36-upstream-0-6-1`. The SHA is in each seat's launch message. Nothing is uncommitted. Ticket 35's branch is fetched as `origin/external-teacher-35-upstream-0-5-0` (tip 261a583f).
 
 ## Intent
 
@@ -33,6 +33,8 @@ Then the fork follow-ups up to bc05e8f2:
 - Merge of ticket 39 (branch `external-teacher-39-refuse-retry-question`, 2c8b05da): `handleBotRunInput` refuses `retry-question` with 422 `bot_run_lesson`. It merged without conflict.
 - `src/server/bot-run.ts`: `plugin-question-answer` and `plugin-problem-submission` are refused in `handleBotRunInput` with 422 `bot_run_lesson` (`pluginQuestionRefusal()`); `app/api/chats/[id]/dismiss/route.ts` refuses `dismiss-plugin-question` on a bot-run lesson the same way. Tests in `tests/bot-run-page-input.test.ts`.
 
+After code-review (findings and dispositions: `.scratch/external-teacher/36/round-1-findings.md`): 9cbed63b (comment, guide, smoke and test fixes; ticket 29's unused `holding` flag removed), 96902476 (cherry-pick of upstream e8167fd7 from 0.7.0: every lesson page 500ed under `next dev`), 4f617244 (smoke and guide follow upstream's new proxy.ts Host check).
+
 Chat records move to version 2 in this step (`CURRENT_CHAT_VERSION = 2`). A pre-merge build reads a version-2 chat as absent.
 
 ## How to read a 774-file diff
@@ -40,7 +42,7 @@ Chat records move to version 2 in this step (`CURRENT_CHAT_VERSION = 2`). A pre-
 The range is mostly upstream. Three narrower views cover the fork's part:
 
 - `git show --remerge-diff 1d9aa693`: how each of the eight conflicts was resolved, against git's own automatic merge.
-- `git diff 1d9aa693 HEAD -- . ':!.scratch'`: the fork's work after the merge (11 files).
+- `git diff 1d9aa693 HEAD -- . ':!.scratch'`: the fork's work after the merge (including the ticket 39 merge and the upstream cherry-pick 96902476).
 - `git diff v0.6.1 HEAD -- . ':!.scratch'`: every fork line on top of clean upstream v0.6.1. Compare it with ticket 35's view, `git diff v0.5.0 origin/external-teacher-35-upstream-0-5-0`, to see whether a fork guard was lost in an auto-merged file.
 
 ## Settled decisions (do not relitigate)
