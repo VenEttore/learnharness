@@ -15,6 +15,9 @@ import * as ReactDOMClient from "react-dom/client";
 import { act } from "react";
 import { parseHTML } from "linkedom";
 import { ServerEventsProvider, type NotifySource } from "../components/server-events.tsx";
+import { InteractionLayersProvider } from "../components/interaction-layers.tsx";
+import { AppRouterContext } from "next/dist/shared/lib/app-router-context.shared-runtime";
+import { PathnameContext } from "next/dist/shared/lib/hooks-client-context.shared-runtime";
 
 const dom = parseHTML("<!doctype html><html><head></head><body></body></html>");
 const g = globalThis as Record<string, unknown>;
@@ -42,6 +45,8 @@ g.location ??= (dom.window as unknown as Record<string, unknown>).location;
 /** POSTs to /api/chat this test saw, by input type; "steer" for a steer,
  *  "abort" for a turn abort. */
 const posts: string[] = [];
+/** The text of each "text" POST, in order. */
+const postedTexts: string[] = [];
 /** Holds the stream attach open, so the view stays busy after a send. */
 let streamDelayMs = 0;
 /** The record the page refetches after a send (e.g. a question the bot
@@ -53,7 +58,9 @@ before(() => {
 	globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
 		const url = String(input);
 		if (url === "/api/chat") {
-			posts.push(JSON.parse(String(init?.body)).input.type);
+			const input = JSON.parse(String(init?.body)).input;
+			posts.push(input.type);
+			if (input.type === "text") postedTexts.push(input.text);
 			return Response.json({ ok: true });
 		}
 		if (url === "/api/chats/chat_x" && recordAfterSend && posts.length > 0) return Response.json({ messages: recordAfterSend });
@@ -66,6 +73,8 @@ before(() => {
 			posts.push("steer");
 			return Response.json({ error: "no live turn to steer" }, { status: 409 });
 		}
+		// Faithful to the side-chat list route: no side threads yet.
+		if (url.endsWith("/side-chats")) return Response.json({ threads: [], answering: {} });
 		if (url.endsWith("/stream") && streamDelayMs) await new Promise((r) => setTimeout(r, streamDelayMs));
 		// A keyless install: the catalog says no provider has a key.
 		if (url.startsWith("/api/models")) return Response.json({ providers: [{ id: "openrouter", keyPresent: false }], models: [], slots: {} });
@@ -79,7 +88,10 @@ after(() => {
 /** No server pushes in this test. */
 const quietSource = (): NotifySource => ({ close() {}, onOpen() {}, onEvent() {} });
 
-async function mount(botRun: boolean) {
+const noop = () => {};
+const stubRouter = { push: noop, replace: noop, refresh: noop, prefetch: noop, back: noop, forward: noop } as unknown as React.ContextType<typeof AppRouterContext>;
+
+async function mount(botRun: boolean, initialMessages: unknown[] = []) {
 	const { Chat } = await import("../components/chat.tsx");
 	const host = document.createElement("div");
 	document.body.appendChild(host);
@@ -87,7 +99,16 @@ async function mount(botRun: boolean) {
 	await act(async () => {
 		root.render(
 			<ServerEventsProvider connect={quietSource}>
-				<Chat chatId="chat_x" title="Lesson" initialMessages={[]} botRun={botRun} />
+				{/* Since upstream 0.6.0 the view reads the app router, its own
+				    pathname (input is live only on /chat/<id>) and AppShell's
+				    interaction layers. Navigation is never exercised here. */}
+				<AppRouterContext.Provider value={stubRouter}>
+					<PathnameContext.Provider value="/chat/chat_x">
+						<InteractionLayersProvider>
+							<Chat chatId="chat_x" title="Lesson" initialMessages={initialMessages as never} botRun={botRun} />
+						</InteractionLayersProvider>
+					</PathnameContext.Provider>
+				</AppRouterContext.Provider>
 			</ServerEventsProvider>,
 		);
 	});
@@ -147,15 +168,20 @@ describe("keyless install: the chat view", () => {
 		host.remove();
 	});
 
-	it("a bot-run lesson keeps a second message typed while the first send settles", async () => {
+	// Upstream 0.6.0's send path sends text typed while a send settles (an
+	// ordinary lesson steers it instead). A bot-run lesson has no turn to
+	// steer, so the second message is saved as text, after the first.
+	it("a bot-run lesson sends a second message typed while the first send settles, in order", async () => {
 		posts.length = 0;
+		postedTexts.length = 0;
 		streamDelayMs = 300;
 		const { host, root } = await mount(true);
 		await typeAndSend(host, "first");
 		await typeAndSend(host, "second");
 		const box = host.querySelector('[data-testid="composer"] [role="textbox"]');
 		assert.ok(!posts.includes("steer"), "no steer: a bot-run lesson has no live turn to take one");
-		assert.equal(box?.textContent, "second", "the unsent text stays in the composer");
+		assert.deepEqual(postedTexts, ["first", "second"], "both messages are posted as text, in order");
+		assert.equal(box?.textContent, "", "the composer empties once the second is accepted");
 		streamDelayMs = 0;
 		await act(async () => {
 			await new Promise((r) => setTimeout(r, 400));
@@ -224,6 +250,47 @@ describe("keyless install: the chat view", () => {
 		await act(async () => {
 			await new Promise((r) => setTimeout(r, 400));
 		});
+		await act(async () => root.unmount());
+		host.remove();
+	});
+});
+
+// Side questions (upstream 0.6.0) are answered by LearnHarness's model, so a
+// bot-run page offers none (D5, external-teacher 36); the server refuses
+// them too (bot-run-side-questions.test.ts).
+describe("side questions on the lesson page", () => {
+	const lessonSoFar = [
+		{ id: "u1", role: "user", content: "Teach me limits", timestamp: 0 },
+		{
+			id: "a1",
+			role: "assistant",
+			content: [{ type: "text", text: "A limit is the value a function approaches." }],
+			api: "faux",
+			stopReason: "stop",
+			usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+			timestamp: 0,
+			provider: "external",
+			model: "bot-teacher",
+		},
+	];
+	const sideButtons = () => document.querySelectorAll('[data-testid="side-conversation-button"]').length;
+
+	it("control: an ordinary lesson offers a side question on teacher text", async () => {
+		const { host, root } = await mount(false, lessonSoFar);
+		assert.ok(sideButtons() > 0, "the side-question button renders");
+		await act(async () => root.unmount());
+		host.remove();
+	});
+
+	it("a bot-run lesson offers no side question, and the shortcut opens nothing", async () => {
+		posts.length = 0;
+		const { host, root } = await mount(true, lessonSoFar);
+		assert.equal(sideButtons(), 0, "no side-question button");
+		await act(async () => {
+			window.dispatchEvent(new CustomEvent("lh:kbd-toggle-question-thread"));
+			await new Promise((r) => setTimeout(r, 20));
+		});
+		assert.equal(document.querySelectorAll('[data-testid^="side-thread"]').length, 0, "no side thread opens");
 		await act(async () => root.unmount());
 		host.remove();
 	});

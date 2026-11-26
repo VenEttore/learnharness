@@ -70,6 +70,13 @@ function refusal(error: string, status: number): Response {
 	return Response.json({ error, code: BOT_RUN_LESSON_CODE }, { status });
 }
 
+/** Side questions (upstream 0.6.0) are answered by LearnHarness's model,
+ *  so a bot-run lesson refuses them before any model lookup (D5 in
+ *  external-teacher 36). 422 like `continue`: a retry cannot succeed. */
+export function sideQuestionRefusal(): Response {
+	return refusal("A bot-run lesson has no LearnHarness model to answer side questions.", 422);
+}
+
 /** Page input on a bot-run lesson: append it with the ordinary input
  *  logic and settle at once. `continue` and `retry` would ask for a model
  *  turn, so they are 422 (409 reads to the page as "turn running" and it

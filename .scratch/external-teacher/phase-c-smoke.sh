@@ -275,6 +275,23 @@ lh_run 0 '.ok' say "$L" --after "$C" <<<"Yes. You built it: each comparison halv
 cursor
 lh_run 0 ".phase==\"teach\" and .openQuestion==null and (.items|length)==0 and .cursor==\"$C\" and (.plan|tostring|test(\"logn\")) and ([.messages[].calls[]?.tool]|index(\"probe_done\")) and ([.messages[]|select(.role==\"toolResult\")]|length)>=8" show "$L"
 
+say "8b. A side question on the bot-run lesson is refused (ticket 36, D5)"
+# The page's side-question POST (components/use-side-thread.ts), anchored
+# on the Bot Teacher's last message. Refused before any model lookup: 422
+# bot_run_lesson, and the chat file is unchanged.
+msg="$(curl -s "$LH_URL/api/chats/$L" -H "Origin: $LH_URL" | jq -r '[.messages[] | select(.role=="assistant") | .id] | last')"
+before="$(sha256sum < "$DATA/chats/$L.json")"
+side="$(jq -nc --arg m "$msg" '{anchor:{messageId:$m, partId:($m + "-t0"), blockIndex:0, blockText:"halves"}, text:"Why does it halve?"}')"
+printf '$ page POST /api/chats/%s/side-chats %s\n' "$L" "$side"
+reply="$(curl -s -w '\n%{http_code}' -X POST "$LH_URL/api/chats/$L/side-chats" -H 'Content-Type: application/json' -H "Origin: $LH_URL" --data "$side")"
+printf '%s\n' "$reply"
+code="$(tail -n1 <<<"$reply")"; body="$(sed '$d' <<<"$reply")"
+if [ "$code" = 422 ] && jq -e '.code=="bot_run_lesson"' >/dev/null 2>&1 <<<"$body"; then ok "side question refused: 422 bot_run_lesson"; else bad "side question: http $code, $body"; fi
+retry="$(curl -s -o /dev/null -w '%{http_code}' -X POST "$LH_URL/api/chats/$L/side-chats" -H 'Content-Type: application/json' -H "Origin: $LH_URL" --data '{"threadId":"side_x","retry":true}')"
+[ "$retry" = 422 ] && ok "side retry refused: 422" || bad "side retry: http $retry"
+[ "$(sha256sum < "$DATA/chats/$L.json")" = "$before" ] && ok "the chat file is unchanged" || bad "the side question changed the chat file"
+lh_run 0 ".cursor==\"$C\" and (.items|length)==0" show "$L"
+
 say "9. Other lessons: empty create, not_bot_run, bad_reply"
 lh_run 0 '.ok and .existing==false and .cursor==.id and ((.items // [])|length)==0' lesson new --title "Empty" --key empty-1
 E="$(jq -r .id <<<"$OUT")"

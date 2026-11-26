@@ -1035,7 +1035,8 @@ export function Chat({
 			finish: () => recording.finishFor(destinationId) };
 	};
 	const renderSideEntry = (sourceMessageId?: string) => {
-		if (!sourceMessageId) return null;
+		// Fork (ADR 0001): a bot-run lesson has no model for side questions.
+		if (botRun || !sourceMessageId) return null;
 		const hasHistory = sideThread.threads.some((thread) => thread.anchor.messageId === sourceMessageId && thread.messages.length > 0);
 		return <div className="mt-1 flex justify-end">
 			<Button type="button" variant="ghost" size="icon-xs" data-testid="side-conversation-button" data-side-segment-id={sourceMessageId}
@@ -1052,16 +1053,16 @@ export function Chat({
 	const closeSideThreadRef = useRef(closeSideThread);
 	closeSideThreadRef.current = closeSideThread;
 	const toggleQuestionThread = useCallback(() => {
-		if (!isInteractionScopeEligible(sessionFindScopeRef.current, controller)) return;
+		if (botRun || !isInteractionScopeEligible(sessionFindScopeRef.current, controller)) return;
 		if (sideThreadOpenRef.current) closeSideThreadRef.current();
 		else openSideThread({ anchor: { kind: "composer" }, questionCallId: pendingRef.current?.toolCallId });
-	}, [controller, openSideThread]);
+	}, [botRun, controller, openSideThread]);
 	useEffect(() => {
 		window.addEventListener(kbdEventForChat("toggle-question-thread"), toggleQuestionThread);
 		return () => window.removeEventListener(kbdEventForChat("toggle-question-thread"), toggleQuestionThread);
 	}, [toggleQuestionThread]);
 	// Advancing the lesson does not close or disable an old conversation.
-	const sideActions = useMemo(() => createSideQuestionActions({ open: openSideThread }), [openSideThread]);
+	const sideActions = useMemo(() => (botRun ? [] : createSideQuestionActions({ open: openSideThread })), [botRun, openSideThread]);
 	const selectionActions = useMemo(() => [citeAction, ...sideActions], [citeAction, sideActions]);
 	const router = useRouter();
 	const transcriptElementRef = useRef<HTMLElement | null>(null);

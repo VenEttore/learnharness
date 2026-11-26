@@ -22,6 +22,7 @@ import { effectiveSettings, stores } from "./stores.ts";
 import { providerKeyPresent } from "./keys.ts";
 import { refreshConnectionCatalog } from "./model-catalog.ts";
 import { awaitCompaction } from "./compaction.ts";
+import { isBotRun, sideQuestionRefusal } from "./bot-run.ts";
 
 export type SideStreamEvent =
 	| { type: "thread"; thread: SideChatThread }
@@ -118,6 +119,10 @@ export function createSideChatService(deps: SideChatDeps): SideChatService {
 	}
 
 	async function ask(chatId: string, input: SideAskInput): Promise<Response> {
+		// Fork (ADR 0001): a bot-run lesson never calls LearnHarness's model,
+		// so its side questions stop here, before compaction or engine lookup.
+		const first = deps.chatStore.getChat(chatId);
+		if (first && isBotRun(first)) return sideQuestionRefusal();
 		await deps.beforeAsk?.(chatId);
 		const initial = deps.chatStore.getChat(chatId);
 		if (!initial) return Response.json({ error: "Unknown chat" }, { status: 404 });

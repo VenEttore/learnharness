@@ -15,7 +15,7 @@ Use their choice for the whole lesson, and switch if they ask.
 The examples assume the repo is at `/workspace/learnharness`. Use your own path if it is elsewhere. If it is not there yet, clone it: `git clone https://github.com/VenEttore/learnharness /workspace/learnharness`.
 
 1. Check Node: `node -v` must print `v22.x` or newer. On Node 14.13.1 to 21, `lh` refuses every command with `"code":"node_version"`. Older Node crashes before `lh` can check and prints no JSON line: tested, Node 12.22.12 and 14.7.0 stop with a `SyntaxError`, and 14.8.0 and 14.13.0 with `ERR_UNSUPPORTED_ESM_URL_SCHEME`.
-2. Install once: `cd /workspace/learnharness && npm ci`.
+2. Install once: `cd /workspace/learnharness && npm ci && npm run plugins:setup && npm run plugins:build-core`. The last two prepare and build LearnHarness's core plugins, which `next dev` loads from the repo. `npm run dev` would build them on each start, but it binds `localhost`, so this guide starts `next dev` directly (step 4).
 3. Put `lh` on your PATH: `mkdir -p ~/.local/bin && ln -sf /workspace/learnharness/scripts/lh.mjs ~/.local/bin/lh`. Check that `~/.local/bin` is on `PATH`. Without the link, run `node /workspace/learnharness/scripts/lh.mjs` wherever this guide says `lh`.
 4. Start the server, bound to 127.0.0.1. First run both checks in step 5. If they pass, a LearnHarness is already running, so skip this step; section 3 confirms it is yours. Rerunning the start line empties the log, and the second server fails on the busy port. To restart, stop the old process first.
 
@@ -42,7 +42,7 @@ The examples assume the repo is at `/workspace/learnharness`. Use your own path 
 ```bash
 cd /workspace/learnharness
 git fetch origin && git checkout main && git reset --hard origin/main
-npm ci
+npm ci && npm run plugins:setup && npm run plugins:build-core
 ```
 
 On a production build, run `npm run build` again before `npx next start`; without it, `next start` keeps serving the old build. Then start the server again as in step 4. `git reset --hard` drops any change you made in the repo; lessons in `LH_DATA_DIR` are outside it and stay. A clone made with `--single-branch` or `--depth` fetches only one branch, so `git checkout main` can fail or stay old. `git remote set-branches origin '*'`, then the fetch again, fixes it.
