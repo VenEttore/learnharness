@@ -45,8 +45,9 @@ import { stores } from "./stores.ts";
 import { settledTurnResponse } from "./turn-runs.ts";
 
 /** The refusal code for input a bot-run lesson cannot take: `continue`,
- *  `retry` and `retry-question` (no model turn to run) and server-origin
- *  input such as steers (handleBotRunInput). */
+ *  `retry` and `retry-question` (no model turn to run), side questions,
+ *  plugin question and problem input, and server-origin input such as
+ *  steers. */
 export const BOT_RUN_LESSON_CODE = "bot_run_lesson";
 
 /** Any driver at all means someone other than LearnHarness teaches, so an
@@ -71,8 +72,8 @@ function refusal(error: string, status: number): Response {
 }
 
 /** Side questions (upstream 0.6.0) are answered by LearnHarness's model,
- *  so a bot-run lesson refuses them before any model lookup (D5 in
- *  external-teacher 36). 422 like `continue`: a retry cannot succeed. */
+ *  so a bot-run lesson refuses them before any model lookup (ADR 0001).
+ *  422 like `continue`: a retry cannot succeed. */
 export function sideQuestionRefusal(): Response {
 	return refusal("A bot-run lesson has no LearnHarness model to answer side questions.", 422);
 }
@@ -86,9 +87,10 @@ export function pluginQuestionRefusal(): Response {
 
 /** Page input on a bot-run lesson: append it with the ordinary input
  *  logic and settle at once. `continue`, `retry` and `retry-question`
- *  would ask for a model turn, so they are 422 (409 reads to the page as
- *  "turn running" and it resends). Server-origin inputs never belong
- *  here: 400. */
+ *  would ask for a model turn, and plugin answers and submissions target
+ *  questions a Bot Teacher never poses, so all are 422 (409 reads to the
+ *  page as "turn running" and it resends). Server-origin inputs never
+ *  belong here: 400. */
 export function handleBotRunInput(record: ChatRecord, input: TurnInput): Response {
 	switch (input.type) {
 		case "continue":

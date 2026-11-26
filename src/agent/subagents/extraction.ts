@@ -906,11 +906,9 @@ export function createExtractionPipeline(deps: ExtractionPipelineDeps): Extracti
 			if (signal.aborted) onAbort();
 			else signal.addEventListener("abort", onAbort, { once: true });
 		});
-		let holding = false;
 		try {
 			await Promise.race([prev, aborted]);
 			signal?.throwIfAborted(); // aborted exactly at handoff
-			holding = true;
 			return await critical();
 		} finally {
 			if (onAbort && signal && !signal.aborted) signal.removeEventListener("abort", onAbort);

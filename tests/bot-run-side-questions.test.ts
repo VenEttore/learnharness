@@ -1,5 +1,5 @@
 /**
- * BOT-RUN SIDE QUESTIONS (fork, ADR 0001; D5 in external-teacher 36):
+ * BOT-RUN SIDE QUESTIONS (fork, ADR 0001; external-teacher ticket 36):
  * upstream 0.6.0's side questions are answered by LearnHarness's model, so
  * a bot-run lesson refuses them before compaction, the engine lookup or any
  * stream. Driven at the service seam (counting fakes) and through the real
@@ -119,6 +119,22 @@ describe("side questions in a bot-run lesson", () => {
 		await refusalOf(res);
 		const now = fs.readFileSync(path.join(process.env.LH_DATA_DIR!, "chats", `${chatId}.json`), "utf8");
 		assert.equal(now, before, "the chat file is unchanged");
+	});
+
+	it("the real route refuses a follow-up and a retry on a thread id the same way", async () => {
+		const { chatId } = lesson("side-route-follow", true);
+		for (const body of [{ threadId: "side_x", text: "And then?" }, { threadId: "side_x", retry: true }]) {
+			const res = await sideAskRoute(
+				new Request(`http://test/api/chats/${chatId}/side-chats`, {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify(body),
+				}),
+				{ params: Promise.resolve({ id: chatId }) },
+			);
+			await refusalOf(res);
+		}
+		assert.equal(chatStore.getChat(chatId)?.sideChats, undefined, "no side thread is saved");
 	});
 
 	it("control: the real route on an ordinary lesson with no model gets the model gate's 503", async () => {

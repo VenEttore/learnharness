@@ -287,8 +287,9 @@ reply="$(curl -s -w '\n%{http_code}' -X POST "$LH_URL/api/chats/$L/side-chats" -
 printf '%s\n' "$reply"
 code="$(tail -n1 <<<"$reply")"; body="$(sed '$d' <<<"$reply")"
 if [ "$code" = 422 ] && jq -e '.code=="bot_run_lesson"' >/dev/null 2>&1 <<<"$body"; then ok "side question refused: 422 bot_run_lesson"; else bad "side question: http $code, $body"; fi
-retry="$(curl -s -o /dev/null -w '%{http_code}' -X POST "$LH_URL/api/chats/$L/side-chats" -H 'Content-Type: application/json' -H "Origin: $LH_URL" --data '{"threadId":"side_x","retry":true}')"
-[ "$retry" = 422 ] && ok "side retry refused: 422" || bad "side retry: http $retry"
+retry="$(curl -s -w '\n%{http_code}' -X POST "$LH_URL/api/chats/$L/side-chats" -H 'Content-Type: application/json' -H "Origin: $LH_URL" --data '{"threadId":"side_x","retry":true}')"
+printf '%s\n' "$retry"
+if [ "$(tail -n1 <<<"$retry")" = 422 ] && jq -e '.code=="bot_run_lesson"' >/dev/null 2>&1 <<<"$(sed '$d' <<<"$retry")"; then ok "side retry refused: 422 bot_run_lesson"; else bad "side retry: $retry"; fi
 [ "$(sha256sum < "$DATA/chats/$L.json")" = "$before" ] && ok "the chat file is unchanged" || bad "the side question changed the chat file"
 lh_run 0 ".cursor==\"$C\" and (.items|length)==0" show "$L"
 

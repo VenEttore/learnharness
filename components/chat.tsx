@@ -588,7 +588,10 @@ export function Chat({
 
 	const localStream = status === "submitted" || status === "streaming";
 	const busy = localStream || turnInFlight || reconciliation !== "ready";
-	/** A turn to steer, stop, or abort: a bot-run lesson never has one. */
+	/** A turn to steer, stop, or abort: a bot-run lesson never has one.
+	 *  Also the submission gate (busyRef). A bot-run page skips the plugin
+	 *  reconciliation wait too, which never starts there: its lessons hold
+	 *  no plugin questions. */
 	const turnBusy = busy && !botRun;
 	const busyRef = useRef(turnBusy);
 	busyRef.current = turnBusy;

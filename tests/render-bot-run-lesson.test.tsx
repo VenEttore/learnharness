@@ -256,7 +256,7 @@ describe("keyless install: the chat view", () => {
 });
 
 // Side questions (upstream 0.6.0) are answered by LearnHarness's model, so a
-// bot-run page offers none (D5, external-teacher 36); the server refuses
+// bot-run page offers none (ADR 0001, external-teacher 36); the server refuses
 // them too (bot-run-side-questions.test.ts).
 describe("side questions on the lesson page", () => {
 	const lessonSoFar = [
