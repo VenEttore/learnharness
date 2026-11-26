@@ -77,6 +77,13 @@ export function sideQuestionRefusal(): Response {
 	return refusal("A bot-run lesson has no LearnHarness model to answer side questions.", 422);
 }
 
+/** Plugin questions and problems (upstream 0.6.0) are posed by
+ *  LearnHarness's model and graded by plugins. A Bot Teacher poses
+ *  neither, so their answers, submissions and dismissals are refused. */
+export function pluginQuestionRefusal(): Response {
+	return refusal("A bot-run lesson has no plugin questions or problems.", 422);
+}
+
 /** Page input on a bot-run lesson: append it with the ordinary input
  *  logic and settle at once. `continue`, `retry` and `retry-question`
  *  would ask for a model turn, so they are 422 (409 reads to the page as
@@ -88,6 +95,9 @@ export function handleBotRunInput(record: ChatRecord, input: TurnInput): Respons
 		case "retry":
 		case "retry-question":
 			return refusal(`A bot-run lesson has no model turn to ${input.type === "retry-question" ? "re-ask a question" : input.type}.`, 422);
+		case "plugin-question-answer":
+		case "plugin-problem-submission":
+			return pluginQuestionRefusal();
 		case "steers":
 			return refusal("A bot-run lesson takes only page input.", 400);
 	}

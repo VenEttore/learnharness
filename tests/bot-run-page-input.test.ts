@@ -23,6 +23,7 @@ process.env.LH_DATA_DIR = TMP_DATA;
 process.env.OPENROUTER_API_KEY = "test-key-presence-gate";
 
 const { handleChatInput, handleChatRequest } = await import("../src/server/chat-handler.ts");
+const { POST: dismissRoute } = await import("../app/api/chats/[id]/dismiss/route.ts");
 const { settledTurnResponse } = await import("../src/server/turn-runs.ts");
 const { projectedContextTokens } = await import("../src/server/compaction.ts");
 const { compactionCutIndex } = await import("../src/core/compaction.ts");
@@ -246,6 +247,45 @@ describe("page input a bot-run lesson refuses", () => {
 		assert.equal(live.status, 503, "a live one passes the check and reaches the model gate");
 		assert.equal(((await live.json()) as { code: string }).code, "models_not_configured");
 		assert.deepEqual(chatStore.getChat(chat.id)!.messages, seeded);
+	});
+
+	// Plugin questions and problems (upstream 0.6.0) are posed by
+	// LearnHarness's model and graded by plugins; a Bot Teacher poses none.
+	const OCCURRENCE = { messageId: "msg-plugin", contentIndex: 0, toolCallId: "call-plugin", toolName: "plugin_question" };
+	const pluginInputs = [
+		{ type: "plugin-question-answer", questionId: "q1", occurrence: OCCURRENCE, answer: { choice: 1 } },
+		{ type: "plugin-problem-submission", problemId: "p1", occurrence: OCCURRENCE, submission: { code: "x" } },
+	] as const;
+	for (const input of pluginInputs) {
+		it(`${input.type} is 422 bot_run_lesson, builds no agent, saves and announces nothing`, async () => {
+			const chat = botLesson(`Refuse ${input.type}`, true);
+			chatStore.saveMessages(chat.id, [newUserMessage("hi")]);
+			const before = JSON.stringify(chatStore.getChat(chat.id)!.messages);
+			agentBuilds = 0;
+			const { res, events } = await eventsDuring(() => handleChatRequest(post(chat.id, input), throwingBuilder));
+			assert.equal(res.status, 422);
+			assert.equal(((await res.json()) as { code: string }).code, "bot_run_lesson");
+			assert.equal(agentBuilds, 0);
+			assert.equal(JSON.stringify(chatStore.getChat(chat.id)!.messages), before);
+			assert.ok(!events.some((e) => e.type === "record-changed" || e.type === "chats-changed"), "nothing announced");
+		});
+	}
+
+	it("dismiss-plugin-question on the dismiss route is 422 bot_run_lesson and saves nothing", async () => {
+		const chat = botLesson("Refuse plugin dismissal", true);
+		chatStore.saveMessages(chat.id, [newUserMessage("hi")]);
+		const before = JSON.stringify(chatStore.getChat(chat.id)!.messages);
+		const res = await dismissRoute(
+			new Request(`http://test/api/chats/${chat.id}/dismiss`, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ input: { type: "dismiss-plugin-question", questionId: "q1", occurrence: OCCURRENCE } }),
+			}),
+			{ params: Promise.resolve({ id: chat.id }) },
+		);
+		assert.equal(res.status, 422);
+		assert.equal(((await res.json()) as { code: string }).code, "bot_run_lesson");
+		assert.equal(JSON.stringify(chatStore.getChat(chat.id)!.messages), before);
 	});
 
 	it("a practice-only input is 400 with the append error and saves nothing", async () => {

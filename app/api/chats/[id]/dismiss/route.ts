@@ -21,7 +21,7 @@
  * the current saved occurrence, then park and abort the owner here.
  */
 import { assertPluginQuestionInputAllowed, ChatInputError, dismissAppends, emit, parseDismissInput } from "@/src/core";
-import { abortTurn, getChat, isTurnRunning, parkDismissal, stores, preparePluginQuestionDismissal, reconcilePluginQuestionCompatibility } from "@/src/server";
+import { abortTurn, getChat, isBotRun, isTurnRunning, parkDismissal, pluginQuestionRefusal, stores, preparePluginQuestionDismissal, reconcilePluginQuestionCompatibility } from "@/src/server";
 
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }): Promise<Response> {
 	const { id } = await ctx.params;
@@ -44,6 +44,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
 	// targets additionally require exact saved-occurrence authority below.
 	chat = getChat(id);
 	if (!chat) return Response.json({ error: "Unknown chat" }, { status: 404 });
+	// Fork (ADR 0001): a bot-run lesson has no plugin question to dismiss.
+	if (isBotRun(chat) && input.type === "dismiss-plugin-question") return pluginQuestionRefusal();
 
 	let appends;
 	try {
