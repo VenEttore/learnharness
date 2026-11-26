@@ -1,6 +1,6 @@
 # 35: Merge upstream v0.5.0
 
-Status: open
+Status: claimed
 Blocked by: 34
 Risk: pre-release
 Gate: human (Ven runs one real lesson on the merged build)
