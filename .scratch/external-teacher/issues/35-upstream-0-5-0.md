@@ -3,7 +3,7 @@
 Status: resolved
 Blocked by: 34
 Risk: pre-release
-Gate: human (Ven runs one real lesson on the merged build)
+Gate: none (Ven's bench passed 2026-11-26)
 Host: linuxdev
 Touches: the conflicted and auto-merged upstream files of this step (see the survey for the full list at upstream/main), fork guards in chat-handler.ts, session-core.ts, chat.tsx, store/chats.ts, question-dock.tsx, docs/external-teacher.md, phase-c-smoke.sh, tests
 
@@ -32,6 +32,9 @@ Repo check (typecheck, lint, full tests; baseline: one failure, the Pi loader te
 On the box, after backing up the data folder: update to the ticket branch, run one real lesson through `lh` and close it per guide section 7. Check: the lesson runs with no LearnHarness model call (server log), the page never asks for a model continuation, quiz numbers from `lh show` match the card and what `lh submit` saves, the close adds facts and refuses chains, and (from 36 on) a side question in the bot-run lesson is refused.
 
 ## Comments
+
+### Bench PASS 2026-11-26 (Ven via the Watcher)
+Box at 261a583f, data backed up to /workspace/lh-data.before-35, lesson chat_mwxcy57c_6bf48c02. All four checks passed: no model turn (only /api/external/* and the 4 `lh submit` saves); the page sent no continue, and a hand-sent continue got 422 `bot_run_lesson`; shuffled quiz numbers from `lh show` matched the card and the saved picks; a findings call with a chain got `chains_not_accepted` with the graph unchanged, and `"chains": []` merged 4 facts. Box tests: 3853 pass, 1 fail (the Pi package-export baseline). Follow-ups from the bench go to ticket 40: two old Bench 2 lessons return 500 on a stored probe answer whose options is a string; posting the learner line after the close makes `remaining` 1 again; guide key names (`propositionId`, the probe-done cursor). npm ci reported 22 audit findings (2 critical); ticket 38 reports them after the last step.
 
 ### Shipped 2026-11-26 (code; Gate: human still open for Ven's bench)
 
