@@ -24,3 +24,12 @@
 - `lh graph propositions` timed out at 30 s while that route compiled under load (29.8 s in the log). Environmental; passed on the rerun.
 
 Smoke at 4f617244: PASS, 122 ok lines.
+
+## Interrogate (all at 9c1d7275)
+
+- A, Opus 5.5 xhigh: 1 finding. `sideChats.ask` checked only its first read, and `getChat` reads a file it cannot read as absent, so one failed first read let a bot-run side question reach `engineFor` (repro with a store whose first read returns null: status 599 from the fake engine instead of 422). It needs Windows to happen for real. Fixed in 4b2f5a5e: the refusal also runs on the record `engineFor` gets; test "a failed first read still refuses before the engine lookup" went red, then green. A's 10-test probe found no new 0.6.x path that reaches a model, with an ordinary-lesson control on each path.
+- B, DeepSeek V4.1 Flash on OpenCode Go (variant high): 1 finding. The committed plugin API reference (docs/plugin-api, new in 0.6.0) lacked the fork's ChatDriver, driver/externalKey and graph `source` fields, so tests/plugin-api-reference.test.ts failed. Already fixed in c6f0a795 (regenerated). B's end-to-end run passed on a version-1 lesson seeded in ticket 35's shape: read, rewritten as version 2 with driver and key, findings refuse chains and return `learnerLine`.
+- C, Haiku 5.5 xhigh: 0 findings. Page guards held; the guide matched this build through section 7's close.
+- D: Composer 2.5 failed to start twice ("Cursor Agent SDK worker.register failed"), so it ran on its fallback, Sonnet 5.5 high: 0 findings. Audit-lock probe (fails with an immediate release, passes with upstream's line), dismiss race and store fields held; no fork line was lost in the 83 shared files.
+
+Act On after fixes: none. The post-review delta (4 lines in src/server/side-chat.ts plus 88 generated lines in docs/plugin-api, checked byte for byte by upstream's test and regenerated on its own by seat B) ships unreviewed under the brief's small-diff rule. Round 2 not run.
