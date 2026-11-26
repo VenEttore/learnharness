@@ -95,6 +95,24 @@ describe("side questions in a bot-run lesson", () => {
 		assert.deepEqual(counts, { beforeAsk: 0, engineFor: 0, stream: 0 });
 	});
 
+	// The guard acts on the record the engine lookup receives: a first read
+	// that fails (getChat reads an unreadable file as absent, e.g. one another
+	// program holds on Windows) must not let a bot-run lesson through.
+	it("a failed first read still refuses before the engine lookup", async () => {
+		const { chatId, anchor } = lesson("side-flaky-read", true);
+		let reads = 0;
+		const flakyStore = { ...chatStore, getChat: (id: string) => (++reads === 1 ? null : chatStore.getChat(id)) };
+		const seen: (string | undefined)[] = [];
+		const service = createSideChatService({
+			chatStore: flakyStore,
+			engineFor: async (record) => { seen.push(record.driver); return Response.json({ error: "engine lookup reached" }, { status: 599 }); },
+			beforeAsk: async () => {},
+			instructions: () => "Side helper",
+		});
+		await refusalOf(await service.ask(chatId, { anchor, text: "Why approaches?", quotes: [] }));
+		assert.deepEqual(seen, [], "engineFor never saw the lesson");
+	});
+
 	it("control: an ordinary lesson's question reaches the engine and the model", async () => {
 		const { service, counts } = countingService();
 		const { chatId, anchor } = lesson("side-control", false);

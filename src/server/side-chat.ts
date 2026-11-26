@@ -120,12 +120,14 @@ export function createSideChatService(deps: SideChatDeps): SideChatService {
 
 	async function ask(chatId: string, input: SideAskInput): Promise<Response> {
 		// Fork (ADR 0001): a bot-run lesson never calls LearnHarness's model,
-		// so its side questions stop here, before compaction or engine lookup.
+		// so its side questions stop here, before the compaction wait, and
+		// again on the record the engine lookup gets: a failed read is null.
 		const beforeWait = deps.chatStore.getChat(chatId);
 		if (beforeWait && isBotRun(beforeWait)) return sideQuestionRefusal();
 		await deps.beforeAsk?.(chatId);
 		const initial = deps.chatStore.getChat(chatId);
 		if (!initial) return Response.json({ error: "Unknown chat" }, { status: 404 });
+		if (isBotRun(initial)) return sideQuestionRefusal(); // the record engineFor gets
 		const engine = await deps.engineFor(initial);
 		if (engine instanceof Response) return engine;
 		// No awaits between reading, deduplicating, saving and registration.
