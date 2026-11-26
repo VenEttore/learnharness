@@ -79,7 +79,7 @@ The work comes in four phases:
 - **Bot-run module.** A new server module holds all bot-run logic. Routes are thin wrappers that import it through the server barrel, following the repo's import rule.
 - **Page input in a bot-run lesson.** The chat handler gets one early return, right after it fetches the record and parses the input, into the bot-run module. That path:
   - accepts only the page's input types. An internal wake input (steers) is refused with 400 and code `bot_run_lesson`. Over HTTP, an input type the page never sends is refused earlier, by the input parser, with 400 and no code;
-  - refuses `continue` and `retry` with 422 and code `bot_run_lesson` (not 409, which the page treats as "turn running" and resends);
+  - refuses `continue`, `retry` and `retry-question` with 422 and code `bot_run_lesson` (not 409, which the page treats as "turn running" and resends);
   - otherwise appends the input with the existing input-append logic, turning its errors into 400;
   - commits the record and returns the same settled-turn response the parallel-question path returns.
 
@@ -175,7 +175,7 @@ The work comes in four phases:
   - Each turn kind produces a record the page reads correctly: the phase fold, the open question, the plan map from the plan result, the plan-block markers, and the handoff marker.
   - Each check refuses with the right code and saves nothing: no flag, missing or unknown `after`, unread input, open question, wrong phase, unknown plan node, schema failure, refinement failure, bad Mermaid, a cyclic plan.
   - Repeats: an identical rerun is dropped, including after learner input. A `probe-done` rerun after a `say` is dropped. The same question asked again after a skip is saved.
-  - Page input on a bot-run lesson, with a model and key configured so the normal path would build an agent: text and answers are saved, the agent builder is never called, and `continue` and `retry` get 422.
+  - Page input on a bot-run lesson, with a model and key configured so the normal path would build an agent: text and answers are saved, the agent builder is never called, and `continue`, `retry` and `retry-question` get 422.
   - Extraction and compaction on a bot-run lesson, with an engine that throws if called.
   - The session model sends nothing automatically for a bot-run lesson, on mount and after a sync.
   - Answer items carry every stored answer field, skips come back as skips, and the bot's own results are excluded.
