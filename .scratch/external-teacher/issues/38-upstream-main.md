@@ -23,6 +23,8 @@ Matt's decisions (2026-11-26, from the ticket 34 survey, .scratch/external-teach
 - [ ] If this step changes the chat record format (the survey says chats move to version 2 somewhere before 0.7.0), say so in the ticket and in the bench steps: back up the data folder before the first merged build, because an older build cannot read the new format.
 - [ ] Guide (docs/external-teacher.md) and smoke: update anything this step changes for the bot.
 
+- [ ] Run `npm audit` on the final merge and list the critical and high findings with the package that pulls each in (the box reported 22, 2 critical, after ticket 35). Do not fix them in this ticket; Matt decides.
+
 ## Check
 
 Repo check (typecheck, lint, full tests; baseline: one failure, the Pi loader test, unless this step's upstream tests change that; say so) and `bash .scratch/external-teacher/phase-c-smoke.sh <port>` PASS.
