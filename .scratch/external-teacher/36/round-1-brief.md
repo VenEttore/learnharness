@@ -35,6 +35,14 @@ Then the fork follow-ups up to bc05e8f2:
 
 Chat records move to version 2 in this step (`CURRENT_CHAT_VERSION = 2`). A pre-merge build reads a version-2 chat as absent.
 
+## How to read a 774-file diff
+
+The range is mostly upstream. Three narrower views cover the fork's part:
+
+- `git show --remerge-diff 1d9aa693`: how each of the eight conflicts was resolved, against git's own automatic merge.
+- `git diff 1d9aa693 HEAD -- . ':!.scratch'`: the fork's work after the merge (11 files).
+- `git diff v0.6.1 HEAD -- . ':!.scratch'`: every fork line on top of clean upstream v0.6.1. Compare it with ticket 35's view, `git diff v0.5.0 origin/external-teacher-35-upstream-0-5-0`, to see whether a fork guard was lost in an auto-merged file.
+
 ## Settled decisions (do not relitigate)
 
 - D1: merge by release; this step is v0.6.1 only.
