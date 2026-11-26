@@ -1,6 +1,6 @@
 # 39: Refuse retry-question in bot-run lessons
 
-Status: open
+Status: claimed
 Blocked by: none
 Risk: pre-release
 Gate: none
